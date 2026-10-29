@@ -17,9 +17,11 @@ export interface VillageCallbacks {
   onImport(save: SaveData): void;
   /** 호출한 쪽이 세이브를 newSave() 로 교체한다. */
   onReset(): void;
+  /** 창을 닫았다 (닫기 버튼, Esc, 상호작용 키) */
+  onClose(): void;
 }
 
-type Tab = 'phase' | 'char' | 'equip' | 'skill' | 'enhance' | 'shop' | 'settings';
+export type Tab = 'phase' | 'char' | 'equip' | 'skill' | 'enhance' | 'exchange' | 'shop' | 'settings';
 type ConfirmKey = 'statReset' | 'skillReset' | 'fullReset';
 type StatKey = keyof Stats;
 
@@ -29,6 +31,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'equip', label: '장비' },
   { id: 'skill', label: '스킬' },
   { id: 'enhance', label: '강화' },
+  { id: 'exchange', label: '재료 교환' },
   { id: 'shop', label: '상점' },
   { id: 'settings', label: '설정' },
 ];
@@ -105,6 +108,11 @@ export class VillageUI {
   private fileInput: HTMLInputElement;
 
   private tab: Tab = 'phase';
+  /** 지금 창에서 보여 줄 탭 (마을의 상호작용 대상마다 다르다) */
+  private allowed: Tab[] = TABS.map((t) => t.id);
+  private title = '파도막이';
+  private visible = false;
+  private onKey = (e: KeyboardEvent): void => this.handleKey(e);
   private confirming: ConfirmKey | null = null;
   private confirmTimer = 0;
   private toastTimer = 0;
@@ -120,6 +128,9 @@ export class VillageUI {
   ) {
     this.wrap = el('div', 'village', root);
     const panel = el('div', 'village-panel', this.wrap);
+    const close = el('button', 'village-close', panel, '×');
+    close.title = '닫기';
+    close.addEventListener('click', () => this.close());
     this.headerEl = el('div', 'village-header', panel);
     this.tabBar = el('div', 'village-tabs', panel);
     this.body = el('div', 'village-body', panel);
@@ -147,18 +158,53 @@ export class VillageUI {
     this.hide();
   }
 
+  get isOpen(): boolean {
+    return this.visible;
+  }
+
+  /** 마을의 상호작용 대상이 여는 창. 주어진 탭만 보여 준다. */
+  open(tabs: Tab[], title: string): void {
+    this.allowed = tabs;
+    this.tab = tabs[0];
+    this.title = title;
+    this.importError = '';
+    this.show();
+    this.body.scrollTop = 0;
+  }
+
+  close(): void {
+    if (!this.visible) return;
+    this.hide();
+    this.cb.onClose();
+  }
+
   show(): void {
     this.wrap.style.display = '';
+    this.visible = true;
+    window.removeEventListener('keydown', this.onKey);
+    window.addEventListener('keydown', this.onKey);
     this.refresh();
   }
 
   hide(): void {
     this.wrap.style.display = 'none';
+    this.visible = false;
+    window.removeEventListener('keydown', this.onKey);
     this.clearConfirm();
     this.stopRebind();
   }
 
+  /** Esc나 상호작용 키로 창을 닫는다 (키 변경 중에는 무시). */
+  private handleKey(e: KeyboardEvent): void {
+    if (!this.visible || this.rebinding || e.repeat) return;
+    if (e.code === 'Escape' || e.code === this.getSave().keymap.interact) {
+      e.preventDefault();
+      this.close();
+    }
+  }
+
   destroy(): void {
+    window.removeEventListener('keydown', this.onKey);
     this.stopRebind();
     window.clearTimeout(this.confirmTimer);
     window.clearTimeout(this.toastTimer);
@@ -170,7 +216,9 @@ export class VillageUI {
     this.renderHeader(save);
     for (const b of Array.from(this.tabBar.children) as HTMLElement[]) {
       b.classList.toggle('active', b.dataset.tab === this.tab);
+      b.style.display = this.allowed.includes(b.dataset.tab as Tab) ? '' : 'none';
     }
+    this.tabBar.style.display = this.allowed.length > 1 ? '' : 'none';
     const scroll = this.body.scrollTop;
     this.body.replaceChildren();
     switch (this.tab) {
@@ -191,6 +239,9 @@ export class VillageUI {
         break;
       case 'shop':
         this.renderShop(save);
+        break;
+      case 'exchange':
+        this.renderExchange(save);
         break;
       case 'settings':
         this.renderSettings(save);
@@ -249,7 +300,7 @@ export class VillageUI {
     const h = this.headerEl;
     h.replaceChildren();
     const top = el('div', 'vh-top', h);
-    el('h1', 'vh-title', top, '파도막이');
+    el('h1', 'vh-title', top, this.title);
     const lv = el('div', 'vh-level', top);
     el('span', 'vh-level-label', lv, 'Lv');
     el('span', 'vh-level-num', lv, String(save.level));
@@ -747,34 +798,6 @@ export class VillageUI {
       this.gearCard(gs, save, def);
     }
 
-    const xs = this.section('재료 교환', '모은 재료로 강력한 무기와 장비를 얻습니다');
-    for (const def of Object.values(WEAPONS)) {
-      const ex = def.exchange;
-      if (!ex) continue;
-      const card = el('div', 'v-card', xs);
-      const head = el('div', 'v-card-head', card);
-      const name = el('span', 'v-card-title', head, def.name);
-      name.style.color = GRADES[def.grade].color;
-      el('span', 'v-muted', head, `${GRADES[def.grade].name} ${WEAPON_TYPE_NAME[def.type]}`);
-      if (owned.has(def.id)) el('span', 'v-badge clear', head, '보유');
-      el('p', 'v-desc', card, def.desc);
-      this.weaponMeta(card, def);
-      if (owned.has(def.id)) continue;
-      const costs = el('div', 'v-costs', card);
-      let ok = save.gold >= ex.gold;
-      el('span', save.gold >= ex.gold ? 'v-cost' : 'v-cost short', costs, `골드 ${fmt(save.gold)} / ${fmt(ex.gold)}`);
-      for (const [id, need] of Object.entries(ex.materials)) {
-        const have = save.materials[id] ?? 0;
-        if (have < need) ok = false;
-        el('span', have >= need ? 'v-cost' : 'v-cost short', costs, `${materialName(id)} ${have} / ${need}`);
-      }
-      const actions = el('div', 'v-actions', card);
-      button(actions, '교환', 'primary', ok, () => this.exchange(def));
-    }
-    for (const def of Object.values(GEAR)) {
-      if (def.exchange) this.gearCard(xs, save, def);
-    }
-
     const s = this.section('소모품');
     for (const pot of POTIONS) {
       const pc = el('div', 'v-card', s);
@@ -809,6 +832,38 @@ export class VillageUI {
       this.toast('소탕권 1장을 구매했습니다');
     });
     if (save.gold < SWEEP_TICKET_PRICE) el('span', 'v-short', actions, '골드가 부족합니다');
+
+  }
+
+  private renderExchange(save: SaveData): void {
+    const owned = new Set(save.weapons.map((w) => w.defId));
+    const xs = this.section('재료 교환', '모은 재료로 강력한 무기와 장비를 얻습니다');
+    for (const def of Object.values(WEAPONS)) {
+      const ex = def.exchange;
+      if (!ex) continue;
+      const card = el('div', 'v-card', xs);
+      const head = el('div', 'v-card-head', card);
+      const name = el('span', 'v-card-title', head, def.name);
+      name.style.color = GRADES[def.grade].color;
+      el('span', 'v-muted', head, `${GRADES[def.grade].name} ${WEAPON_TYPE_NAME[def.type]}`);
+      if (owned.has(def.id)) el('span', 'v-badge clear', head, '보유');
+      el('p', 'v-desc', card, def.desc);
+      this.weaponMeta(card, def);
+      if (owned.has(def.id)) continue;
+      const costs = el('div', 'v-costs', card);
+      let ok = save.gold >= ex.gold;
+      el('span', save.gold >= ex.gold ? 'v-cost' : 'v-cost short', costs, `골드 ${fmt(save.gold)} / ${fmt(ex.gold)}`);
+      for (const [id, need] of Object.entries(ex.materials)) {
+        const have = save.materials[id] ?? 0;
+        if (have < need) ok = false;
+        el('span', have >= need ? 'v-cost' : 'v-cost short', costs, `${materialName(id)} ${have} / ${need}`);
+      }
+      const actions = el('div', 'v-actions', card);
+      button(actions, '교환', 'primary', ok, () => this.exchange(def));
+    }
+    for (const def of Object.values(GEAR)) {
+      if (def.exchange) this.gearCard(xs, save, def);
+    }
 
   }
 

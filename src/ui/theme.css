@@ -1,0 +1,625 @@
+/*
+ * 게임풍 테마: 웹 페이지처럼 보이던 패널을 장식 테두리가 있는 게임 창으로 바꾼다.
+ * style.css 뒤에 불러와서 같은 클래스를 덮어쓴다.
+ */
+
+:root {
+  --gold: #d8ae5a;
+  --gold-hi: #f6d68e;
+  --gold-lo: #8a6a32;
+  --wood-1: #2e2219;
+  --wood-2: #1b140e;
+  --ink: #f1e6cf;
+  --ink-dim: #c9b896;
+  --ink-mute: #8f7f64;
+  --title-font: 'Black Han Sans', 'Malgun Gothic', sans-serif;
+  --body-font: 'Noto Sans KR', 'Malgun Gothic', system-ui, sans-serif;
+}
+
+body,
+#ui {
+  font-family: var(--body-font);
+}
+
+/* ───────── 공통: 장식 창틀 ───────── */
+
+.village-panel,
+.hud-modal-box,
+.hud-panel,
+.th-plate,
+.th-wallet {
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(255, 210, 140, 0.07), transparent 60%),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.012) 0 2px, transparent 2px 7px),
+    linear-gradient(180deg, var(--wood-1), var(--wood-2));
+  border: 2px solid var(--gold-lo);
+  box-shadow:
+    0 0 0 1px #0a0705,
+    inset 0 0 0 1px rgba(246, 214, 142, 0.25),
+    inset 0 0 0 4px rgba(10, 7, 5, 0.6),
+    inset 0 0 0 5px rgba(216, 174, 90, 0.35),
+    0 10px 34px rgba(0, 0, 0, 0.6);
+  border-radius: 6px;
+  color: var(--ink);
+}
+
+/* ───────── 버튼 ───────── */
+
+.ui-btn {
+  font-family: var(--body-font);
+  font-weight: 800;
+  color: var(--ink);
+  background: linear-gradient(180deg, #4a3826, #2c2117);
+  border: 1px solid var(--gold-lo);
+  border-radius: 4px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 230, 180, 0.18),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.35),
+    0 2px 0 #0a0705;
+  text-shadow: 0 1px 0 #000;
+}
+
+.ui-btn:hover:not(:disabled) {
+  border-color: var(--gold);
+  color: #fff4dc;
+  background: linear-gradient(180deg, #5a4430, #36281c);
+}
+
+.ui-btn.primary {
+  color: #2a1a08;
+  text-shadow: 0 1px 0 rgba(255, 240, 200, 0.6);
+  background: linear-gradient(180deg, #f6d68e, #c9973e 55%, #a87a2c);
+  border-color: #f6d68e;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    inset 0 -2px 0 rgba(90, 50, 0, 0.45),
+    0 2px 0 #0a0705,
+    0 0 12px rgba(246, 214, 142, 0.25);
+}
+
+.ui-btn.primary:hover:not(:disabled) {
+  color: #1a0f02;
+  background: linear-gradient(180deg, #ffe6a8, #d8a648 55%, #b8862e);
+}
+
+.ui-btn.danger {
+  color: #ffe2dc;
+  background: linear-gradient(180deg, #8a2a22, #5a1812);
+  border-color: #c85a4a;
+}
+
+.ui-btn:disabled {
+  filter: grayscale(0.7) brightness(0.7);
+}
+
+/* ───────── 마을 창 (상호작용 대상마다 열림) ───────── */
+
+.village {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.7));
+  pointer-events: auto;
+  animation: win-fade 0.18s ease-out;
+}
+
+@keyframes win-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+.village-panel {
+  position: relative;
+  top: auto;
+  right: auto;
+  bottom: auto;
+  left: auto;
+  width: min(880px, 92vw);
+  max-height: min(84vh, 760px);
+  height: auto;
+  padding: 22px 24px 18px;
+  display: flex;
+  flex-direction: column;
+  animation: win-pop 0.2s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+
+@keyframes win-pop {
+  from {
+    transform: scale(0.94);
+  }
+}
+
+/* 네 귀퉁이 장식 */
+.village-panel::before,
+.village-panel::after {
+  content: '';
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border: 3px solid var(--gold);
+  pointer-events: none;
+}
+
+.village-panel::before {
+  top: -3px;
+  left: -3px;
+  border-right: none;
+  border-bottom: none;
+  border-radius: 6px 0 0 0;
+}
+
+.village-panel::after {
+  bottom: -3px;
+  right: -3px;
+  border-left: none;
+  border-top: none;
+  border-radius: 0 0 6px 0;
+}
+
+.village-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 2px solid var(--gold-lo);
+  background: radial-gradient(circle at 40% 35%, #5a4430, #241a12);
+  color: var(--gold-hi);
+  font-size: 22px;
+  line-height: 28px;
+  cursor: pointer;
+  pointer-events: auto;
+  z-index: 2;
+}
+
+.village-close:hover {
+  border-color: var(--gold);
+  color: #fff;
+}
+
+.village-header {
+  border-bottom: none;
+  padding: 0 0 6px;
+}
+
+.vh-top {
+  justify-content: center;
+  position: relative;
+}
+
+/* 제목 판 */
+.vh-title {
+  font-family: var(--title-font);
+  font-weight: 400;
+  font-size: 28px;
+  letter-spacing: 0.06em;
+  color: var(--gold-hi);
+  text-shadow:
+    0 2px 0 #3a2508,
+    0 0 18px rgba(246, 214, 142, 0.35);
+  padding: 2px 46px 6px;
+  background: linear-gradient(90deg, transparent, rgba(216, 174, 90, 0.18) 20%, rgba(216, 174, 90, 0.18) 80%, transparent);
+  border-top: 1px solid rgba(216, 174, 90, 0.5);
+  border-bottom: 1px solid rgba(216, 174, 90, 0.5);
+}
+
+.vh-level {
+  position: absolute;
+  left: 0;
+}
+
+.vh-exp {
+  display: none;
+}
+
+.vh-chips {
+  justify-content: center;
+  margin-top: 10px;
+}
+
+.vh-chip {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(216, 174, 90, 0.35);
+  border-radius: 3px;
+}
+
+.vh-chip.gold .vh-chip-val {
+  color: var(--gold-hi);
+}
+
+/* 책갈피 탭 */
+.village-tabs {
+  justify-content: center;
+  gap: 4px;
+  border-bottom: 2px solid var(--gold-lo);
+  margin: 6px 0 0;
+}
+
+.village-tab {
+  font-family: var(--title-font);
+  font-weight: 400;
+  font-size: 16px;
+  letter-spacing: 0.04em;
+  padding: 8px 22px 6px;
+  color: var(--ink-mute);
+  background: linear-gradient(180deg, #2a2018, #1c150f);
+  border: 1px solid #4a3a26;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+}
+
+.village-tab.active {
+  color: var(--gold-hi);
+  background: linear-gradient(180deg, #4a3826, #2e2219);
+  border-color: var(--gold-lo);
+  box-shadow: inset 0 2px 0 var(--gold);
+}
+
+.village-body {
+  padding: 14px 4px 4px;
+}
+
+.v-section-title {
+  font-family: var(--title-font);
+  font-weight: 400;
+  font-size: 18px;
+  color: var(--gold-hi);
+  letter-spacing: 0.04em;
+}
+
+.v-section-head {
+  border-bottom: 1px solid rgba(216, 174, 90, 0.25);
+  padding-bottom: 6px;
+}
+
+.v-card,
+.v-passive,
+.v-gear-slot,
+.v-equip-slot {
+  background: linear-gradient(180deg, rgba(60, 45, 30, 0.55), rgba(25, 18, 12, 0.55));
+  border: 1px solid #4e3c26;
+  border-radius: 4px;
+  box-shadow: inset 0 1px 0 rgba(255, 230, 180, 0.06);
+}
+
+.v-card:hover {
+  border-color: var(--gold-lo);
+}
+
+.v-card-title {
+  font-weight: 900;
+  color: var(--ink);
+}
+
+.v-desc,
+.v-meta {
+  color: var(--ink-dim);
+}
+
+.v-muted {
+  color: var(--ink-mute);
+}
+
+.v-phase-id {
+  font-family: var(--title-font);
+  color: #2a1a08;
+  background: linear-gradient(180deg, var(--gold-hi), #b8862e);
+  border-radius: 3px;
+}
+
+.village-toast {
+  font-weight: 800;
+  background: linear-gradient(180deg, #4a3826, #2c2117);
+  border: 1px solid var(--gold);
+  color: var(--gold-hi);
+  border-radius: 4px;
+}
+
+/* ───────── 마을 HUD ───────── */
+
+.town-hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.th-plate {
+  position: absolute;
+  top: 18px;
+  left: 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px 10px 10px;
+  min-width: 250px;
+}
+
+.th-badge {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 40% 30%, #6a4e2c, #2a1d12);
+  border: 3px solid var(--gold);
+  box-shadow:
+    0 0 0 2px #0a0705,
+    0 0 14px rgba(246, 214, 142, 0.35);
+}
+
+.th-badge-lv {
+  font-size: 10px;
+  font-weight: 900;
+  color: var(--ink-dim);
+  line-height: 1;
+}
+
+.th-badge-num {
+  font-family: var(--title-font);
+  font-size: 24px;
+  color: var(--gold-hi);
+  line-height: 1;
+}
+
+.th-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.th-name {
+  font-family: var(--title-font);
+  font-size: 18px;
+  color: var(--ink);
+  letter-spacing: 0.04em;
+}
+
+.th-exp {
+  height: 9px;
+  border-radius: 5px;
+  background: #0d0906;
+  border: 1px solid #4a3a26;
+  overflow: hidden;
+}
+
+.th-exp-fill {
+  height: 100%;
+  background: linear-gradient(180deg, #a8e0ff, #3a8ad8);
+  box-shadow: 0 0 8px rgba(120, 190, 255, 0.6);
+}
+
+.th-exp-text {
+  font-size: 11px;
+  color: var(--ink-mute);
+  font-variant-numeric: tabular-nums;
+}
+
+.th-points {
+  position: absolute;
+  top: 104px;
+  left: 20px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #2a1a08;
+  background: linear-gradient(180deg, var(--gold-hi), #c9973e);
+  border-radius: 3px;
+  box-shadow: 0 0 14px rgba(246, 214, 142, 0.5);
+  animation: th-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes th-pulse {
+  50% {
+    box-shadow: 0 0 4px rgba(246, 214, 142, 0.2);
+  }
+}
+
+.th-wallet {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  padding: 10px 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.th-coin-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--title-font);
+  font-size: 24px;
+  color: var(--gold-hi);
+  text-shadow: 0 2px 0 #3a2508;
+  font-variant-numeric: tabular-nums;
+}
+
+.th-coin-row.small {
+  font-family: var(--body-font);
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--ink-dim);
+  text-shadow: none;
+}
+
+.th-coin {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff2c0, #e0b048 45%, #8a5a10);
+  border: 2px solid #6a4410;
+  box-shadow: 0 0 8px rgba(255, 210, 100, 0.6);
+}
+
+.th-ticket {
+  width: 16px;
+  height: 11px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #e8dcbc 70%, #c8b890 70%);
+  border: 1px solid #6a5a3a;
+}
+
+.th-prompt {
+  position: absolute;
+  left: 50%;
+  bottom: 22%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 18px 8px 8px;
+  font-weight: 800;
+  font-size: 16px;
+  color: var(--ink);
+  background: linear-gradient(90deg, transparent, rgba(20, 14, 10, 0.85) 18%, rgba(20, 14, 10, 0.85) 82%, transparent);
+  text-shadow: 0 1px 2px #000;
+  animation: th-pop 0.18s ease-out;
+}
+
+@keyframes th-pop {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(6px);
+  }
+}
+
+.th-key {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--title-font);
+  font-size: 16px;
+  color: #2a1a08;
+  background: linear-gradient(180deg, #fff2c8, #d8ae5a);
+  border: 2px solid #6a4a1a;
+  border-radius: 5px;
+  box-shadow: 0 3px 0 #3a2508;
+}
+
+.th-key.small {
+  min-width: 22px;
+  height: 22px;
+  font-size: 11px;
+  padding: 0 5px;
+  box-shadow: 0 2px 0 #3a2508;
+}
+
+.th-hints {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  display: flex;
+  gap: 14px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-dim);
+  text-shadow: 0 1px 2px #000;
+}
+
+.th-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.th-resume {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.15), rgba(0, 0, 0, 0.55));
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.th-resume-text {
+  font-family: var(--title-font);
+  font-size: 38px;
+  color: var(--gold-hi);
+  letter-spacing: 0.06em;
+  text-shadow:
+    0 3px 0 #3a2508,
+    0 0 24px rgba(246, 214, 142, 0.45);
+  animation: th-pulse-text 1.8s ease-in-out infinite;
+}
+
+@keyframes th-pulse-text {
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.th-resume-sub {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink-dim);
+  text-shadow: 0 1px 2px #000;
+}
+
+/* ───────── 전투 HUD ───────── */
+
+.hud-banner,
+.hud-boss-name,
+.hud-modal-title,
+.hud-weapon-name,
+.hud-level-num {
+  font-family: var(--title-font);
+  font-weight: 400;
+  letter-spacing: 0.04em;
+}
+
+.hud-banner {
+  color: var(--gold-hi);
+  text-shadow:
+    0 3px 0 #3a2508,
+    0 0 28px rgba(246, 214, 142, 0.5);
+}
+
+.hud-slot {
+  background: radial-gradient(circle at 50% 35%, #3a2c1e, #15100b);
+  border: 2px solid var(--gold-lo);
+  border-radius: 6px;
+  box-shadow:
+    0 0 0 1px #0a0705,
+    inset 0 0 0 1px rgba(246, 214, 142, 0.18),
+    0 4px 10px rgba(0, 0, 0, 0.5);
+}
+
+.hud-slot-short {
+  font-family: var(--title-font);
+  font-weight: 400;
+  color: var(--ink);
+}
+
+.hud-slot-key {
+  color: var(--gold-hi);
+}
+
+.hud-modal {
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.72));
+}
+
+.hud-modal-title {
+  color: var(--gold-hi);
+  text-shadow: 0 2px 0 #3a2508;
+}
+
+.hud-boss-name {
+  color: #ffd8c8;
+  text-shadow: 0 2px 0 #2a0a05;
+}
