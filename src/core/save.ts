@@ -29,6 +29,8 @@ export interface SaveData {
   sweepTickets: number;
   keymap: Keymap;
   sensitivity: number;
+  /** 효과음 음량 0..1 */
+  sfxVolume: number;
 }
 
 export const SAVE_VERSION = 2;
@@ -57,6 +59,7 @@ export function newSave(): SaveData {
     sweepTickets: 0,
     keymap: { ...DEFAULT_KEYMAP },
     sensitivity: 1,
+    sfxVolume: 0.6,
   };
 }
 

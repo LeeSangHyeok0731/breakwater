@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 interface Particle {
-  mesh: THREE.Mesh;
+  mesh: THREE.Sprite;
   vel: THREE.Vector3;
   life: number;
   maxLife: number;
@@ -31,12 +31,34 @@ interface FloatingText {
 export type TextKind = 'normal' | 'crit' | 'player' | 'info' | 'heal' | 'quiet';
 
 const particleGeo = new THREE.IcosahedronGeometry(1, 0);
+
+/** 가운데가 밝고 가장자리가 사라지는 원 (발광 입자용) */
+function makeGlowTexture(): THREE.CanvasTexture {
+  const size = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.35, 'rgba(255,255,255,0.75)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  return new THREE.CanvasTexture(canvas);
+}
+const glowTexture = makeGlowTexture();
 const tracerGeo = new THREE.CylinderGeometry(1, 1, 1, 5, 1, true).translate(0, 0.5, 0);
-const particleMats = new Map<number, THREE.MeshBasicMaterial>();
-function particleMat(color: number): THREE.MeshBasicMaterial {
+const particleMats = new Map<number, THREE.SpriteMaterial>();
+function particleMat(color: number): THREE.SpriteMaterial {
   let m = particleMats.get(color);
   if (!m) {
-    m = new THREE.MeshBasicMaterial({ color });
+    m = new THREE.SpriteMaterial({
+      color,
+      map: glowTexture,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
     particleMats.set(color, m);
   }
   return m;
@@ -57,12 +79,13 @@ export class Effects {
 
   burst(pos: THREE.Vector3, color: number, count = 10, speed = 4, size = 0.1, life = 0.5, gravity = 9): void {
     for (let i = 0; i < count; i++) {
-      const mesh = new THREE.Mesh(particleGeo, particleMat(color));
+      const mesh = new THREE.Sprite(particleMat(color));
       mesh.position.copy(pos);
       const vel = new THREE.Vector3(Math.random() - 0.5, Math.random() * 0.8 + 0.2, Math.random() - 0.5)
         .normalize()
         .multiplyScalar(speed * (0.5 + Math.random() * 0.7));
-      const s = size * (0.6 + Math.random() * 0.8);
+      // 발광 스프라이트는 가장자리가 투명하므로 조금 크게 그린다.
+      const s = size * 2.6 * (0.6 + Math.random() * 0.8);
       mesh.scale.setScalar(s);
       this.scene.add(mesh);
       this.particles.push({ mesh, vel, life: life, maxLife: life, size: s, gravity });

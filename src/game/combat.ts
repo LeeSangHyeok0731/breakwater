@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { SLOT_ACTIONS } from '../core/input';
+import { sfx } from '../core/audio';
 import type { SkillDef } from '../data/skills';
 import type { Battle } from './battle';
 import { forwardOf, type ActionKind } from './player';
@@ -76,6 +77,7 @@ export function updatePlayerCombat(b: Battle, dt: number): void {
 
   if (input.pressed('dodge') && p.dodgeCd <= 0 && p.dodgeTime <= 0) {
     p.startDodge(p.wishDir(input));
+    sfx.play('dodge');
     b.effects.burst(p.pos.clone().setY(p.pos.y + 0.3), 0xd8d0c0, 8, 3, 0.12, 0.4);
   }
 
@@ -155,9 +157,26 @@ function advanceAction(b: Battle, dt: number): void {
   }
 }
 
+const SWING_KINDS: ReadonlySet<ActionKind> = new Set([
+  'slashV',
+  'slashH',
+  'thrust',
+  'upper',
+  'whirl',
+  'sunder',
+  'cleave',
+  'crescent',
+  'skyfall',
+  'hamstring',
+  'iai',
+]);
+
 function performHit(b: Battle, kind: ActionKind, index: number): void {
   const p = b.player;
   const base = b.weaponBase();
+  if (SWING_KINDS.has(kind)) sfx.play('slash');
+  else if (kind === 'volley') sfx.play('arrow');
+  else if (kind === 'manaball') sfx.play('magic');
   // 도는 검보다 한 방이 무겁다.
   const dao = p.weapon.def.type === 'dao';
   const slashMul = dao ? 1.2 : 1;
@@ -300,6 +319,7 @@ function fireArrow(b: Battle, c: number): void {
     arrow: true,
     pierce: c > 0.6,
   });
+  sfx.play('arrow', 0.8 + c * 0.6);
   p.drawCd = p.hasBuff('haste') ? 0.32 : 0.65;
   p.startAction('shoot', 0.2);
 }
@@ -317,6 +337,7 @@ function startReload(b: Battle): void {
   if (w.def.type !== 'gun' || p.reloadTime > 0 || w.ammo >= w.magazine) return;
   p.reloadTime = 1.5;
   b.hud.notify('재장전', 0.8);
+  sfx.play('reload');
 }
 
 /** 총알 한 발: 조준 방향으로 즉시 판정한다. */
@@ -376,6 +397,7 @@ function releaseCharge(b: Battle): void {
   const p = b.player;
   const c = Math.min(p.charge, 1.2) / 1.2;
   p.charge = -1;
+  sfx.play('magic', 1 + c);
   const origin = p.muzzle();
   const dir = b.aimPoint.clone().sub(origin).normalize();
   b.spawnPlayerBolt(origin, dir.multiplyScalar(24), {
@@ -402,6 +424,7 @@ function tryCast(b: Battle, skill: SkillDef | null, slot: number): void {
   p.cooldowns.set(skill.id, skill.cooldown);
   p.charge = -1;
   p.guarding = false;
+  if (skill.weapon === 'staff') sfx.play('magic', 1.2);
   castSkill(b, skill);
 }
 

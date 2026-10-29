@@ -2,14 +2,15 @@ import * as THREE from 'three';
 import type { Input } from '../core/input';
 import type { SkillDef } from '../data/skills';
 import { MELEE_TYPES, type WeaponDef } from '../data/weapons';
-import { makePlayer, makeWeaponModel, type Rig } from './models';
+import { AnimatedModel } from './animated';
+import { makeHeldWeapon } from './heldWeapons';
 import type { Derived } from './stats';
 
 export interface EquippedWeapon {
   def: WeaponDef;
   enhance: number;
   slots: (SkillDef | null)[];
-  model: THREE.Group;
+  model: THREE.Object3D;
   /** 총 전용: 남은 탄약과 탄창 크기 (총이 아니면 0) */
   ammo: number;
   magazine: number;
@@ -60,6 +61,10 @@ const JUMP_SPEED = 8.5;
 const DODGE_SPEED = 15;
 const DODGE_TIME = 0.32;
 
+function dao(type: string, kind: ActionKind): boolean {
+  return type === 'dao' && (kind === 'slashV' || kind === 'slashH');
+}
+
 export function forwardOf(yaw: number, out = new THREE.Vector3()): THREE.Vector3 {
   return out.set(Math.sin(yaw), 0, Math.cos(yaw));
 }
@@ -67,8 +72,35 @@ export function rightOf(yaw: number, out = new THREE.Vector3()): THREE.Vector3 {
   return out.set(-Math.cos(yaw), 0, Math.sin(yaw));
 }
 
+/** 동작별 상체 애니메이션 (KayKit 클립 이름) */
+const ACTION_CLIPS: Record<ActionKind, string> = {
+  slashV: '1H_Melee_Attack_Chop',
+  slashH: '1H_Melee_Attack_Slice_Horizontal',
+  thrust: '1H_Melee_Attack_Stab',
+  upper: '1H_Melee_Attack_Slice_Diagonal',
+  whirl: '2H_Melee_Attack_Spinning',
+  sunder: '1H_Melee_Attack_Slice_Diagonal',
+  waves: '1H_Melee_Attack_Slice_Horizontal',
+  cast: 'Spellcast_Shoot',
+  manaball: 'Spellcast_Shoot',
+  laser: 'Spellcasting',
+  cleave: '2H_Melee_Attack_Slice',
+  crescent: '2H_Melee_Attack_Spin',
+  skyfall: '1H_Melee_Attack_Slice_Diagonal',
+  hamstring: '2H_Melee_Attack_Slice',
+  iai: '2H_Melee_Attack_Stab',
+  shoot: '1H_Ranged_Shoot',
+  volley: '2H_Ranged_Shooting',
+  rapid: '1H_Ranged_Shooting',
+  snipe: '2H_Ranged_Aiming',
+  barrage: '1H_Ranged_Shooting',
+};
+
+/** 반복 재생하는 동작 */
+const LOOP_ACTIONS: ReadonlySet<ActionKind> = new Set(['whirl', 'waves', 'laser', 'volley', 'rapid', 'barrage', 'snipe']);
+
 export class Player {
-  readonly rig: Rig;
+  readonly avatar: AnimatedModel;
   readonly pos = new THREE.Vector3();
   readonly vel = new THREE.Vector3();
   yaw = 0;
@@ -115,7 +147,7 @@ export class Player {
   hurtTimer = 0;
   dead = false;
 
-  private walkPhase = 0;
+  private dodgeToken = 0;
   private shieldBubble: THREE.Mesh;
   private wardBubble: THREE.Mesh;
 
@@ -123,10 +155,14 @@ export class Player {
     this.derived = derived;
     this.hp = derived.maxHp;
     this.mp = derived.maxMp;
-    this.rig = makePlayer();
+    // 기사 모델에 기본으로 달린 무기와 방패는 숨기고 장착 무기를 손에 붙인다.
+    this.avatar = new AnimatedModel('Knight', {
+      hide: ['1H_Sword', '1H_Sword_Offhand', '2H_Sword', 'Badge_Shield', 'Rectangle_Shield', 'Round_Shield', 'Spike_Shield'],
+    });
+    const charScale = this.avatar.root.children[0].scale.x;
     this.weapons = weapons.map((w) => ({
       ...w,
-      model: makeWeaponModel(w.def.type),
+      model: makeHeldWeapon(w.def.type, charScale),
       ammo: w.def.magazine ?? 0,
       magazine: w.def.magazine ?? 0,
     }));
@@ -142,7 +178,7 @@ export class Player {
       new THREE.MeshBasicMaterial({ color: 0xffd34a, transparent: true, opacity: 0.22, wireframe: true }),
     );
     this.wardBubble.position.y = 1.1;
-    this.rig.root.add(this.shieldBubble, this.wardBubble);
+    this.avatar.root.add(this.shieldBubble, this.wardBubble);
     this.shieldBubble.visible = false;
     this.wardBubble.visible = false;
   }
@@ -170,9 +206,15 @@ export class Player {
     return this.buffs.some((b) => b.id === id);
   }
 
+  get root(): THREE.Object3D {
+    return this.avatar.root;
+  }
+
   equipModel(): void {
-    this.rig.hand.clear();
-    this.rig.hand.add(this.weapon.model);
+    const hand = this.avatar.handR;
+    if (!hand) return;
+    for (const w of this.weapons) hand.remove(w.model);
+    hand.add(this.weapon.model);
   }
 
   swapWeapon(): void {
@@ -209,6 +251,7 @@ export class Player {
   startDodge(dir: THREE.Vector3): void {
     this.dodgeDir.copy(dir.lengthSq() > 0 ? dir : forwardOf(this.yaw));
     this.dodgeTime = DODGE_TIME;
+    this.dodgeToken++;
     this.dodgeCd = 0.75 * this.derived.passive.dodgeCdMul;
     this.invuln = DODGE_TIME + 0.05;
     this.action = null;
@@ -294,93 +337,55 @@ export class Player {
   }
 
   animate(dt: number): void {
-    const rig = this.rig;
-    rig.root.position.copy(this.pos);
-    rig.root.rotation.y = this.yaw;
+    const av = this.avatar;
+    av.root.position.copy(this.pos);
+    av.root.rotation.y = this.yaw;
 
+    const type = this.weapon.def.type;
+    const f = forwardOf(this.yaw);
+    const r = rightOf(this.yaw);
+    const vf = this.vel.x * f.x + this.vel.z * f.z;
+    const vr = this.vel.x * r.x + this.vel.z * r.z;
     const hSpeed = Math.hypot(this.vel.x, this.vel.z);
-    this.walkPhase += dt * hSpeed * 2.2;
-    const swing = this.grounded ? Math.sin(this.walkPhase) * Math.min(1, hSpeed / 4) * 0.8 : 0.5;
-    rig.legL.rotation.x = swing;
-    rig.legR.rotation.x = -swing;
 
-    // 기본 자세
-    let armR = this.isMelee ? -0.35 : this.isRanged ? -1.45 : -0.75;
-    let armRz = 0;
-    let armL = this.isRanged ? -1.2 : -swing * 0.4;
-    let bodyYaw = 0;
-    let bodyPitch = 0;
-    let bodyY = 0;
+    if (this.dead) {
+      av.playFull('Death_A', { loop: false, fade: 0.1 });
+    } else if (this.dodgeTime > 0) {
+      const df = this.dodgeDir.x * f.x + this.dodgeDir.z * f.z;
+      const dr = this.dodgeDir.x * r.x + this.dodgeDir.z * r.z;
+      const clip = Math.abs(df) >= Math.abs(dr) ? (df >= 0 ? 'Dodge_Forward' : 'Dodge_Backward') : dr > 0 ? 'Dodge_Right' : 'Dodge_Left';
+      av.playFull(clip, { loop: false, speed: 1.25, fade: 0.05, token: this.dodgeToken });
+    } else {
+      // 하체: 이동 방향에 맞춘 달리기·옆걸음·뒷걸음
+      let lower: string;
+      let lowerSpeed = 1;
+      if (!this.grounded) lower = 'Jump_Idle';
+      else if (hSpeed > 0.6) {
+        if (Math.abs(vf) >= Math.abs(vr)) lower = vf >= 0 ? 'Running_A' : 'Walking_Backwards';
+        else lower = vr > 0 ? 'Running_Strafe_Right' : 'Running_Strafe_Left';
+        lowerSpeed = THREE.MathUtils.clamp(hSpeed / 5.5, 0.6, 1.8);
+      } else lower = type === 'dao' ? '2H_Melee_Idle' : 'Idle';
+      av.play('lower', lower, { speed: lowerSpeed });
 
-    const a = this.action;
-    if (this.dodgeTime > 0) {
-      bodyPitch = 0.9;
-      bodyY = -0.35;
-      armR = -1.2;
-      armL = -1.2;
-    } else if (this.guarding) {
-      armR = -1.3;
-      armRz = 0.9;
-      armL = -1.1;
-    } else if (a) {
-      const p = Math.min(1, a.t / a.dur);
-      const e = 1 - Math.pow(1 - Math.min(1, p * 2.2), 3);
-      switch (a.kind) {
-        case 'slashV':
-          armR = -2.9 + e * 2.7;
-          bodyPitch = e * 0.25;
-          break;
-        case 'slashH':
-        case 'sunder':
-        case 'cleave':
-        case 'crescent':
-        case 'hamstring':
-          armR = -1.5;
-          bodyYaw = 1.1 - e * 2.2;
-          break;
-        case 'thrust':
-        case 'iai':
-          armR = -1.6;
-          bodyPitch = 0.25 * e;
-          rig.armR.position.z = 0.35 * e;
-          break;
-        case 'upper':
-        case 'skyfall':
-          armR = -0.2 - e * 2.9;
-          bodyPitch = -0.2 * e;
-          break;
-        case 'whirl':
-          armR = -1.5;
-          bodyYaw = p * Math.PI * 4;
-          break;
-        case 'waves':
-          armR = -1.5;
-          bodyYaw = Math.sin(a.t * 22) * 0.9;
-          break;
-        case 'cast':
-        case 'manaball':
-        case 'laser':
-        case 'shoot':
-        case 'volley':
-        case 'rapid':
-        case 'snipe':
-        case 'barrage':
-          armR = -1.55;
-          armL = -1.3;
-          break;
-      }
-    } else if (this.charge >= 0) {
-      armR = -1.55;
-      armL = -1.4;
+      // 상체: 가드·공격·차징·조준. 아무것도 없으면 하체와 같은 동작.
+      const a = this.action;
+      if (this.guarding) av.play('upper', 'Blocking', { fade: 0.08 });
+      else if (a) {
+        let clip = ACTION_CLIPS[a.kind];
+        if (dao(type, a.kind)) clip = a.kind === 'slashV' ? '2H_Melee_Attack_Chop' : '2H_Melee_Attack_Slice';
+        if (a.kind === 'shoot' && type === 'bow') clip = '2H_Ranged_Shoot';
+        const loop = LOOP_ACTIONS.has(a.kind);
+        const speed = loop ? 1.4 : THREE.MathUtils.clamp(av.duration(clip) / (a.dur * 1.4), 0.8, 3);
+        av.play('upper', clip, { loop, speed, fade: 0.06, token: a });
+      } else if (this.charge >= 0) {
+        av.play('upper', type === 'staff' ? 'Spellcasting' : type === 'bow' ? '2H_Ranged_Aiming' : '2H_Melee_Idle', { fade: 0.1 });
+      } else if (this.reloadTime > 0) {
+        av.play('upper', '1H_Ranged_Reload', { loop: false, speed: av.duration('1H_Ranged_Reload') / 1.5 });
+      } else if (type === 'gun') av.play('upper', '1H_Ranged_Aiming');
+      else if (type === 'bow') av.play('upper', '2H_Ranged_Aiming');
+      else av.play('upper', lower, { speed: lowerSpeed });
     }
-    if (!a || (a.kind !== 'thrust' && a.kind !== 'iai')) rig.armR.position.z = 0;
-
-    rig.armR.rotation.x = armR;
-    rig.armR.rotation.z = armRz;
-    rig.armL.rotation.x = armL;
-    rig.body.rotation.y = bodyYaw;
-    rig.body.rotation.x = bodyPitch;
-    rig.body.position.y = bodyY;
+    av.update(dt);
 
     // 차징 중에는 스태프 오브가 커진다.
     const orb = this.weapon.model.getObjectByName('orb');
@@ -390,8 +395,8 @@ export class Player {
     this.wardBubble.visible = this.wardHits > 0;
     if (this.wardBubble.visible) this.wardBubble.rotation.y += dt * 1.5;
 
-    // 피격 시 짧게 붉게 깜빡인다.
-    rig.body.visible = this.hurtTimer <= 0 || Math.floor(this.hurtTimer * 30) % 2 === 0;
+    // 피격 시 짧게 깜빡인다.
+    av.setVisible(this.hurtTimer <= 0 || Math.floor(this.hurtTimer * 30) % 2 === 0);
   }
 
   /** 무기 끝(대략) 위치 */
