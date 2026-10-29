@@ -13,6 +13,7 @@ import { updatePlayerCombat } from './combat2d';
 import { ctx, type BattleOutcome } from './context';
 import { DEPTH, Fx } from './fx';
 import { Monster } from './monster2d';
+import { dev } from './dev';
 import { Player } from './player2d';
 import { CRIT_DAMAGE, basicDamage, derive, enhanceMultiplier, expToNext, totalStats, type Stats } from './stats';
 import { buildLevel, FLOOR_Y, VIEW_H, type Level } from './world';
@@ -256,6 +257,8 @@ export class BattleScene extends Phaser.Scene {
 
     const p = this.player;
     p.updateTimers(dt);
+    if (dev.infiniteMp) p.mp = p.derived.maxMp;
+    if (dev.noCooldown) for (const id of p.cooldowns.keys()) p.cooldowns.set(id, 0);
     p.onPlatform = p.grounded && p.feet < FLOOR_Y - 4;
     updatePlayerCombat(this, dt);
     this.usePotions(dt);
@@ -347,7 +350,8 @@ export class BattleScene extends Phaser.Scene {
       crit = Math.random() < critChance;
       critMul = crit ? 1 + CRIT_DAMAGE : 1;
     }
-    const dmg = Math.max(1, Math.round(base * p.damageMul * (1 + m.vuln) * critMul));
+    let dmg = Math.max(1, Math.round(base * p.damageMul * (1 + m.vuln) * critMul * dev.damageMul));
+    if (dev.oneHit) dmg = Math.max(dmg, Math.ceil(m.hp));
     m.hp -= dmg;
     m.onHit(p.x, opts.knock ?? 0);
     if (opts.basic) p.mp = Math.min(p.derived.maxMp, p.mp + 2);
@@ -434,6 +438,10 @@ export class BattleScene extends Phaser.Scene {
     const p = this.player;
     if (p.dead || this.ended) return;
     const headY = p.body.top - 4;
+    if (dev.god) {
+      this.fx.text(p.x, headY, '무적', 'info');
+      return;
+    }
     if (p.invuln > 0) {
       if (p.dodgeTime > 0) this.fx.text(p.x, headY, '회피', 'info');
       return;
@@ -550,7 +558,7 @@ export class BattleScene extends Phaser.Scene {
       y = 160;
     }
     x = Phaser.Math.Clamp(x, 30, W - 30);
-    const m = new Monster(this, kind, elite, this.phase.hpMul, x, y);
+    const m = new Monster(this, kind, elite, this.phase.hpMul * dev.monsterHpMul, x, y);
     m.facing = p.x < x ? -1 : 1;
     this.monsters.push(m);
     this.monsterGroup.add(m.zone);
@@ -1047,6 +1055,27 @@ export class BattleScene extends Phaser.Scene {
       boss: barTarget ? { name: barTarget.def.name, hp: Math.max(0, barTarget.hp), maxHp: barTarget.maxHp, phase2: barTarget.phase2 } : null,
       dodgeReady: p.dodgeCd <= 0,
     };
+  }
+
+  // ───────────────────────── 개발자 모드 ─────────────────────────
+
+  devKillAll(): void {
+    for (const m of [...this.monsters]) if (m.alive) this.killMonster(m);
+  }
+
+  devHeal(): void {
+    const p = this.player;
+    p.hp = p.derived.maxHp;
+    p.mp = p.derived.maxMp;
+    for (const id of p.cooldowns.keys()) p.cooldowns.set(id, 0);
+    this.fx.burst(p.x, p.y, 0x6aff8a, 14, 70, 500);
+  }
+
+  /** 페이즈를 바로 클리어 처리한다 (보상 포함). */
+  devClear(): void {
+    for (const m of this.monsters) if (m.alive) m.kill();
+    this.spawnQueue = [];
+    this.clear();
   }
 
   /** 개발용 상태 요약 */

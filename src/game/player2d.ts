@@ -100,6 +100,8 @@ export class Player {
   hurtTimer = 0;
   /** 발판을 뚫고 내려가는 중 */
   dropTimer = 0;
+  /** 공중에서 남은 추가 점프 횟수 (더블 점프) */
+  airJumps = 1;
   dead = false;
 
   private lastAnimAction: PlayerAction | null = null;
@@ -279,19 +281,38 @@ export class Player {
     const control = this.hurtTimer > 0.15 ? 0.05 : this.grounded ? 0.35 : 0.12;
     body.setVelocityX(body.velocity.x + (wish * speed - body.velocity.x) * Math.min(1, control * 60 * dt));
 
-    if (input.pressed('jump') && this.grounded && !this.guarding) {
-      if (input.isDown('down') && this.onPlatform) {
-        // ↓ + 점프: 발판 아래로 내려간다.
-        this.dropTimer = 0.3;
-        body.setVelocityY(40);
-      } else {
-        body.setVelocityY(JUMP_V);
+    if (this.grounded) this.airJumps = 1;
+    if (input.pressed('jump') && !this.guarding) {
+      if (this.grounded) {
+        if (input.isDown('down') && this.onPlatform) {
+          // ↓ + 점프: 발판 아래로 내려간다.
+          this.dropTimer = 0.3;
+          body.setVelocityY(40);
+        } else {
+          body.setVelocityY(JUMP_V);
+        }
+      } else if (this.airJumps > 0) {
+        // 더블 점프: 공중에서 한 번 더
+        this.airJumps--;
+        body.setVelocityY(JUMP_V * 0.9);
+        this.jumpPuff();
+        // 점프 동작을 처음부터 다시 보여 준다.
+        if (this.sprite.anims.currentAnim?.key === 'hero-jump') this.sprite.anims.restart();
       }
     }
   }
 
   /** 지금 발판 위에 서 있는가 (BattleScene/TownScene이 매 프레임 갱신) */
   onPlatform = false;
+
+  /** 더블 점프할 때 발밑에 퍼지는 바람 */
+  private jumpPuff(): void {
+    const ring = this.scene.add
+      .ellipse(this.x, this.feet, 10, 4, 0xbfe4ff, 0)
+      .setStrokeStyle(2, 0xbfe4ff, 0.9)
+      .setDepth(DEPTH.fx);
+    this.scene.tweens.add({ targets: ring, width: 34, height: 9, alpha: 0, duration: 260, ease: 'Quad.Out', onComplete: () => ring.destroy() });
+  }
 
   private afterimage(): void {
     const s = this.sprite;
