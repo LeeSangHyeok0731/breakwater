@@ -60,6 +60,8 @@ const ACTION_LABELS: Record<Action, string> = {
   slot8: '스킬 슬롯 8',
   item1: '소모품 1',
   item2: '소모품 2',
+  view: '시점 전환 (1인칭/3인칭)',
+  interact: '상호작용 (마을)',
 };
 
 const CONFIRM_TIMEOUT = 4000;

@@ -11,11 +11,13 @@ import { GRADES, WEAPONS, type WeaponType } from '../data/weapons';
 import { Hud, type HudSlot } from '../ui/hud';
 import { updatePlayerCombat } from './combat';
 import { Effects } from './effects';
+import { CameraRig } from './cameraRig';
+import { ViewModel } from './viewModel';
 import { box, ico, mat } from './models';
 import { groundTexture, makeSky, placeProp, radialAlpha, scatterGrass, seeded } from './environment';
 import type { PropName } from './assets';
 import { Monster } from './monster';
-import { Player, forwardOf, rightOf } from './player';
+import { Player, forwardOf } from './player';
 import { CRIT_DAMAGE, basicDamage, derive, enhanceMultiplier, expToNext, totalStats, type Stats } from './stats';
 
 export interface BattleOutcome {
@@ -235,6 +237,8 @@ export class Battle {
   readonly arenaRadius: number;
   monsters: Monster[] = [];
   readonly aimPoint = new THREE.Vector3();
+  readonly rig: CameraRig;
+  private viewModel: ViewModel;
 
   private playerBolts: PlayerBolt[] = [];
   private enemyBolts: EnemyBolt[] = [];
@@ -264,10 +268,8 @@ export class Battle {
   private ended = false;
   private started = false;
   private paused = false;
-  private shakeAmount = 0;
   private unsubscribeLock: () => void;
 
-  private readonly camDir = new THREE.Vector3();
   private readonly tmp = new THREE.Vector3();
   private readonly tmp2 = new THREE.Vector3();
 
@@ -279,7 +281,12 @@ export class Battle {
     private readonly onEnd: (outcome: BattleOutcome) => void,
   ) {
     this.arenaRadius = phase.arenaRadius;
-    this.camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 400);
+    this.camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.05, 400);
+    this.rig = new CameraRig(this.camera);
+    this.rig.mode = save.viewMode;
+    // 1인칭 무기는 카메라의 자식이라 카메라를 씬에 넣어야 그려진다.
+    this.scene.add(this.camera);
+    this.viewModel = new ViewModel(this.camera);
     this.hud = new Hud(uiRoot);
     this.effects = new Effects(this.scene, this.camera, this.hud.layer);
 
@@ -292,6 +299,7 @@ export class Battle {
     this.player = new Player(derive(this.stats, save.passives, gearBonus(save.gear.equipped)), weapons);
     this.player.pos.set(0, 0, -this.arenaRadius * 0.35);
     this.player.yaw = 0;
+    this.applyViewMode();
     this.player.animate(0);
     this.scene.add(this.player.root);
 
@@ -332,9 +340,14 @@ export class Battle {
 
     const input = this.input;
     const p = this.player;
-    const sens = 0.0022 * this.save.sensitivity;
-    p.yaw -= input.mouseDX * sens;
-    p.pitch = THREE.MathUtils.clamp(p.pitch + input.mouseDY * sens, -0.75, 1.0);
+    this.rig.look(input, this.save.sensitivity);
+    if (input.pressed('view')) {
+      this.save.viewMode = this.rig.toggle();
+      this.applyViewMode();
+      this.hud.notify(this.rig.mode === 'first' ? '1인칭 시점' : '3인칭 시점', 0.8);
+    }
+    p.yaw = this.rig.yaw;
+    p.pitch = this.rig.pitch;
 
     p.updateTimers(dt);
     this.updateAim();
@@ -342,6 +355,7 @@ export class Battle {
     this.usePotions(dt);
     p.updateMovement(dt, input, this.arenaRadius);
     p.animate(dt);
+    this.viewModel.update(dt, p);
 
     this.updateWaves(dt);
     for (const m of this.monsters) m.update(dt, this);
@@ -458,24 +472,28 @@ export class Battle {
 
   private updateCamera(dt: number): void {
     const p = this.player;
-    const cp = Math.cos(p.pitch);
-    this.camDir.set(Math.sin(p.yaw) * cp, -Math.sin(p.pitch), Math.cos(p.yaw) * cp);
-    const right = rightOf(p.yaw, this.tmp2);
-    const pivot = this.tmp.set(p.pos.x, p.pos.y + 1.65, p.pos.z);
-    const cam = this.camera.position;
-    const targetFov = p.ads ? 42 : 65;
-    if (dt > 0 && Math.abs(this.camera.fov - targetFov) > 0.1) {
-      this.camera.fov += (targetFov - this.camera.fov) * Math.min(1, dt * 12);
-      this.camera.updateProjectionMatrix();
-    }
-    cam.copy(pivot).addScaledVector(this.camDir, p.ads ? -3.2 : -4.3).addScaledVector(right, p.ads ? 0.9 : 0.75);
-    if (cam.y < 0.4) cam.y = 0.4;
-    if (this.shakeAmount > 0) {
-      cam.x += (Math.random() - 0.5) * this.shakeAmount;
-      cam.y += (Math.random() - 0.5) * this.shakeAmount;
-      this.shakeAmount = Math.max(0, this.shakeAmount - dt * 2.5);
-    }
-    this.camera.lookAt(cam.x + this.camDir.x, cam.y + this.camDir.y, cam.z + this.camDir.z);
+    this.rig.yaw = p.yaw;
+    this.rig.pitch = p.pitch;
+    this.rig.update(p.pos, dt, { ads: p.ads });
+  }
+
+  /** 1인칭이면 내 몸을 숨기고 화면 앞 무기를 보여 준다. */
+  private applyViewMode(): void {
+    const first = this.rig.mode === 'first';
+    this.player.hidden = first;
+    this.viewModel.setVisible(first);
+  }
+
+  /** 투사체가 나가는 위치. 1인칭은 화면 오른쪽 아래, 3인칭은 캐릭터의 손 앞. */
+  muzzle(out = new THREE.Vector3()): THREE.Vector3 {
+    if (this.rig.mode !== 'first') return this.player.muzzle(out);
+    const f = this.rig.forward(this.tmp2);
+    const p = this.player;
+    out.copy(this.camera.position).addScaledVector(f, 0.55);
+    out.x += -Math.cos(p.yaw) * 0.16;
+    out.z += Math.sin(p.yaw) * 0.16;
+    out.y -= 0.14;
+    return out;
   }
 
   /** 화면 중앙(크로스헤어)에서 쏜 광선이 처음 닿는 지점 */
@@ -498,7 +516,8 @@ export class Battle {
       const disc = bq * bq - cq;
       if (disc < 0) continue;
       const t = -bq - Math.sqrt(disc);
-      if (t > 4.6 && t < best) best = t;
+      // 3인칭에서는 카메라와 캐릭터 사이에 있는 적은 무시한다.
+      if (t > (this.rig.mode === 'first' ? 0.3 : 4.6) && t < best) best = t;
     }
     this.aimPoint.copy(origin).addScaledVector(dir, best);
   }
@@ -518,7 +537,7 @@ export class Battle {
   }
 
   shake(amount: number): void {
-    this.shakeAmount = Math.max(this.shakeAmount, amount);
+    this.rig.shake(this.rig.mode === 'first' ? amount * 0.5 : amount);
   }
 
   // ───────────────────────── 피해 ─────────────────────────

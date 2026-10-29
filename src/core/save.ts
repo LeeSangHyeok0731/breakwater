@@ -31,6 +31,7 @@ export interface SaveData {
   sensitivity: number;
   /** 효과음 음량 0..1 */
   sfxVolume: number;
+  viewMode: 'third' | 'first';
 }
 
 export const SAVE_VERSION = 2;
@@ -60,6 +61,7 @@ export function newSave(): SaveData {
     keymap: { ...DEFAULT_KEYMAP },
     sensitivity: 1,
     sfxVolume: 0.6,
+    viewMode: 'third',
   };
 }
 
