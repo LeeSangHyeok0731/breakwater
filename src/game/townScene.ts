@@ -13,6 +13,9 @@ interface Station {
   name: string;
   verb: string;
   x: number;
+  /** 이름판을 띄울 높이 (월드 좌표, 머리 위) */
+  labelY: number;
+  plate: HTMLDivElement;
 }
 
 const TOWN_W = 1500;
@@ -22,7 +25,8 @@ export class TownScene extends Phaser.Scene {
   private player!: Player;
   private stations: Station[] = [];
   private mid!: Phaser.GameObjects.TileSprite;
-  private prompts = new Map<StationId, Phaser.GameObjects.Container>();
+  /** 선명하게 보이도록 이름판은 게임 화면 위에 겹친 HTML로 그린다. */
+  private labelLayer!: HTMLDivElement;
 
   constructor() {
     super('town');
@@ -69,9 +73,13 @@ export class TownScene extends Phaser.Scene {
 
     // 상호작용 대상
     this.stations = [];
+    this.labelLayer = document.createElement('div');
+    this.labelLayer.className = 'town-labels';
+    ctx.uiRoot.appendChild(this.labelLayer);
     this.addNpc('smith', '대장장이 브론', '강화 · 재료 교환', '대장장이와 대화', 340, 'npc-bearded');
-    this.addProp('chest', '장비함', '무기 · 방어구 장착', '장비함 열기', 520, 'crate');
-    this.addProp('board', '출정 게시판', '페이즈 선택 · 소탕', '게시판 보기', 820, 'sign');
+    this.makeStationTextures();
+    this.addProp('chest', '장비함', '무기 · 방어구 장착', '장비함 열기', 520, 'town-chest');
+    this.addProp('board', '출정 게시판', '페이즈 선택 · 소탕', '게시판 보기', 820, 'quest-board');
     this.addNpc('shop', '잡화상 리나', '무기 · 장비 · 포션', '상인과 대화', 980, 'npc-woman');
     this.addNpc('trainer', '교관 메이린', '스탯 · 스킬 · 패시브', '교관과 대화', 1260, 'npc-oldman');
     this.add.sprite(1440, GROUND_Y + 6, 'npc-hatman').setOrigin(0.5, 1).setDepth(DEPTH.deco).play('npc-hatman').setFlipX(true);
@@ -92,54 +100,101 @@ export class TownScene extends Phaser.Scene {
     cam.fadeIn(300);
 
     ctx.townHud.show();
-    this.events.once('shutdown', () => this.player.destroy());
+    this.events.once('shutdown', () => {
+      this.player.destroy();
+      this.labelLayer.remove();
+    });
   }
 
-  private label(x: number, y: number, name: string, sub: string): Phaser.GameObjects.Container {
-    const title = this.add
-      .text(0, 0, name, {
-        fontFamily: '"Black Han Sans", "Malgun Gothic", sans-serif',
-        fontSize: '11px',
-        color: '#f3d08a',
-        stroke: '#1a0e06',
-        strokeThickness: 3,
-        resolution: 3,
-      })
-      .setOrigin(0.5, 1);
-    const subText = this.add
-      .text(0, 1, sub, {
-        fontFamily: '"Noto Sans KR", "Malgun Gothic", sans-serif',
-        fontSize: '7px',
-        color: '#d9cbb0',
-        stroke: '#1a0e06',
-        strokeThickness: 2,
-        resolution: 3,
-      })
-      .setOrigin(0.5, 0);
-    return this.add.container(x, y, [title, subText]).setDepth(DEPTH.text);
+  /** 게시판과 장비함은 알아보기 쉽도록 픽셀 그림을 직접 그린다. */
+  private makeStationTextures(): void {
+    if (!this.textures.exists('quest-board')) {
+      const g = this.make.graphics({}, false);
+      // 기둥
+      g.fillStyle(0x3a2414).fillRect(4, 14, 4, 50).fillRect(52, 14, 4, 50);
+      // 지붕
+      g.fillStyle(0x5a2a1a).fillRect(0, 8, 60, 6);
+      g.fillStyle(0x7a3a24).fillRect(2, 6, 56, 3);
+      // 판
+      g.fillStyle(0x6b4526).fillRect(8, 16, 44, 32);
+      g.fillStyle(0x4a2e18).fillRect(8, 16, 44, 2).fillRect(8, 46, 44, 2);
+      // 붙어 있는 의뢰서
+      const notes: [number, number, number, number][] = [
+        [11, 20, 12, 14],
+        [26, 19, 11, 12],
+        [39, 21, 10, 15],
+        [14, 35, 10, 10],
+        [30, 33, 13, 11],
+      ];
+      for (const [x, y, w, h] of notes) {
+        g.fillStyle(0xe8dcbc).fillRect(x, y, w, h);
+        g.fillStyle(0xb8a888).fillRect(x + 2, y + 3, w - 4, 1).fillRect(x + 2, y + 6, w - 5, 1);
+        g.fillStyle(0xc83a2a).fillRect(x + Math.floor(w / 2) - 1, y, 2, 2);
+      }
+      // 칼 문양: 출정
+      g.fillStyle(0xd8ae5a).fillRect(29, 45, 2, 8).fillRect(26, 50, 8, 2);
+      g.generateTexture('quest-board', 60, 64);
+      g.destroy();
+    }
+    if (!this.textures.exists('town-chest')) {
+      const g = this.make.graphics({}, false);
+      g.fillStyle(0x2a1810).fillRect(0, 6, 32, 20);
+      g.fillStyle(0x7a4a26).fillRect(1, 9, 30, 16);
+      g.fillStyle(0x8a5a30).fillRect(1, 2, 30, 7);
+      g.fillStyle(0x5a3418).fillRect(1, 8, 30, 2);
+      g.fillStyle(0xd8ae5a).fillRect(1, 2, 3, 23).fillRect(28, 2, 3, 23).fillRect(1, 2, 30, 2);
+      g.fillStyle(0xf6d68e).fillRect(13, 8, 6, 7);
+      g.fillStyle(0x3a2508).fillRect(15, 11, 2, 3);
+      g.generateTexture('town-chest', 32, 26);
+      g.destroy();
+    }
+  }
+
+  /** 이름판: 이름, 하는 일, 가까이 가면 '↑ 대화' 안내 */
+  private plate(id: StationId, name: string, sub: string, verb: string): HTMLDivElement {
+    const plate = document.createElement('div');
+    plate.className = `tl-plate tl-${id}`;
+    const title = document.createElement('div');
+    title.className = 'tl-name';
+    title.textContent = name;
+    const desc = document.createElement('div');
+    desc.className = 'tl-sub';
+    desc.textContent = sub;
+    const prompt = document.createElement('div');
+    prompt.className = 'tl-prompt';
+    const key = document.createElement('span');
+    key.className = 'th-key small';
+    key.textContent = '↑';
+    const text = document.createElement('span');
+    text.textContent = verb;
+    prompt.append(key, text);
+    plate.append(prompt, title, desc);
+    this.labelLayer.appendChild(plate);
+    return plate;
   }
 
   private addNpc(id: StationId, name: string, sub: string, verb: string, x: number, sheet: string): void {
     const s = this.add.sprite(x, GROUND_Y + 6, sheet).setOrigin(0.5, 1).setDepth(DEPTH.deco + 1).play(sheet);
-    this.label(x, s.y - s.height - 6, name, sub);
-    this.stations.push({ id, name, verb, x });
-    this.addPrompt(id, x, s.y - s.height - 26);
+    this.stations.push({ id, name, verb, x, labelY: s.y - s.height - 4, plate: this.plate(id, name, sub, verb) });
   }
 
   private addProp(id: StationId, name: string, sub: string, verb: string, x: number, key: string): void {
     const img = this.add.image(x, GROUND_Y + 6, key).setOrigin(0.5, 1).setDepth(DEPTH.deco + 1);
-    this.label(x, img.y - img.height - 6, name, sub);
-    this.stations.push({ id, name, verb, x });
-    this.addPrompt(id, x, img.y - img.height - 26);
+    this.stations.push({ id, name, verb, x, labelY: img.y - img.height - 4, plate: this.plate(id, name, sub, verb) });
   }
 
-  /** 가까이 가면 머리 위에 뜨는 ↑ 표시 */
-  private addPrompt(id: StationId, x: number, y: number): void {
-    const bubble = this.add.circle(0, 0, 7, 0xf3d08a).setStrokeStyle(1, 0x3a2508);
-    const arrow = this.add.text(0, 0, '↑', { fontFamily: 'sans-serif', fontSize: '10px', color: '#2a1a08', resolution: 3 }).setOrigin(0.5);
-    const c = this.add.container(x, y, [bubble, arrow]).setDepth(DEPTH.text).setVisible(false);
-    this.tweens.add({ targets: c, y: y - 3, duration: 500, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
-    this.prompts.set(id, c);
+  /** 월드 좌표를 화면(브라우저) 좌표로 바꿔 이름판을 따라붙인다. */
+  private placeLabels(near: Station | null): void {
+    const rect = this.game.canvas.getBoundingClientRect();
+    const k = rect.width / this.scale.width;
+    const cam = this.cameras.main;
+    for (const st of this.stations) {
+      const x = rect.left + (st.x - cam.scrollX) * k;
+      const y = rect.top + (st.labelY - cam.scrollY) * k;
+      st.plate.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -100%)`;
+      st.plate.classList.toggle('near', near === st);
+    }
+    this.labelLayer.style.display = ctx.windowOpen() ? 'none' : '';
   }
 
   private nearest(): Station | null {
@@ -166,10 +221,11 @@ export class TownScene extends Phaser.Scene {
     this.mid.tilePositionX = (this.cameras.main.scrollX * 0.3) / this.mid.scaleX;
 
     const near = ctx.windowOpen() ? null : this.nearest();
-    for (const [id, c] of this.prompts) c.setVisible(near?.id === id);
+    this.placeLabels(near);
     if (near && input.pressed('interact')) ctx.openStation(near.id, near.name);
     else if (input.pressed('menu') && !ctx.windowOpen()) ctx.openMenu();
-    ctx.townHud.update(ctx.getSave(), near ? near.verb : null);
+    // 대화 안내는 이름판 위에 붙어 나오므로 HUD 가운데 안내는 쓰지 않는다.
+    ctx.townHud.update(ctx.getSave(), null);
     input.endFrame();
   }
 }

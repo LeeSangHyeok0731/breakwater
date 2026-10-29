@@ -666,3 +666,85 @@ body::after {
 .th-hints {
   bottom: 36px;
 }
+
+/* ───────── 마을 이름판 (게임 화면 위에 겹치는 선명한 HTML) ───────── */
+
+.town-labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.tl-plate {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 14px 7px;
+  background: linear-gradient(180deg, rgba(46, 34, 25, 0.92), rgba(24, 17, 12, 0.92));
+  border: 2px solid var(--gold-lo);
+  border-radius: 6px;
+  box-shadow:
+    0 0 0 1px #0a0705,
+    inset 0 0 0 1px rgba(246, 214, 142, 0.2),
+    0 4px 12px rgba(0, 0, 0, 0.5);
+  white-space: nowrap;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+/* 이름판 아래 꼬리 */
+.tl-plate::after {
+  content: '';
+  position: absolute;
+  bottom: -8px;
+  left: 50%;
+  margin-left: -6px;
+  border: 6px solid transparent;
+  border-top-color: var(--gold-lo);
+  border-bottom: none;
+}
+
+.tl-name {
+  font-family: var(--title-font);
+  font-size: 17px;
+  letter-spacing: 0.04em;
+  color: var(--gold-hi);
+  text-shadow: 0 2px 0 #2a1a06;
+}
+
+.tl-sub {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-dim);
+}
+
+.tl-prompt {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+  font-size: 13px;
+  font-weight: 900;
+  color: #fff4dc;
+}
+
+.tl-plate.near {
+  border-color: var(--gold-hi);
+  box-shadow:
+    0 0 0 1px #0a0705,
+    0 0 16px rgba(246, 214, 142, 0.55),
+    0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.tl-plate.near::after {
+  border-top-color: var(--gold-hi);
+}
+
+.tl-plate.near .tl-prompt {
+  display: flex;
+  animation: th-pulse-text 1.2s ease-in-out infinite;
+}
