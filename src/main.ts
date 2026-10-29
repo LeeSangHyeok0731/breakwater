@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import './style.css';
 import { Input } from './core/input';
+import { sfx } from './core/audio';
 import { loadSave, newSave, writeSave, type SaveData } from './core/save';
 import { PHASE_BY_ID } from './data/phases';
 import type { MonsterKind } from './data/monsters';
@@ -26,6 +27,10 @@ const input = new Input(renderer.domElement, save.keymap);
 // 개발 서버에서 ?nolock 을 붙이면 포인터 잠금 없이 플레이한다 (자동화 테스트용).
 if (import.meta.env.DEV && new URLSearchParams(location.search).has('nolock')) input.fakeLock = true;
 const villageScene = new VillageScene();
+sfx.setVolume(save.sfxVolume);
+// 브라우저는 사용자 입력이 있어야 소리를 낼 수 있다.
+window.addEventListener('pointerdown', () => sfx.unlock());
+window.addEventListener('keydown', () => sfx.unlock());
 let battle: Battle | null = null;
 
 const village = new VillageUI(uiRoot, () => save, {
@@ -33,6 +38,7 @@ const village = new VillageUI(uiRoot, () => save, {
   onSaveChanged: () => {
     writeSave(save);
     input.setKeymap(save.keymap);
+    sfx.setVolume(save.sfxVolume);
   },
   onImport: (s) => replaceSave(s),
   onReset: () => replaceSave(newSave()),
@@ -42,6 +48,7 @@ village.show();
 function replaceSave(next: SaveData): void {
   save = next;
   input.setKeymap(save.keymap);
+  sfx.setVolume(save.sfxVolume);
   writeSave(save);
 }
 

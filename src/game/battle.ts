@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { SLOT_ACTIONS, keyLabel, type Input } from '../core/input';
+import { sfx } from '../core/audio';
 import type { SaveData } from '../core/save';
 import { MATERIALS } from '../data/items';
 import { gearBonus, POTION_LIMIT_PER_PHASE } from '../data/gear';
@@ -384,6 +385,7 @@ export class Battle {
         this.effects.text(head, '+60 마나', 'info');
         this.effects.burst(p.pos.clone().setY(1.2), 0x6ab8ff, 12, 3, 0.1, 0.6, -2);
       }
+      sfx.play('potion');
       this.save.potions[id]--;
       this.potionUsed[id]++;
       this.potionCd = 0.8;
@@ -504,6 +506,7 @@ export class Battle {
     const c = m.center(this.tmp2);
     c.y += m.height * 0.3;
     this.effects.text(c, String(dmg), crit ? 'crit' : opts.quiet ? 'quiet' : 'normal');
+    sfx.play(crit ? 'crit' : 'hit', opts.quiet ? 0.35 : 1);
     if (!opts.quiet) this.effects.burst(c, crit ? 0xffc040 : 0xffffff, crit ? 8 : 4, 4, 0.08, 0.3);
 
     if (m.hp <= 0) this.killMonster(m);
@@ -511,6 +514,7 @@ export class Battle {
 
   private killMonster(m: Monster): void {
     m.kill();
+    sfx.play(m.showsBossBar ? 'boom' : 'kill');
     const p = this.player;
     const mul = m.elite ? ELITE_MOD.reward : 1;
     this.pending.gold += m.def.gold * mul;
@@ -556,6 +560,7 @@ export class Battle {
       if (front) {
         if (p.parryTimer > 0) {
           this.effects.text(head, '패링!', 'heal');
+          sfx.play('parry');
           this.effects.flash(head.clone().setY(p.pos.y + 1.3).addScaledVector(f, 0.8), 1.2, 0xfff2a0, 0.25);
           p.mp = Math.min(p.derived.maxMp, p.mp + 10 + p.derived.passive.parryMana);
           if (src.monster && src.melee && !src.monster.boss) src.monster.stun = Math.max(src.monster.stun, 1.5);
@@ -563,6 +568,7 @@ export class Battle {
         }
         amount *= 0.3;
         this.effects.text(head, '가드', 'info');
+        sfx.play('block');
         this.effects.burst(head.clone().setY(p.pos.y + 1.3).addScaledVector(f, 0.6), 0xdddddd, 5, 3, 0.07, 0.25);
       }
     }
@@ -589,6 +595,7 @@ export class Battle {
     p.hp -= dmg;
     p.hurtTimer = 0.35;
     this.hud.hurt();
+    sfx.play('hurt');
     this.effects.text(head, `-${dmg}`, 'player');
     this.shake(0.15);
     if (p.hp <= 0) {
@@ -600,6 +607,7 @@ export class Battle {
 
   /** 바닥 내려찍기: 범위 안에서 땅에 있는 플레이어만 맞는다. */
   groundSlam(at: THREE.Vector3, radius: number, damage: number, owner: Monster): void {
+    sfx.play('boom', 0.7);
     this.effects.ring(at, radius, 0xffa040, 0.35);
     this.effects.burst(at.clone().setY(0.2), 0x9a8a70, 18, 6, 0.16, 0.6);
     const p = this.player;
@@ -718,6 +726,7 @@ export class Battle {
     const normal = queue.filter((q) => !q.elite).sort(() => Math.random() - 0.5);
     this.spawnQueue = [...normal, ...queue.filter((q) => q.elite)];
     this.spawnTimer = 0.3;
+    sfx.play('wave');
     if (this.phase.type === 'boss') this.announce(this.phase.name, 2.5);
     else this.announce(index === this.phase.waves.length - 1 ? `마지막 웨이브` : `웨이브 ${index + 1}`);
   }
@@ -733,6 +742,7 @@ export class Battle {
       this.pending.materials[id] = (this.pending.materials[id] ?? 0) + n;
     }
     this.announce('클리어!', 2.5);
+    sfx.play('clear');
     this.endTimer = 2.5;
   }
 
@@ -740,6 +750,7 @@ export class Battle {
     if (this.cleared) return;
     this.state = 'done';
     this.announce('쓰러졌다...', 2.5);
+    sfx.play('fail');
     this.endTimer = 2.5;
   }
 
@@ -886,6 +897,7 @@ export class Battle {
       this.hitMonster(h.m, damage);
     }
     const to = origin.clone().addScaledVector(dir, end);
+    sfx.play('shot', o.width > 0.05 ? 1.3 : 0.8);
     this.effects.tracer(origin, to, o.color, o.width);
     if (!targets.length && end < maxDist) this.effects.burst(to, 0x9a8a70, 3, 2, 0.06, 0.25);
   }
@@ -896,6 +908,7 @@ export class Battle {
   }
 
   private explode(at: THREE.Vector3, radius: number, damage: number, color: number, stun = 0): void {
+    sfx.play('boom', Math.min(1, radius / 3));
     this.effects.flash(at, radius, color, 0.3);
     this.effects.ring(at.clone().setY(Math.max(0, at.y - 1)), radius, color, 0.35);
     for (const m of this.monsters) {
@@ -1025,6 +1038,7 @@ export class Battle {
   }
 
   private enemyExplode(b: EnemyBolt): void {
+    sfx.play('boom', 0.6);
     const p = this.player;
     const at = b.pos.clone();
     at.y = Math.max(0, at.y);
@@ -1225,6 +1239,7 @@ export class Battle {
       if (t < 1) return true;
 
       this.scene.remove(m.mesh);
+      sfx.play('boom');
       this.effects.flash(m.at.clone().setY(1), 4.5, 0xffa040, 0.4);
       this.effects.ring(m.at, 4.5, 0xff6a1a, 0.45);
       this.effects.burst(m.at.clone().setY(0.5), 0xff8a3a, 30, 9, 0.18, 0.8);

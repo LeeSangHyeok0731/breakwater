@@ -5,6 +5,7 @@ import { PHASES, SWEEP_RATE, SWEEP_TICKET_PRICE, type PhaseDef } from '../data/p
 import { skillsFor, STARTER_SKILLS } from '../data/skills';
 import { enhanceCost, GRADES, MAX_ENHANCE, WEAPON_TYPE_NAME, WEAPONS, type WeaponDef } from '../data/weapons';
 import { MATERIALS } from '../data/items';
+import { sfx } from '../core/audio';
 import { PASSIVES, type PassiveDef } from '../data/passives';
 import { GEAR, GEAR_SLOT_NAME, GEAR_SLOTS, gearBonus, gearStatsText, POTIONS, type GearDef } from '../data/gear';
 
@@ -891,6 +892,26 @@ export class VillageUI {
     });
     // 드래그 중에는 다시 그리지 않고, 놓을 때 저장한다.
     slider.addEventListener('change', () => this.cb.onSaveChanged());
+
+    const vs = this.section('소리');
+    const vrow = el('div', 'v-slider-row', vs);
+    el('span', '', vrow, '효과음 음량');
+    const vol = el('input', 'v-slider', vrow);
+    vol.type = 'range';
+    vol.min = '0';
+    vol.max = '1';
+    vol.step = '0.05';
+    vol.value = String(save.sfxVolume);
+    const vval = el('span', 'v-slider-val', vrow, `${Math.round(save.sfxVolume * 100)}%`);
+    vol.addEventListener('input', () => {
+      const v = Math.round(Number(vol.value) * 100) / 100;
+      this.getSave().sfxVolume = v;
+      vval.textContent = `${Math.round(v * 100)}%`;
+    });
+    vol.addEventListener('change', () => {
+      this.cb.onSaveChanged();
+      sfx.play('hit');
+    });
 
     const ks = this.section('키 설정', '키를 누른 뒤 바꿀 키를 입력하세요 (Esc: 취소)');
     const grid = el('div', 'v-kv keys', ks);
