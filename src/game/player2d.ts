@@ -427,9 +427,9 @@ export class Player {
     if (type === 'bow') {
       tipLocal = { x: 12, y: 0 };
       key = 'w-bow-0';
-      forward = 6;
-      down = 3;
-      rot = 0.35;
+      forward = 10;
+      down = 2;
+      rot = 0.3;
       if (this.charge >= 0) {
         // 차징: 앞으로 겨누고 당긴 만큼 시위가 뒤로
         const c = Math.min(1, this.charge / 1.2);
@@ -475,9 +475,10 @@ export class Player {
     } else {
       key = 'w-staff';
       tipLocal = { x: 0, y: -22 };
-      forward = 8;
-      down = 3;
-      rot = 0.1;
+      // 평소에는 몸 앞에 비스듬히 세워 든다 (몸에 가리지 않게).
+      forward = 12;
+      down = 4;
+      rot = 0.28;
       if (this.charge >= 0) {
         // 차징: 머리 위로 들어 끝에 마력을 모은다
         const c = Math.min(1, this.charge / 1.2);
