@@ -28,13 +28,11 @@ export interface SaveData {
   cleared: string[];
   sweepTickets: number;
   keymap: Keymap;
-  sensitivity: number;
   /** 효과음 음량 0..1 */
   sfxVolume: number;
-  viewMode: 'third' | 'first';
 }
 
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 const STORAGE_KEY = 'breakwater-save';
 
 export function newSave(): SaveData {
@@ -59,9 +57,7 @@ export function newSave(): SaveData {
     cleared: [],
     sweepTickets: 0,
     keymap: { ...DEFAULT_KEYMAP },
-    sensitivity: 1,
     sfxVolume: 0.6,
-    viewMode: 'third',
   };
 }
 
@@ -81,7 +77,8 @@ function normalize(data: Partial<SaveData>): SaveData {
     passives: { ...data.passives },
     gear: { owned: [...(data.gear?.owned ?? [])], equipped: { ...data.gear?.equipped } },
     potions: { ...base.potions, ...data.potions },
-    keymap: { ...DEFAULT_KEYMAP, ...data.keymap },
+    // v3에서 2D 키보드 조작으로 바뀌어 예전(마우스·WASD) 키 설정은 버린다.
+    keymap: (data.version ?? 1) < 3 ? { ...DEFAULT_KEYMAP } : { ...DEFAULT_KEYMAP, ...data.keymap },
     // 새 무기 종류가 추가되면 그 기본 스킬도 배운 상태로 맞춘다.
     learnedSkills: [...new Set([...(data.learnedSkills ?? []), ...STARTER_SKILLS])],
   };

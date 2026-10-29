@@ -44,15 +44,16 @@ const STAT_INFO: { key: StatKey; name: string; desc: string }[] = [
 ];
 
 const ACTION_LABELS: Record<Action, string> = {
-  forward: '앞으로',
-  back: '뒤로',
   left: '왼쪽',
   right: '오른쪽',
+  up: '위',
+  down: '아래 (앉기 · ↓+점프로 내려가기)',
   jump: '점프',
+  attack: '기본 공격',
+  special: '강화 공격 (누르고 있기)',
   dodge: '구르기',
   guard: '가드 (근접)',
   swap: '무기 교체',
-  reload: '재장전',
   slot1: '스킬 슬롯 1',
   slot2: '스킬 슬롯 2',
   slot3: '스킬 슬롯 3',
@@ -61,10 +62,10 @@ const ACTION_LABELS: Record<Action, string> = {
   slot6: '스킬 슬롯 6',
   slot7: '스킬 슬롯 7',
   slot8: '스킬 슬롯 8',
-  item1: '소모품 1',
-  item2: '소모품 2',
-  view: '시점 전환 (1인칭/3인칭)',
-  interact: '상호작용 (마을)',
+  item1: '체력 포션',
+  item2: '마나 포션',
+  interact: '대화 (마을)',
+  menu: '메뉴 · 일시정지',
 };
 
 const CONFIRM_TIMEOUT = 4000;
@@ -932,24 +933,6 @@ export class VillageUI {
   // ---- 설정 ----
 
   private renderSettings(save: SaveData): void {
-    const s = this.section('마우스');
-    const row = el('div', 'v-slider-row', s);
-    el('span', '', row, '마우스 감도');
-    const slider = el('input', 'v-slider', row);
-    slider.type = 'range';
-    slider.min = '0.3';
-    slider.max = '2.5';
-    slider.step = '0.1';
-    slider.value = String(save.sensitivity);
-    const val = el('span', 'v-slider-val', row, save.sensitivity.toFixed(1));
-    slider.addEventListener('input', () => {
-      const v = Math.round(Number(slider.value) * 10) / 10;
-      this.getSave().sensitivity = v;
-      val.textContent = v.toFixed(1);
-    });
-    // 드래그 중에는 다시 그리지 않고, 놓을 때 저장한다.
-    slider.addEventListener('change', () => this.cb.onSaveChanged());
-
     const vs = this.section('소리');
     const vrow = el('div', 'v-slider-row', vs);
     el('span', '', vrow, '효과음 음량');
@@ -980,16 +963,6 @@ export class VillageUI {
         this.startRebind(action),
       );
       b.title = '클릭해서 변경';
-    }
-    const fixed: [string, string][] = [
-      ['기본 공격', '좌클릭'],
-      ['강화 공격', '우클릭'],
-      ['일시정지', 'Esc'],
-    ];
-    for (const [label, key] of fixed) {
-      el('span', 'v-kv-k', grid, label);
-      const v = el('span', 'v-kv-v', grid);
-      el('span', 'v-key', v, key);
     }
 
     const kr = el('div', 'v-actions', ks);

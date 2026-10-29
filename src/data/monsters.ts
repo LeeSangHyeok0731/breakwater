@@ -33,7 +33,7 @@ export interface MonsterDef {
 export const MONSTERS: Record<MonsterKind, MonsterDef> = {
   zombie: {
     kind: 'zombie',
-    name: '좀비',
+    name: '해골 병사',
     hp: 50,
     speed: 3,
     damage: 10,
@@ -49,7 +49,7 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
   },
   mage: {
     kind: 'mage',
-    name: '마법사',
+    name: '해골 마법사',
     hp: 40,
     speed: 2.5,
     damage: 12,
@@ -65,7 +65,7 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
   },
   minion: {
     kind: 'minion',
-    name: '미니언',
+    name: '유령',
     hp: 30,
     speed: 6,
     damage: 8,
@@ -81,7 +81,7 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
   },
   golem: {
     kind: 'golem',
-    name: '골렘',
+    name: '헬 비스트',
     hp: 300,
     speed: 1.5,
     damage: 30,
@@ -97,7 +97,7 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
   },
   poison_zombie: {
     kind: 'poison_zombie',
-    name: '독 좀비',
+    name: '독 해골',
     hp: 60,
     speed: 2.8,
     damage: 9,
@@ -113,7 +113,7 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
   },
   fire_mage: {
     kind: 'fire_mage',
-    name: '화염 마법사',
+    name: '불타는 구울',
     hp: 45,
     speed: 2.4,
     damage: 14,
@@ -129,7 +129,7 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
   },
   grave_knight: {
     kind: 'grave_knight',
-    name: '무덤 기사',
+    name: '악몽마',
     hp: 1100,
     speed: 3.3,
     damage: 22,
@@ -149,7 +149,7 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
   },
   golem_lord: {
     kind: 'golem_lord',
-    name: '골렘 군주',
+    name: '악마 군주',
     hp: 3200,
     speed: 2.2,
     damage: 40,

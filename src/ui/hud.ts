@@ -481,14 +481,14 @@ export class Hud {
   showStartHint(onStart: () => void, keymap: Keymap = DEFAULT_KEYMAP): void {
     const box = this.openModal('start');
     box.classList.add('start');
-    el('h2', 'hud-modal-title', box, '클릭해서 시작');
+    el('h2', 'hud-modal-title', box, '조작법');
     const k = (a: keyof Keymap): string => keyLabel(keymap[a]);
     const controls: [string, string][] = [
-      ['이동', `${k('forward')} ${k('left')} ${k('back')} ${k('right')}`],
-      ['시점', '마우스'],
-      ['기본 공격', '좌클릭'],
-      ['강화 공격', '우클릭 (스태프는 누르고 있다가 놓기)'],
+      ['이동', `${k('left')} ${k('right')}`],
+      ['앉기 / 내려가기', `${k('down')} / ${k('down')} + ${k('jump')}`],
       ['점프', k('jump')],
+      ['기본 공격', k('attack')],
+      ['강화 공격', `${k('special')} (누르고 있다가 놓기)`],
       ['구르기', k('dodge')],
       ['가드 (근접)', `${k('guard')} 누르고 있기`],
       ['무기 교체', k('swap')],
