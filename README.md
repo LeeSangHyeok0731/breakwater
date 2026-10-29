@@ -1,6 +1,6 @@
 # 파도막이 (Breakwater)
 
-웹 브라우저에서 돌아가는 3인칭 3D 액션 RPG. 몰려오는 몬스터를 검·스태프 등 여러 무기로 막아내는 싱글플레이 게임입니다.
+웹 브라우저에서 돌아가는 2D 픽셀 아트 횡스크롤 액션 RPG. 몰려오는 몬스터를 검·도·활·총·스태프로 막아내는 싱글플레이 게임입니다. (3D 버전은 `v0.1-3d` 태그에 남아 있습니다.)
 
 기획서: [docs/GDD.md](docs/GDD.md)
 
@@ -12,21 +12,24 @@ npm run dev      # 개발 서버 (http://localhost:5173)
 npm run build    # 타입 검사 + 프로덕션 빌드 (dist/)
 ```
 
-개발 서버에서 `?nolock`을 붙이면(`http://localhost:5173/?nolock`) 포인터 잠금 없이 플레이할 수 있습니다. 브라우저 자동화 테스트용입니다.
+개발 서버에서는 `window.__bw`로 전투 시작·진행·몬스터 소환을 할 수 있습니다 (자동화 테스트용).
 
 ## 조작
 
+키보드 전용입니다. 모든 키는 설정에서 바꿀 수 있습니다.
+
 | 동작 | 키 |
 |---|---|
-| 이동 / 시점 | WASD / 마우스 |
-| 기본 공격 / 강화 공격 | 좌클릭 / 우클릭 |
-| 점프 / 구르기 | Space / Shift |
-| 가드 (근접 무기, 누르는 순간 패링) | C |
+| 이동 / 앉기 | ← → / ↓ |
+| 점프 / 발판 아래로 | Space / ↓ + Space |
+| 기본 공격 | R |
+| 강화 공격 (누르고 있다가 놓기) | T |
+| 구르기 / 가드 (근접 무기) | Shift / C |
 | 무기 교체 | Tab |
-| 시점 전환 (1인칭/3인칭) | V |
-| 상호작용 (마을) | F |
-| 스킬 슬롯 1~8 | 1 2 3 4 Q E F G |
-| 일시정지 | Esc |
+| 스킬 슬롯 1~8 | Q W E A S D F G |
+| 체력·마나 포션 | Z / X |
+| NPC와 대화 (마을) | ↑ |
+| 메뉴 · 일시정지 | Esc |
 
 ## 구조
 
@@ -34,16 +37,14 @@ npm run build    # 타입 검사 + 프로덕션 빌드 (dist/)
 src/
   core/   입력(키맵), 저장
   data/   무기·스킬·몬스터·재료·페이즈 데이터
-  game/   전투(battle), 플레이어, 몬스터 AI, 전투 로직, 모델, 이펙트, 스탯 공식
+  game/   Phaser 씬(부트·마을·전투), 플레이어, 몬스터 AI, 전투 로직, 맵, 이펙트, 스탯 공식
   ui/     HUD, 마을 화면
 ```
 
 ## 에셋 출처
 
-3D 모델은 [Kay Lousberg](https://www.kaylousberg.com)의 KayKit 팩(CC0)을 사용합니다.
+픽셀 아트는 [ansimuz (Luis Zuno)](https://ansimuz.itch.io/)의 GothicVania 팩(CC0)을 사용합니다.
 
-- KayKit Character Pack: Adventurers 1.0
-- KayKit Character Pack: Skeletons 1.0
-- KayKit Halloween Bits 1.0
+- GothicVania Cemetery, Church, Town, Patreon Collection — [OpenGameArt](https://opengameart.org/users/ansimuz)
 
-라이선스 원문은 `public/assets/LICENSE-KayKit-*.txt`에 있습니다.
+라이선스 원문은 `public/assets2d/LICENSE-GothicVania.txt`에 있습니다.
