@@ -1,4 +1,12 @@
-export type MonsterKind = 'zombie' | 'mage' | 'minion' | 'golem' | 'golem_lord';
+export type MonsterKind =
+  | 'zombie'
+  | 'mage'
+  | 'minion'
+  | 'golem'
+  | 'poison_zombie'
+  | 'fire_mage'
+  | 'grave_knight'
+  | 'golem_lord';
 
 export interface MonsterDef {
   kind: MonsterKind;
@@ -13,6 +21,8 @@ export interface MonsterDef {
   height: number;
   flying: boolean;
   boss?: boolean;
+  /** 미니보스: 보스 체력바로 표시된다 */
+  miniboss?: boolean;
   gold: number;
   exp: number;
   /** 처치 시 플레이어 마나 회복량 */
@@ -84,6 +94,58 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
     exp: 35,
     mana: 8,
     drops: [{ id: 'golem_core', chance: 0.5 }],
+  },
+  poison_zombie: {
+    kind: 'poison_zombie',
+    name: '독 좀비',
+    hp: 60,
+    speed: 2.8,
+    damage: 9,
+    range: 1.1,
+    attackCd: 1.3,
+    radius: 0.45,
+    height: 2.1,
+    flying: false,
+    gold: 7,
+    exp: 11,
+    mana: 3,
+    drops: [{ id: 'bone_shard', chance: 0.4 }],
+  },
+  fire_mage: {
+    kind: 'fire_mage',
+    name: '화염 마법사',
+    hp: 45,
+    speed: 2.4,
+    damage: 14,
+    range: 22,
+    attackCd: 3.2,
+    radius: 0.45,
+    height: 2.4,
+    flying: false,
+    gold: 10,
+    exp: 15,
+    mana: 4,
+    drops: [{ id: 'mana_crystal', chance: 0.4 }],
+  },
+  grave_knight: {
+    kind: 'grave_knight',
+    name: '무덤 기사',
+    hp: 1100,
+    speed: 3.3,
+    damage: 22,
+    range: 2.6,
+    attackCd: 1.6,
+    radius: 0.8,
+    height: 3.0,
+    flying: false,
+    miniboss: true,
+    gold: 150,
+    exp: 220,
+    mana: 20,
+    drops: [
+      { id: 'elite_sigil', chance: 1 },
+      { id: 'golem_core', chance: 0.6 },
+    ],
   },
   golem_lord: {
     kind: 'golem_lord',

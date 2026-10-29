@@ -81,6 +81,12 @@ function fmt(n: number): string {
   return Math.floor(n).toLocaleString('ko-KR');
 }
 
+function phaseKindText(p: PhaseDef): string {
+  if (p.mission?.kind === 'survive') return `${p.mission.seconds}초 생존`;
+  if (p.mission?.kind === 'kills') return `${p.mission.target}마리 처치`;
+  return p.type === 'boss' ? '보스전' : `웨이브 ${p.waves.length}개`;
+}
+
 function materialName(id: string): string {
   return MATERIALS[id]?.name ?? id;
 }
@@ -274,11 +280,12 @@ export class VillageUI {
       el('span', 'v-phase-id', head, p.id);
       el('span', 'v-card-title', head, p.name);
       if (p.type === 'boss') el('span', 'v-badge boss', head, '보스');
+      if (p.type === 'special') el('span', 'v-badge special', head, '특별');
       if (cleared) el('span', 'v-badge clear', head, '클리어');
       el('p', 'v-desc', card, p.desc);
 
       const info = el('div', 'v-meta', card);
-      el('span', '', info, p.type === 'boss' ? '보스전' : `웨이브 ${p.waves.length}개`);
+      el('span', '', info, phaseKindText(p));
       el('span', '', info, `보상: 골드 ${fmt(p.clearReward.gold)} · 경험치 ${fmt(p.clearReward.exp)}`);
       const mats = Object.entries(p.clearReward.materials).map(([id, n]) => `${materialName(id)} x${n}`);
       if (p.clearReward.sweepTickets > 0) mats.push(`소탕권 x${p.clearReward.sweepTickets}`);

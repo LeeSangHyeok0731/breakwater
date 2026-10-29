@@ -262,8 +262,25 @@ export function makeWeaponModel(type: WeaponType): THREE.Group {
   }
 }
 
-function makeZombie(): Rig {
-  const rig = humanoid({ skin: 0x8fbf6a, shirt: 0x6e5b44, pants: 0x3c4658, eye: 0xff3b2f });
+function makeZombie(poison = false): Rig {
+  const rig = poison
+    ? humanoid({ skin: 0x6f9a7a, shirt: 0x4a3a5a, pants: 0x2e2a3c, eye: 0xb6ff3a })
+    : humanoid({ skin: 0x8fbf6a, shirt: 0x6e5b44, pants: 0x3c4658, eye: 0xff3b2f });
+  if (poison) {
+    // 몸에 돋은 독 종기
+    const boil = mat(0x9aff3a, 0x6acc1a, 1.4);
+    const spots: [number, number, number, number][] = [
+      [0.2, 1.45, 0.21, 0.09],
+      [-0.18, 1.2, 0.22, 0.07],
+      [0.05, 1.05, -0.21, 0.08],
+      [-0.1, 2.15, 0.15, 0.06],
+    ];
+    for (const [x, y, z, r] of spots) {
+      const b = ico(r, boil);
+      b.position.set(x, y, z);
+      rig.body.add(b);
+    }
+  }
   const rag = box(0.3, 0.3, 0.05, mat(0x4f4030));
   rag.position.set(0.15, 1.05, 0.22);
   rag.rotation.z = 0.3;
@@ -272,29 +289,32 @@ function makeZombie(): Rig {
   return rig;
 }
 
-function makeMage(): Rig {
+function makeMage(fire = false): Rig {
+  const c = fire
+    ? { robe: 0x8c2d2d, torso: 0x6e1f1f, hat: 0x3a1010, eye: 0xffb03a, orb: 0xff7a1a, orbGlow: 0xff5a0a }
+    : { robe: 0x5b2d8c, torso: 0x4a2275, hat: 0x2e1450, eye: 0xff4fd0, orb: 0xff4fa0, orbGlow: 0xff2f8f };
   const root = new THREE.Group();
   const body = new THREE.Group();
   root.add(body);
-  const robe = cone(0.6, 1.5, 7, mat(0x5b2d8c));
+  const robe = cone(0.6, 1.5, 7, mat(c.robe));
   robe.position.y = 0.75;
   body.add(robe);
-  const torso = box(0.5, 0.5, 0.36, mat(0x4a2275));
+  const torso = box(0.5, 0.5, 0.36, mat(c.torso));
   torso.position.y = 1.6;
   body.add(torso);
   const head = ico(0.25, mat(0xcdbfa6), 1);
   head.position.y = 2.05;
   body.add(head);
   for (const x of [-0.09, 0.09]) {
-    const eye = box(0.06, 0.05, 0.04, mat(0xff4fd0, 0xff4fd0, 2));
+    const eye = box(0.06, 0.05, 0.04, mat(c.eye, c.eye, 2));
     eye.position.set(x, 0.02, 0.23);
     head.add(eye);
   }
-  const hat = cone(0.36, 0.75, 6, mat(0x2e1450));
+  const hat = cone(0.36, 0.75, 6, mat(c.hat));
   hat.position.y = 0.5;
   hat.rotation.z = -0.15;
   head.add(hat);
-  const brim = cyl(0.42, 0.42, 0.05, 8, mat(0x2e1450));
+  const brim = cyl(0.42, 0.42, 0.05, 8, mat(c.hat));
   brim.position.y = 0.17;
   head.add(brim);
 
@@ -303,7 +323,7 @@ function makeMage(): Rig {
   armL.position.set(-0.34, 1.78, 0);
   armR.position.set(0.34, 1.78, 0);
   for (const arm of [armL, armR]) {
-    const a = box(0.16, 0.6, 0.16, mat(0x5b2d8c));
+    const a = box(0.16, 0.6, 0.16, mat(c.robe));
     a.position.y = -0.28;
     arm.add(a);
     body.add(arm);
@@ -314,7 +334,7 @@ function makeMage(): Rig {
   const staff = cyl(0.035, 0.04, 1.6, 5, mat(0x3b2a1a));
   staff.position.y = 0.2;
   hand.add(staff);
-  const glow = ico(0.16, mat(0xff4fa0, 0xff2f8f, 1.2), 1);
+  const glow = ico(0.16, mat(c.orb, c.orbGlow, 1.2), 1);
   glow.position.y = 1.05;
   hand.add(glow);
 
@@ -453,10 +473,52 @@ function makeGolem(lord: boolean): Rig {
   return { root, body, head, armL, armR, legL, legR, hand: new THREE.Group() };
 }
 
+function makeGraveKnight(): Rig {
+  const rig = humanoid({ skin: 0x3a3e48, shirt: 0x4a505c, pants: 0x30343c, eye: 0xff2a1a });
+  const steel = mat(0x6a7280);
+  const dark = mat(0x2a2e36);
+  // 투구: 머리를 감싸고 눈 부분만 붉게 빛난다.
+  const helm = box(0.62, 0.6, 0.62, steel);
+  helm.position.y = 0.04;
+  rig.head.add(helm);
+  const visor = box(0.5, 0.07, 0.05, mat(0xff2a1a, 0xff2a1a, 2.2));
+  visor.position.set(0, 0.04, 0.32);
+  rig.head.add(visor);
+  const crest = box(0.08, 0.3, 0.5, mat(0x7a1a1a));
+  crest.position.y = 0.42;
+  rig.head.add(crest);
+  for (const x of [-0.5, 0.5]) {
+    const pauldron = box(0.36, 0.22, 0.46, steel);
+    pauldron.position.set(x, 1.72, 0);
+    rig.body.add(pauldron);
+  }
+  const chest = box(0.76, 0.6, 0.46, steel);
+  chest.position.y = 1.36;
+  rig.body.add(chest);
+  const cape = box(0.7, 1.3, 0.05, mat(0x3a1020));
+  cape.position.set(0, 1.0, -0.26);
+  cape.rotation.x = 0.08;
+  rig.body.add(cape);
+  const belt = box(0.8, 0.12, 0.48, dark);
+  belt.position.y = 0.98;
+  rig.body.add(belt);
+  // 거대한 검
+  const sword = makeSword();
+  sword.scale.setScalar(1.7);
+  rig.hand.add(sword);
+  return rig;
+}
+
 export function makeMonster(kind: MonsterKind): Rig {
   switch (kind) {
     case 'zombie':
       return makeZombie();
+    case 'poison_zombie':
+      return makeZombie(true);
+    case 'fire_mage':
+      return makeMage(true);
+    case 'grave_knight':
+      return makeGraveKnight();
     case 'mage':
       return makeMage();
     case 'minion':

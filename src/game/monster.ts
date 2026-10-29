@@ -4,7 +4,7 @@ import { makeEliteAura, makeMonster, type Rig } from './models';
 import type { Battle } from './battle';
 
 type State = 'move' | 'windup' | 'recover' | 'dashWind' | 'dash' | 'dive' | 'linger' | 'rise' | 'pattern';
-type BossPattern = 'slam' | 'rocks' | 'shockwave' | 'charge';
+type BossPattern = 'slam' | 'rocks' | 'shockwave' | 'charge' | 'combo' | 'leap' | 'spin';
 
 const MINION_ALTITUDE = 3.6;
 
@@ -54,6 +54,7 @@ export class Monster {
   private patternStep = 0;
   private summonThresholds = [0.7, 0.4];
   phase2 = false;
+  private readonly leapFrom = new THREE.Vector3();
 
   private hpBar: THREE.Group | null = null;
   private hpFg: THREE.Sprite | null = null;
@@ -62,7 +63,7 @@ export class Monster {
   constructor(kind: MonsterKind, elite: boolean, hpMul: number) {
     this.def = MONSTERS[kind];
     this.elite = elite;
-    this.scale = elite ? ELITE_MOD.scale : kind === 'golem_lord' ? 2.1 : 1;
+    this.scale = elite ? ELITE_MOD.scale : kind === 'golem_lord' ? 2.1 : kind === 'grave_knight' ? 1.35 : 1;
     this.maxHp = Math.round(this.def.hp * hpMul * (elite ? ELITE_MOD.hp : 1));
     this.hp = this.maxHp;
     this.damage = this.def.damage * (elite ? ELITE_MOD.damage : 1);
@@ -76,7 +77,7 @@ export class Monster {
     this.rig.root.scale.setScalar(this.scale);
     if (elite) this.rig.root.add(makeEliteAura(this.def.radius * 1.6));
 
-    if (!this.def.boss) {
+    if (!this.showsBossBar) {
       this.barWidth = elite ? 1.6 : 1;
       this.hpBar = new THREE.Group();
       const bg = new THREE.Sprite(barBgMat);
@@ -92,6 +93,11 @@ export class Monster {
 
   get boss(): boolean {
     return !!this.def.boss;
+  }
+
+  /** 보스 체력바로 보여 주는 몬스터 (보스·미니보스) */
+  get showsBossBar(): boolean {
+    return !!this.def.boss || !!this.def.miniboss;
   }
 
   addTo(scene: THREE.Scene): void {
@@ -150,16 +156,22 @@ export class Monster {
       this.stun -= dt;
       // 기절한 비행 몬스터는 낮게 떨어져 근접 공격에 맞는다.
       if (this.def.flying) this.y = Math.max(0.6, this.y - dt * 6);
+      else if (this.y > 0) this.y = Math.max(0, this.y - dt * 10);
       if (this.stun <= 0) {
         this.state = this.def.flying ? 'rise' : 'move';
       }
     } else {
       switch (this.def.kind) {
         case 'zombie':
+        case 'poison_zombie':
           this.updateZombie(dt, b);
           break;
         case 'mage':
+        case 'fire_mage':
           this.updateMage(dt, b);
+          break;
+        case 'grave_knight':
+          this.updateKnight(dt, b);
           break;
         case 'minion':
           this.updateMinion(dt, b);
@@ -208,14 +220,22 @@ export class Monster {
     rig.legR.rotation.x = -walk;
 
     switch (this.def.kind) {
-      case 'zombie': {
+      case 'grave_knight': {
+        const wind = this.state === 'pattern' && this.stateTime > 0;
+        rig.armR.rotation.x = wind ? -2.8 : this.state === 'pattern' ? -0.4 : -0.6;
+        rig.armL.rotation.x = -walk * 0.5;
+        break;
+      }
+      case 'zombie':
+      case 'poison_zombie': {
         const wind = this.state === 'windup' || this.state === 'dashWind';
         const arms = wind ? -2.4 : -1.45 + Math.sin(this.anim * 3) * 0.1;
         rig.armL.rotation.x = arms;
         rig.armR.rotation.x = arms + (wind ? 0 : 0.15);
         break;
       }
-      case 'mage': {
+      case 'mage':
+      case 'fire_mage': {
         const wind = this.state === 'windup';
         rig.armR.rotation.x = wind ? -2.6 : -0.4;
         rig.armL.rotation.x = wind ? -1.4 : -0.2;
@@ -342,9 +362,11 @@ export class Monster {
         aim.y += 1.1;
         const base = aim.sub(origin).normalize();
         const spreads = this.elite ? [-0.25, 0, 0.25] : [0];
+        const fire = this.def.kind === 'fire_mage';
         for (const s of spreads) {
-          const v = base.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), s).multiplyScalar(13);
-          b.spawnEnemyBolt(origin, v, this.damage, 0xff4fa0);
+          const v = base.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), s).multiplyScalar(fire ? 11 : 13);
+          // 화염 마법사의 불덩이는 맞거나 땅에 닿으면 폭발한다.
+          b.spawnEnemyBolt(origin, v, this.damage, fire ? 0xff7a1a : 0xff4fa0, this, fire ? 2.2 : 0);
         }
         this.attackTimer = this.def.attackCd;
         this.state = 'move';
@@ -528,6 +550,110 @@ export class Monster {
         }
         break;
     }
+  }
+
+  /** 무덤 기사: 3연속 베기, 도약 내려찍기, 체력 절반 이하에서 회전 베기와 소환 */
+  private updateKnight(dt: number, b: Battle): void {
+    const { dx, dz, dist } = this.toPlayer(b);
+    if (!this.phase2 && this.hp / this.maxHp < 0.5) {
+      this.phase2 = true;
+      b.announce('무덤 기사가 망자를 일으킨다!', 1.6);
+      for (let i = 0; i < 3; i++) {
+        const a = (i / 3) * Math.PI * 2 + this.facing;
+        b.spawnMonster('zombie', false, new THREE.Vector3(this.pos.x + Math.cos(a) * 4, 0, this.pos.z + Math.sin(a) * 4));
+      }
+    }
+    this.stateTime -= dt;
+    this.attackTimer -= dt;
+
+    if (this.state === 'move') {
+      this.move(dx, dz, this.speed * (this.phase2 ? 1.2 : 1), dt);
+      if (this.attackTimer > 0) return;
+      this.state = 'pattern';
+      this.patternStep = 0;
+      if (this.phase2 && dist < 6 && Math.random() < 0.4) {
+        this.pattern = 'spin';
+        this.stateTime = 0.95;
+        const at = this.pos.clone();
+        b.addTelegraph(at, 4.5, 0.9, this, () => {
+          b.groundSlam(at, 4.5, this.damage * 1.3, this);
+          b.effects.slash(at, this.facing, { radius: 4.5, span: Math.PI * 2, color: 0xff5a4a, dur: 0.3 });
+        });
+      } else if (dist > 7) {
+        this.pattern = 'leap';
+        this.stateTime = 0.55;
+        this.target.set(b.player.pos.x, 0, b.player.pos.z);
+        b.addTelegraph(this.target, 3, 1.25, null, null);
+      } else {
+        this.pattern = 'combo';
+        this.stateTime = 0.45;
+      }
+      return;
+    }
+
+    if (this.state === 'recover') {
+      if (this.stateTime <= 0) this.state = 'move';
+      return;
+    }
+
+    switch (this.pattern) {
+      case 'combo':
+        this.face(dx, dz);
+        if (this.stateTime <= 0) {
+          const fwd = new THREE.Vector3(Math.sin(this.facing), 0, Math.cos(this.facing));
+          this.pos.addScaledVector(fwd, 1.0);
+          b.effects.slash(this.pos, this.facing, {
+            radius: 3.4,
+            span: Math.PI * 0.6,
+            color: 0xff6a5a,
+            vertical: this.patternStep === 1,
+            y: 0.8,
+          });
+          const toX = b.player.pos.x - this.pos.x;
+          const toZ = b.player.pos.z - this.pos.z;
+          const d = Math.hypot(toX, toZ);
+          const inFront = d < 0.1 || (toX * fwd.x + toZ * fwd.z) / d > 0.45;
+          if (d < 3.4 + 0.4 && inFront && b.player.pos.y < 1.6) {
+            b.damagePlayer(this.damage, { pos: this.pos, monster: this, melee: true });
+          }
+          this.patternStep++;
+          if (this.patternStep < 3) this.stateTime = 0.38;
+          else this.endKnight();
+        }
+        break;
+      case 'leap':
+        if (this.patternStep === 0) {
+          this.face(this.target.x - this.pos.x, this.target.z - this.pos.z);
+          if (this.stateTime <= 0) {
+            this.patternStep = 1;
+            this.leapFrom.copy(this.pos);
+            this.stateTime = 0.7;
+          }
+        } else {
+          const t = Math.min(1, 1 - this.stateTime / 0.7);
+          this.pos.lerpVectors(this.leapFrom, this.target, t);
+          this.y = Math.sin(Math.PI * t) * 4;
+          if (this.stateTime <= 0) {
+            this.y = 0;
+            b.groundSlam(this.target, 3, this.damage * 1.2, this);
+            b.shake(0.35);
+            this.endKnight();
+          }
+        }
+        break;
+      case 'spin':
+        if (this.stateTime <= 0) this.endKnight();
+        break;
+      default:
+        this.endKnight();
+    }
+  }
+
+  private endKnight(): void {
+    this.y = 0;
+    this.state = 'recover';
+    this.stateTime = 0.6;
+    this.attackTimer = this.def.attackCd * (this.phase2 ? 0.7 : 1);
   }
 
   private startBossPattern(b: Battle, dist: number): void {

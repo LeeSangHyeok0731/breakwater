@@ -3,7 +3,7 @@ import { SLOT_ACTIONS, keyLabel, type Input } from '../core/input';
 import type { SaveData } from '../core/save';
 import { MATERIALS } from '../data/items';
 import { ELITE_MOD, type MonsterKind } from '../data/monsters';
-import type { PhaseDef } from '../data/phases';
+import type { PhaseDef, Theme } from '../data/phases';
 import { SKILLS, type SkillDef } from '../data/skills';
 import { GRADES, WEAPONS, type WeaponType } from '../data/weapons';
 import { Hud, type HudSlot } from '../ui/hud';
@@ -83,6 +83,18 @@ interface Field extends FieldSpec {
   age: number;
 }
 
+/** 플레이어를 해치는 바닥 (독 좀비가 죽으며 남기는 독 웅덩이) */
+interface Hazard {
+  mesh: THREE.Mesh;
+  material: THREE.MeshBasicMaterial;
+  pos: THREE.Vector3;
+  radius: number;
+  life: number;
+  tickTimer: number;
+  damage: number;
+  age: number;
+}
+
 interface Telegraph {
   group: THREE.Group;
   fill: THREE.Mesh;
@@ -116,6 +128,24 @@ interface Meteor {
 }
 
 type BattleState = 'intro' | 'fight' | 'rest' | 'done';
+
+interface ThemeColors {
+  sky: number;
+  outer: number;
+  floor: number;
+  hemiSky: number;
+  hemiGround: number;
+  hemi: number;
+  sun: number;
+  sunIntensity: number;
+}
+
+const THEMES: Record<Theme, ThemeColors> = {
+  day: { sky: 0x9cc4e4, outer: 0x5d7a3e, floor: 0x7a7552, hemiSky: 0xdfeeff, hemiGround: 0x4a3a28, hemi: 1.0, sun: 0xfff2dd, sunIntensity: 1.8 },
+  dusk: { sky: 0xe39a72, outer: 0x55663a, floor: 0x7a684a, hemiSky: 0xffd2b0, hemiGround: 0x4a3020, hemi: 0.9, sun: 0xffa070, sunIntensity: 1.6 },
+  night: { sky: 0x151b30, outer: 0x2a3628, floor: 0x46443a, hemiSky: 0x8090c0, hemiGround: 0x1a1a24, hemi: 0.75, sun: 0xa8b8ff, sunIntensity: 0.9 },
+  lava: { sky: 0x2a1c1c, outer: 0x2e2624, floor: 0x4a3f3a, hemiSky: 0xffc0a0, hemiGround: 0x301810, hemi: 0.8, sun: 0xffb080, sunIntensity: 1.4 },
+};
 
 const circleGeo = new THREE.CircleGeometry(1, 40);
 const ringGeo = new THREE.RingGeometry(0.93, 1, 48);
@@ -157,6 +187,10 @@ export class Battle {
   private telegraphs: Telegraph[] = [];
   private shockwaves: Shockwave[] = [];
   private meteors: Meteor[] = [];
+  private hazards: Hazard[] = [];
+  /** 특별 스테이지 진행 시간 */
+  private missionTime = 0;
+  private spawnAcc = 0;
   private beam: THREE.Group;
 
   private state: BattleState = 'intro';
@@ -266,6 +300,7 @@ export class Battle {
     this.updateTelegraphs(dt);
     this.updateShockwaves(dt);
     this.updateMeteors(dt);
+    this.updateHazards(dt);
     this.effects.update(dt);
     this.updateCamera(dt);
     this.hud.update(this.hudState());
@@ -275,6 +310,22 @@ export class Battle {
       if (this.endTimer < 0) this.finish();
     }
     input.endFrame();
+  }
+
+  /** 개발용 상태 요약 */
+  debugSummary(): string {
+    const alive = this.monsters.filter((m) => m.alive);
+    const kinds: Record<string, number> = {};
+    for (const m of alive) kinds[m.def.kind] = (kinds[m.def.kind] ?? 0) + 1;
+    return JSON.stringify({
+      state: this.state,
+      wave: this.waveIndex,
+      missionTime: Math.round(this.missionTime * 10) / 10,
+      hp: Math.round(this.player.hp),
+      kills: this.pending.kills,
+      alive: kinds,
+      ended: this.ended,
+    });
   }
 
   render(renderer: THREE.WebGLRenderer): void {
@@ -392,7 +443,7 @@ export class Battle {
     m.hp -= dmg;
     m.onHit();
 
-    if (opts.stun && !m.boss) m.stun = Math.max(m.stun, m.elite ? opts.stun * 0.5 : opts.stun);
+    if (opts.stun && !m.boss) m.stun = Math.max(m.stun, m.elite || m.def.miniboss ? opts.stun * 0.5 : opts.stun);
     if (opts.vuln) {
       m.vuln = Math.max(m.vuln, opts.vuln[0]);
       m.vulnTime = opts.vuln[1];
@@ -426,6 +477,7 @@ export class Battle {
       if (Math.random() < (m.elite ? Math.min(1, d.chance * 2) : d.chance)) this.addMaterial(d.id, m.elite ? 2 : 1, c);
     }
     if (m.elite) this.addMaterial('elite_sigil', 1, c);
+    if (m.def.kind === 'poison_zombie') this.addHazard(m.pos, m.elite ? 3.4 : 2.4, 4, 6);
 
     if (m === this.boss) {
       for (const other of this.monsters) if (other.alive && other !== m) other.kill();
@@ -438,7 +490,7 @@ export class Battle {
     this.effects.text(at.clone().setY(at.y + 0.6), `+${MATERIALS[id]?.name ?? id}`, 'info');
   }
 
-  damagePlayer(amount: number, src: { pos: THREE.Vector3; monster?: Monster; melee: boolean }): void {
+  damagePlayer(amount: number, src: { pos: THREE.Vector3; monster?: Monster; melee: boolean; unblockable?: boolean }): void {
     const p = this.player;
     if (p.dead || this.ended) return;
     const head = this.tmp2.set(p.pos.x, p.pos.y + 2.1, p.pos.z);
@@ -448,7 +500,7 @@ export class Battle {
       return;
     }
 
-    if (p.guarding) {
+    if (p.guarding && !src.unblockable) {
       const f = forwardOf(p.yaw);
       const dx = src.pos.x - p.pos.x;
       const dz = src.pos.z - p.pos.z;
@@ -536,6 +588,10 @@ export class Battle {
   private updateWaves(dt: number): void {
     if (this.state === 'done') return;
     this.stateTimer -= dt;
+    if (this.phase.mission) {
+      this.updateMission(dt);
+      return;
+    }
 
     if (this.state === 'intro' || this.state === 'rest') {
       if (this.stateTimer <= 0) this.startWave(this.waveIndex + 1);
@@ -565,6 +621,45 @@ export class Battle {
     }
   }
 
+  /** 특별 스테이지: 시간이 지날수록 빨라지는 속도로 몬스터가 계속 나온다. */
+  private updateMission(dt: number): void {
+    const mission = this.phase.mission!;
+    if (this.state === 'intro') {
+      if (this.stateTimer > 0) return;
+      this.state = 'fight';
+      this.announce(mission.kind === 'survive' ? `${mission.seconds}초 동안 버텨라!` : `${mission.target}마리를 처치하라!`, 2.2);
+      return;
+    }
+    this.missionTime += dt;
+    const alive = this.monsters.filter((m) => m.alive).length;
+    const interval = Math.max(0.45, 1.6 - this.missionTime * 0.012);
+    if (alive < 28) {
+      this.spawnAcc += dt;
+      while (this.spawnAcc >= interval) {
+        this.spawnAcc -= interval;
+        const pick = this.pickSpawn();
+        if (pick) this.spawnMonster(pick.kind, !!pick.elite);
+      }
+    }
+    const done = mission.kind === 'survive' ? this.missionTime >= mission.seconds : this.pending.kills >= mission.target;
+    if (done) {
+      // 남은 몬스터는 보상 없이 사라진다.
+      for (const m of this.monsters) if (m.alive) m.kill();
+      this.clear();
+    }
+  }
+
+  private pickSpawn(): { kind: MonsterKind; elite?: boolean } | null {
+    const pool = this.phase.spawnPool ?? [];
+    const total = pool.reduce((a, e) => a + e.weight, 0);
+    let r = Math.random() * total;
+    for (const e of pool) {
+      r -= e.weight;
+      if (r <= 0) return e;
+    }
+    return pool[0] ?? null;
+  }
+
   private startWave(index: number): void {
     this.waveIndex = index;
     this.state = 'fight';
@@ -576,7 +671,7 @@ export class Battle {
     const normal = queue.filter((q) => !q.elite).sort(() => Math.random() - 0.5);
     this.spawnQueue = [...normal, ...queue.filter((q) => q.elite)];
     this.spawnTimer = 0.3;
-    if (this.phase.type === 'boss') this.announce('골렘 군주', 2.5);
+    if (this.phase.type === 'boss') this.announce(this.phase.name, 2.5);
     else this.announce(index === this.phase.waves.length - 1 ? `마지막 웨이브` : `웨이브 ${index + 1}`);
   }
 
@@ -816,9 +911,9 @@ export class Battle {
     });
   }
 
-  spawnEnemyBolt(origin: THREE.Vector3, vel: THREE.Vector3, damage: number, color: number, owner?: Monster): void {
+  spawnEnemyBolt(origin: THREE.Vector3, vel: THREE.Vector3, damage: number, color: number, owner: Monster, aoe = 0): void {
     const mesh = new THREE.Mesh(boltGeo, mat(color, color, 2));
-    mesh.scale.setScalar(0.22);
+    mesh.scale.setScalar(aoe > 0 ? 0.32 : 0.22);
     mesh.position.copy(origin);
     this.scene.add(mesh);
     this.enemyBolts.push({
@@ -828,9 +923,9 @@ export class Battle {
       radius: 0.25,
       damage,
       gravity: 0,
-      aoe: 0,
+      aoe,
       life: 3,
-      owner: owner ?? this.monsters[0],
+      owner,
     });
   }
 
@@ -864,25 +959,74 @@ export class Battle {
       let alive = b.life > 0;
 
       const hitPlayer = Math.hypot(b.pos.x - p.pos.x, b.pos.y - (p.pos.y + 1), b.pos.z - p.pos.z) < b.radius + 0.45;
-      if (alive && b.aoe === 0 && hitPlayer && p.invuln <= 0) {
-        this.damagePlayer(b.damage, { pos: b.pos, monster: b.owner, melee: false });
-        this.effects.burst(b.pos, 0xff4fa0, 6, 3, 0.08, 0.3);
+      // 바위는 땅에 떨어질 때만 터진다 (중력 있는 투사체).
+      if (alive && hitPlayer && p.invuln <= 0 && b.gravity === 0) {
+        if (b.aoe > 0) this.enemyExplode(b);
+        else {
+          this.damagePlayer(b.damage, { pos: b.pos, monster: b.owner, melee: false });
+          this.effects.burst(b.pos, 0xff4fa0, 6, 3, 0.08, 0.3);
+        }
         alive = false;
       }
       if (alive && b.pos.y <= 0) {
-        if (b.aoe > 0) {
-          const at = b.pos.clone().setY(0);
-          this.effects.ring(at, b.aoe, 0xff7a2a, 0.35);
-          this.effects.burst(at.clone().setY(0.3), 0x7a6a5a, 14, 5, 0.14, 0.5);
-          this.shake(0.2);
-          if (Math.hypot(p.pos.x - at.x, p.pos.z - at.z) <= b.aoe + 0.3 && p.pos.y < 1.5) {
-            this.damagePlayer(b.damage, { pos: at, monster: b.owner, melee: false });
-          }
-        }
+        if (b.aoe > 0) this.enemyExplode(b);
         alive = false;
       }
       if (!alive) this.scene.remove(b.mesh);
       return alive;
+    });
+  }
+
+  private enemyExplode(b: EnemyBolt): void {
+    const p = this.player;
+    const at = b.pos.clone();
+    at.y = Math.max(0, at.y);
+    const fire = b.gravity === 0;
+    this.effects.ring(at.clone().setY(0), b.aoe, fire ? 0xff5a1a : 0xff7a2a, 0.35);
+    if (fire) this.effects.flash(at, b.aoe, 0xff7a2a, 0.25);
+    this.effects.burst(at.clone().setY(Math.max(0.3, at.y)), fire ? 0xff8a3a : 0x7a6a5a, 14, 5, 0.14, 0.5);
+    this.shake(0.2);
+    const d = Math.hypot(p.pos.x - at.x, p.pos.z - at.z);
+    if (d <= b.aoe + 0.3 && Math.abs(p.pos.y + 1 - at.y) < b.aoe + 1) {
+      this.damagePlayer(b.damage, { pos: at, monster: b.owner, melee: false });
+    }
+  }
+
+  private addHazard(pos: THREE.Vector3, radius: number, life: number, damage: number): void {
+    const material = new THREE.MeshBasicMaterial({ color: 0x8acc2a, transparent: true, opacity: 0.45, depthWrite: false });
+    const mesh = new THREE.Mesh(circleGeo, material);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.position.set(pos.x, 0.05, pos.z);
+    mesh.scale.setScalar(radius);
+    this.scene.add(mesh);
+    this.hazards.push({ mesh, material, pos: pos.clone().setY(0), radius, life, tickTimer: 0.3, damage, age: 0 });
+  }
+
+  private updateHazards(dt: number): void {
+    const p = this.player;
+    this.hazards = this.hazards.filter((h) => {
+      h.life -= dt;
+      h.age += dt;
+      h.tickTimer -= dt;
+      h.material.opacity = 0.35 + Math.sin(h.age * 5) * 0.08;
+      if (h.life < 0.5) h.material.opacity *= h.life / 0.5;
+      if (Math.random() < dt * 8) {
+        const a = Math.random() * Math.PI * 2;
+        const r = Math.random() * h.radius;
+        this.effects.burst(new THREE.Vector3(h.pos.x + Math.cos(a) * r, 0.1, h.pos.z + Math.sin(a) * r), 0xa8ff4a, 1, 1.2, 0.08, 0.7, -1.5);
+      }
+      if (h.tickTimer <= 0) {
+        h.tickTimer = 0.5;
+        if (Math.hypot(p.pos.x - h.pos.x, p.pos.z - h.pos.z) <= h.radius && p.pos.y < 1.0) {
+          this.damagePlayer(h.damage, { pos: h.pos, melee: false, unblockable: true });
+        }
+      }
+      if (h.life <= 0) {
+        this.scene.remove(h.mesh);
+        h.material.dispose();
+        return false;
+      }
+      return true;
     });
   }
 
@@ -1149,12 +1293,16 @@ export class Battle {
       };
     });
     const totalWaves = this.phase.waves.length;
-    const waveText =
-      this.phase.type === 'boss'
-        ? '보스 페이즈'
-        : this.waveIndex < 0
-          ? '준비'
-          : `웨이브 ${Math.min(this.waveIndex + 1, totalWaves)} / ${totalWaves}`;
+    const mission = this.phase.mission;
+    let waveText: string;
+    if (mission) {
+      if (this.state === 'intro') waveText = '준비';
+      else if (mission.kind === 'survive') waveText = `생존 ${Math.max(0, Math.ceil(mission.seconds - this.missionTime))}초 남음`;
+      else waveText = `처치 ${Math.min(this.pending.kills, mission.target)} / ${mission.target}`;
+    } else if (this.phase.type === 'boss') waveText = '보스 페이즈';
+    else if (this.waveIndex < 0) waveText = '준비';
+    else waveText = `웨이브 ${Math.min(this.waveIndex + 1, totalWaves)} / ${totalWaves}`;
+    const barTarget = this.boss ?? this.monsters.find((m) => m.alive && m.def.miniboss) ?? null;
     return {
       hp: p.hp,
       maxHp: p.derived.maxHp,
@@ -1177,8 +1325,8 @@ export class Battle {
       waveText,
       gold: this.pending.gold,
       kills: this.pending.kills,
-      boss: this.boss
-        ? { name: this.boss.def.name, hp: Math.max(0, this.boss.hp), maxHp: this.boss.maxHp, phase2: this.boss.phase2 }
+      boss: barTarget
+        ? { name: barTarget.def.name, hp: Math.max(0, barTarget.hp), maxHp: barTarget.maxHp, phase2: barTarget.phase2 }
         : null,
       dodgeReady: p.dodgeCd <= 0,
     };
@@ -1195,15 +1343,15 @@ export class Battle {
   // ───────────────────────── 경기장 ─────────────────────────
 
   private buildArena(): void {
-    const boss = this.phase.type === 'boss';
+    const boss = this.phase.theme === 'lava';
+    const t = THEMES[this.phase.theme];
     const scene = this.scene;
     const R = this.arenaRadius;
-    const sky = boss ? 0x2a1c1c : 0x9cc4e4;
-    scene.background = new THREE.Color(sky);
-    scene.fog = new THREE.Fog(sky, R * 1.2, R * 3.2);
+    scene.background = new THREE.Color(t.sky);
+    scene.fog = new THREE.Fog(t.sky, R * 1.2, R * 3.2);
 
-    scene.add(new THREE.HemisphereLight(boss ? 0xffc0a0 : 0xdfeeff, boss ? 0x301810 : 0x4a3a28, boss ? 0.8 : 1.0));
-    const sun = new THREE.DirectionalLight(boss ? 0xffb080 : 0xfff2dd, boss ? 1.4 : 1.8);
+    scene.add(new THREE.HemisphereLight(t.hemiSky, t.hemiGround, t.hemi));
+    const sun = new THREE.DirectionalLight(t.sun, t.sunIntensity);
     sun.position.set(25, 40, 15);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
@@ -1215,17 +1363,17 @@ export class Battle {
     sc.far = 120;
     scene.add(sun);
 
-    const outer = new THREE.Mesh(new THREE.CircleGeometry(R + 90, 48), mat(boss ? 0x2e2624 : 0x5d7a3e));
+    const outer = new THREE.Mesh(new THREE.CircleGeometry(R + 90, 48), mat(t.outer));
     outer.rotation.x = -Math.PI / 2;
     outer.position.y = -0.02;
     outer.receiveShadow = true;
     scene.add(outer);
-    const floor = new THREE.Mesh(new THREE.CircleGeometry(R, 64), mat(boss ? 0x4a3f3a : 0x7a7552));
+    const floor = new THREE.Mesh(new THREE.CircleGeometry(R, 64), mat(t.floor));
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     scene.add(floor);
 
-    const rand = seeded(boss ? 77 : 13);
+    const rand = seeded(boss ? 77 : 13 + this.phase.id.charCodeAt(2) * 7);
     // 경계: 바위와 기둥
     const rockMat = mat(boss ? 0x3a3436 : 0x8c8a84);
     const count = Math.floor(R * 1.6);

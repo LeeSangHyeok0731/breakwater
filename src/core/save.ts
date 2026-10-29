@@ -27,7 +27,7 @@ export interface SaveData {
   sensitivity: number;
 }
 
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 const STORAGE_KEY = 'breakwater-save';
 
 export function newSave(): SaveData {
@@ -57,6 +57,10 @@ export function newSave(): SaveData {
 /** 옛 버전이나 일부 필드가 빠진 세이브를 현재 형식으로 맞춘다. 버전이 올라가면 여기서 변환한다. */
 function normalize(data: Partial<SaveData>): SaveData {
   const base = newSave();
+  // v1 → v2: 챕터 1이 5개 페이즈로 늘면서 보스가 1-2에서 1-5로 옮겨졌다.
+  if ((data.version ?? 1) < 2 && data.cleared?.includes('1-2')) {
+    data = { ...data, cleared: [...data.cleared.filter((id) => id !== '1-2'), '1-2', '1-3', '1-4', '1-5'] };
+  }
   return {
     ...base,
     ...data,

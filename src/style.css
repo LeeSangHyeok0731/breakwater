@@ -1552,3 +1552,9 @@ body {
     opacity: 0.55;
   }
 }
+
+.v-badge.special {
+  color: #bfe0ff;
+  background: rgba(80, 140, 230, 0.2);
+  border: 1px solid rgba(110, 170, 255, 0.45);
+}
