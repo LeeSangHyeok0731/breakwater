@@ -1,12 +1,34 @@
 import * as THREE from 'three';
 import { ELITE_MOD, MONSTERS, type MonsterDef, type MonsterKind } from '../data/monsters';
 import { makeEliteAura, makeMonster, type Rig } from './models';
+import { AnimatedModel, type Tint } from './animated';
+import { cloneModel, type CharacterName, type WeaponModelName } from './assets';
 import type { Battle } from './battle';
 
 type State = 'move' | 'windup' | 'recover' | 'dashWind' | 'dash' | 'dive' | 'linger' | 'rise' | 'pattern';
 type BossPattern = 'slam' | 'rocks' | 'shockwave' | 'charge' | 'combo' | 'leap' | 'spin';
 
 const MINION_ALTITUDE = 3.6;
+
+/** KayKit 해골 모델로 그리는 몬스터. 나머지(골렘·미니언)는 직접 만든 모델. */
+const SKINNED: Partial<Record<MonsterKind, { char: CharacterName; weapon: WeaponModelName; tint?: Tint }>> = {
+  zombie: { char: 'Skeleton_Minion', weapon: 'Skeleton_Blade' },
+  poison_zombie: {
+    char: 'Skeleton_Rogue',
+    weapon: 'Skeleton_Blade',
+    tint: { color: 0xb8e898, emissive: 0x2a6a10, emissiveIntensity: 0.12 },
+  },
+  mage: { char: 'Skeleton_Mage', weapon: 'Skeleton_Staff' },
+  fire_mage: {
+    char: 'Skeleton_Mage',
+    weapon: 'Skeleton_Staff',
+    tint: { color: 0xffa888, emissive: 0x8a2000, emissiveIntensity: 0.18 },
+  },
+  grave_knight: { char: 'Skeleton_Warrior', weapon: 'Skeleton_Axe', tint: { color: 0xc0c8e0 } },
+};
+
+const SPAWN_TIME = 0.9;
+const DEATH_TIME_SKINNED = 1.3;
 
 const barBgMat = new THREE.SpriteMaterial({ color: 0x1a1a1a, depthTest: false });
 const barFgMat = new THREE.SpriteMaterial({ color: 0xe53935, depthTest: false });
@@ -15,7 +37,14 @@ const barEliteMat = new THREE.SpriteMaterial({ color: 0xff9a1a, depthTest: false
 export class Monster {
   readonly def: MonsterDef;
   readonly elite: boolean;
-  readonly rig: Rig;
+  /** 직접 만든 모델 (해골 모델을 쓰면 null) */
+  readonly rig: Rig | null;
+  readonly skin: AnimatedModel | null;
+  readonly root: THREE.Object3D;
+  /** 땅에서 솟아오르는 중 (해골 모델만) */
+  spawnTime = 0;
+  private readonly prevPos = new THREE.Vector3();
+  private moveSpeed = 0;
   readonly pos = new THREE.Vector3();
   /** 바닥 높이 (비행 몬스터는 고도) */
   y = 0;
@@ -73,9 +102,21 @@ export class Monster {
     this.attackTimer = this.def.attackCd * (0.4 + Math.random() * 0.6);
     if (this.def.flying) this.y = MINION_ALTITUDE;
 
-    this.rig = makeMonster(kind);
-    this.rig.root.scale.setScalar(this.scale);
-    if (elite) this.rig.root.add(makeEliteAura(this.def.radius * 1.6));
+    const skin = SKINNED[kind];
+    if (skin) {
+      const tint: Tint | undefined = elite ? { ...skin.tint, emissive: 0x7a3000, emissiveIntensity: 0.45 } : skin.tint;
+      this.skin = new AnimatedModel(skin.char, { tint });
+      if (this.skin.handR) this.skin.handR.add(cloneModel(skin.weapon));
+      this.rig = null;
+      this.root = this.skin.root;
+      this.spawnTime = SPAWN_TIME;
+    } else {
+      this.rig = makeMonster(kind);
+      this.skin = null;
+      this.root = this.rig.root;
+    }
+    this.root.scale.setScalar(this.scale);
+    if (elite) this.root.add(makeEliteAura(this.def.radius * 1.6));
 
     if (!this.showsBossBar) {
       this.barWidth = elite ? 1.6 : 1;
@@ -101,12 +142,13 @@ export class Monster {
   }
 
   addTo(scene: THREE.Scene): void {
-    scene.add(this.rig.root);
+    this.prevPos.copy(this.pos);
+    scene.add(this.root);
     if (this.hpBar) scene.add(this.hpBar);
   }
 
   removeFrom(scene: THREE.Scene): void {
-    scene.remove(this.rig.root);
+    scene.remove(this.root);
     if (this.hpBar) scene.remove(this.hpBar);
   }
 
@@ -125,7 +167,7 @@ export class Monster {
 
   kill(): void {
     this.alive = false;
-    this.dying = 0.45;
+    this.dying = this.skin ? DEATH_TIME_SKINNED : 0.45;
     if (this.hpBar) this.hpBar.visible = false;
   }
 
@@ -135,10 +177,25 @@ export class Monster {
 
     if (!this.alive) {
       this.dying -= dt;
-      const t = Math.max(0, this.dying / 0.45);
-      this.rig.root.scale.setScalar(this.scale * (0.3 + 0.7 * t));
-      this.rig.root.rotation.z = (1 - t) * 1.2;
-      if (this.def.flying) this.y = Math.max(0, this.y - dt * 8);
+      if (this.skin) {
+        // 쓰러지는 애니메이션 뒤에 땅속으로 가라앉는다.
+        this.skin.playFull('Death_C_Skeletons', { loop: false, fade: 0.08 });
+        this.skin.update(dt);
+        if (this.dying < 0.4) this.y -= dt * 2.5;
+      } else {
+        const t = Math.max(0, this.dying / 0.45);
+        this.root.scale.setScalar(this.scale * (0.3 + 0.7 * t));
+        this.root.rotation.z = (1 - t) * 1.2;
+        if (this.def.flying) this.y = Math.max(0, this.y - dt * 8);
+      }
+      this.syncModel();
+      return;
+    }
+
+    if (this.spawnTime > 0) {
+      this.spawnTime -= dt;
+      this.face(b.player.pos.x - this.pos.x, b.player.pos.z - this.pos.z);
+      this.animateSkinned(dt);
       this.syncModel();
       return;
     }
@@ -193,12 +250,62 @@ export class Monster {
       this.pos.z *= limit / r;
     }
 
-    this.animate();
+    this.moveSpeed = this.prevPos.distanceTo(this.pos) / Math.max(dt, 1e-4);
+    this.prevPos.copy(this.pos);
+    if (this.skin) this.animateSkinned(dt);
+    else this.animate();
     this.syncModel();
   }
 
+  /** 해골 모델의 상태별 애니메이션 */
+  private animateSkinned(dt: number): void {
+    const a = this.skin!;
+    const moving = this.moveSpeed > 0.4;
+    const walkSpeed = THREE.MathUtils.clamp(this.moveSpeed / 2.6, 0.6, 2);
+    if (this.spawnTime > 0) {
+      a.playFull('Spawn_Ground_Skeletons', { loop: false, speed: a.duration('Spawn_Ground_Skeletons') / SPAWN_TIME, fade: 0 });
+    } else if (this.stun > 0) {
+      a.playFull('Hit_B', { loop: false, speed: 0.7, fade: 0.08 });
+    } else {
+      switch (this.def.kind) {
+        case 'zombie':
+        case 'poison_zombie':
+          if (this.state === 'windup') a.playFull('1H_Melee_Attack_Chop', { loop: false, speed: 1.6, fade: 0.08 });
+          else if (this.state === 'dashWind') a.playFull('Taunt', { speed: 1.5 });
+          else if (this.state === 'dash') a.playFull('Running_C', { speed: 1.6 });
+          else if (moving) a.playFull('Walking_D_Skeletons', { speed: walkSpeed });
+          else a.playFull('Idle_Combat');
+          break;
+        case 'mage':
+        case 'fire_mage':
+          if (this.state === 'windup') a.playFull('Spellcast_Shoot', { loop: false, speed: 1.2, fade: 0.1 });
+          else if (moving) a.playFull('Walking_A', { speed: walkSpeed });
+          else a.playFull('Idle_Combat');
+          break;
+        case 'grave_knight':
+          if (this.state === 'pattern' && this.pattern === 'combo') {
+            a.playFull(this.patternStep === 1 ? '2H_Melee_Attack_Slice' : '2H_Melee_Attack_Chop', {
+              loop: false,
+              speed: 2.6,
+              fade: 0.06,
+              token: this.patternStep,
+            });
+          } else if (this.state === 'pattern' && this.pattern === 'leap') {
+            a.playFull('Jump_Full_Long', { loop: false, speed: 1.2 });
+          } else if (this.state === 'pattern' && this.pattern === 'spin') {
+            a.playFull('2H_Melee_Attack_Spinning', { speed: 1.5 });
+          } else if (moving) a.playFull('Running_A', { speed: walkSpeed * 0.8 });
+          else a.playFull('Idle_Combat');
+          break;
+        default:
+          a.playFull('Idle');
+      }
+    }
+    a.update(dt);
+  }
+
   private syncModel(): void {
-    const root = this.rig.root;
+    const root = this.root;
     root.position.set(this.pos.x, this.def.flying ? this.y + 0.4 * this.scale : this.y, this.pos.z);
     root.rotation.y = this.facing;
     if (this.alive) {
@@ -213,7 +320,7 @@ export class Monster {
   }
 
   private animate(): void {
-    const rig = this.rig;
+    const rig = this.rig!;
     const moving = this.state === 'move' || this.state === 'dash';
     const walk = moving && this.stun <= 0 ? Math.sin(this.anim * this.speed * 2.6) * 0.6 : 0;
     rig.legL.rotation.x = walk;

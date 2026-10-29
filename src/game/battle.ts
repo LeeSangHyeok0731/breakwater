@@ -11,7 +11,9 @@ import { GRADES, WEAPONS, type WeaponType } from '../data/weapons';
 import { Hud, type HudSlot } from '../ui/hud';
 import { updatePlayerCombat } from './combat';
 import { Effects } from './effects';
-import { box, cone, cyl, ico, mat } from './models';
+import { box, ico, mat } from './models';
+import { groundTexture, makeSky, placeProp, radialAlpha, scatterGrass, seeded } from './environment';
+import type { PropName } from './assets';
 import { Monster } from './monster';
 import { Player, forwardOf, rightOf } from './player';
 import { CRIT_DAMAGE, basicDamage, derive, enhanceMultiplier, expToNext, totalStats, type Stats } from './stats';
@@ -132,21 +134,80 @@ interface Meteor {
 type BattleState = 'intro' | 'fight' | 'rest' | 'done';
 
 interface ThemeColors {
+  skyTop: number;
   sky: number;
-  outer: number;
-  floor: number;
+  skyBottom: number;
+  /** 바깥 풀밭 텍스처: 바탕·어두운 얼룩·밝은 얼룩 */
+  grass: [string, string, string];
+  /** 경기장 흙바닥 텍스처 */
+  dirt: [string, string, string];
+  blades: number[];
   hemiSky: number;
   hemiGround: number;
   hemi: number;
   sun: number;
   sunIntensity: number;
+  /** 랜턴 불빛 세기 (0이면 조명 없음) */
+  lantern: number;
 }
 
 const THEMES: Record<Theme, ThemeColors> = {
-  day: { sky: 0x9cc4e4, outer: 0x5d7a3e, floor: 0x7a7552, hemiSky: 0xdfeeff, hemiGround: 0x4a3a28, hemi: 1.0, sun: 0xfff2dd, sunIntensity: 1.8 },
-  dusk: { sky: 0xe39a72, outer: 0x55663a, floor: 0x7a684a, hemiSky: 0xffd2b0, hemiGround: 0x4a3020, hemi: 0.9, sun: 0xffa070, sunIntensity: 1.6 },
-  night: { sky: 0x151b30, outer: 0x2a3628, floor: 0x46443a, hemiSky: 0x8090c0, hemiGround: 0x1a1a24, hemi: 0.75, sun: 0xa8b8ff, sunIntensity: 0.9 },
-  lava: { sky: 0x2a1c1c, outer: 0x2e2624, floor: 0x4a3f3a, hemiSky: 0xffc0a0, hemiGround: 0x301810, hemi: 0.8, sun: 0xffb080, sunIntensity: 1.4 },
+  day: {
+    skyTop: 0x4a86d0,
+    sky: 0xbcd8ee,
+    skyBottom: 0x6a8a50,
+    grass: ['#5f8a3e', '#4a7032', '#7aa04c'],
+    dirt: ['#8a7656', '#6e5c42', '#a08c68'],
+    blades: [0x5f9a3a, 0x6faa44, 0x4f8a34, 0x8ab04a],
+    hemiSky: 0xdfeeff,
+    hemiGround: 0x4a3a28,
+    hemi: 1.1,
+    sun: 0xfff0d8,
+    sunIntensity: 2.2,
+    lantern: 0,
+  },
+  dusk: {
+    skyTop: 0x5a4a8a,
+    sky: 0xf0a070,
+    skyBottom: 0x5a5030,
+    grass: ['#5a6a34', '#46542a', '#76803e'],
+    dirt: ['#7e6448', '#644c36', '#967a58'],
+    blades: [0x6a7a34, 0x7a8a3a, 0x5a6a2e, 0x9a8a40],
+    hemiSky: 0xffd2b0,
+    hemiGround: 0x4a3020,
+    hemi: 1.0,
+    sun: 0xffa060,
+    sunIntensity: 2.0,
+    lantern: 6,
+  },
+  night: {
+    skyTop: 0x05070f,
+    sky: 0x1e2846,
+    skyBottom: 0x10141e,
+    grass: ['#2e3e2c', '#222e22', '#3e5038'],
+    dirt: ['#4a463a', '#38342c', '#5e5848'],
+    blades: [0x2e4a30, 0x3a5a38, 0x26402a],
+    hemiSky: 0x8a9ad8,
+    hemiGround: 0x1e1e2c,
+    hemi: 1.0,
+    sun: 0xb0c0ff,
+    sunIntensity: 1.5,
+    lantern: 14,
+  },
+  lava: {
+    skyTop: 0x0e0606,
+    sky: 0x4a1e14,
+    skyBottom: 0x1a0c08,
+    grass: ['#2e2624', '#221c1a', '#3e3230'],
+    dirt: ['#4a3e3a', '#3a302c', '#5e4e48'],
+    blades: [],
+    hemiSky: 0xffc0a0,
+    hemiGround: 0x301810,
+    hemi: 0.8,
+    sun: 0xffa070,
+    sunIntensity: 1.6,
+    lantern: 10,
+  },
 };
 
 const circleGeo = new THREE.CircleGeometry(1, 40);
@@ -162,14 +223,6 @@ export function buildSlots(save: SaveData, type: WeaponType): (SkillDef | null)[
   const slots: (SkillDef | null)[] = [...learned];
   while (slots.length < 8) slots.push(null);
   return slots;
-}
-
-function seeded(seed: number): () => number {
-  let s = seed;
-  return () => {
-    s = (s * 16807) % 2147483647;
-    return (s - 1) / 2147483646;
-  };
 }
 
 export class Battle {
@@ -196,6 +249,8 @@ export class Battle {
   private potionUsed = { hp: 0, mp: 0 };
   private potionCd = 0;
   private beam: THREE.Group;
+  private sky: THREE.Mesh | null = null;
+  private sun: THREE.DirectionalLight | null = null;
 
   private state: BattleState = 'intro';
   private stateTimer = 2;
@@ -238,7 +293,7 @@ export class Battle {
     this.player.pos.set(0, 0, -this.arenaRadius * 0.35);
     this.player.yaw = 0;
     this.player.animate(0);
-    this.scene.add(this.player.rig.root);
+    this.scene.add(this.player.root);
 
     this.beam = this.makeBeam();
     this.scene.add(this.beam);
@@ -308,6 +363,7 @@ export class Battle {
     this.updateHazards(dt);
     this.effects.update(dt);
     this.updateCamera(dt);
+    this.followLights();
     this.hud.update(this.hudState());
 
     if (this.endTimer >= 0) {
@@ -331,10 +387,6 @@ export class Battle {
       alive: kinds,
       ended: this.ended,
     });
-  }
-
-  render(renderer: THREE.WebGLRenderer): void {
-    renderer.render(this.scene, this.camera);
   }
 
   resize(w: number, h: number): void {
@@ -389,6 +441,16 @@ export class Battle {
       this.save.potions[id]--;
       this.potionUsed[id]++;
       this.potionCd = 0.8;
+    }
+  }
+
+  /** 하늘은 카메라를, 그림자용 태양은 플레이어를 따라간다 (그림자를 선명하게). */
+  private followLights(): void {
+    if (this.sky) this.sky.position.copy(this.camera.position);
+    if (this.sun) {
+      const p = this.player.pos;
+      this.sun.position.set(p.x + 18, 34, p.z + 12);
+      this.sun.target.position.set(p.x, 0, p.z);
     }
   }
 
@@ -1411,39 +1473,122 @@ export class Battle {
   // ───────────────────────── 경기장 ─────────────────────────
 
   private buildArena(): void {
-    const boss = this.phase.theme === 'lava';
+    const lava = this.phase.theme === 'lava';
     const t = THEMES[this.phase.theme];
     const scene = this.scene;
     const R = this.arenaRadius;
     scene.background = new THREE.Color(t.sky);
-    scene.fog = new THREE.Fog(t.sky, R * 1.2, R * 3.2);
+    scene.fog = new THREE.Fog(t.sky, R * 1.1, R * 3.4);
+    this.sky = makeSky(t.skyTop, t.sky, t.skyBottom);
+    scene.add(this.sky);
 
     scene.add(new THREE.HemisphereLight(t.hemiSky, t.hemiGround, t.hemi));
     const sun = new THREE.DirectionalLight(t.sun, t.sunIntensity);
-    sun.position.set(25, 40, 15);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.bias = -0.0004;
+    sun.shadow.normalBias = 0.03;
     const sc = sun.shadow.camera;
-    sc.left = -R - 5;
-    sc.right = R + 5;
-    sc.top = R + 5;
-    sc.bottom = -R - 5;
-    sc.far = 120;
-    scene.add(sun);
+    sc.left = -26;
+    sc.right = 26;
+    sc.top = 26;
+    sc.bottom = -26;
+    sc.far = 90;
+    scene.add(sun, sun.target);
+    this.sun = sun;
 
-    const outer = new THREE.Mesh(new THREE.CircleGeometry(R + 90, 48), mat(t.outer));
+    const seed = (lava ? 77 : 13) + this.phase.id.charCodeAt(2) * 7;
+    const rand = seeded(seed);
+
+    // 바닥: 바깥 풀밭 + 가장자리가 부드러운 흙 경기장
+    const outer = new THREE.Mesh(
+      new THREE.CircleGeometry(R + 90, 48),
+      new THREE.MeshStandardMaterial({ map: groundTexture(...t.grass, seed, 40), roughness: 1 }),
+    );
     outer.rotation.x = -Math.PI / 2;
     outer.position.y = -0.02;
     outer.receiveShadow = true;
     scene.add(outer);
-    const floor = new THREE.Mesh(new THREE.CircleGeometry(R, 64), mat(t.floor));
+    const floor = new THREE.Mesh(
+      new THREE.CircleGeometry(R + 3, 64),
+      new THREE.MeshStandardMaterial({
+        map: groundTexture(...t.dirt, seed + 1, 9),
+        alphaMap: radialAlpha(0.82),
+        transparent: true,
+        depthWrite: false,
+        roughness: 1,
+      }),
+    );
     floor.rotation.x = -Math.PI / 2;
+    floor.position.y = 0.005;
     floor.receiveShadow = true;
     scene.add(floor);
 
-    const rand = seeded(boss ? 77 : 13 + this.phase.id.charCodeAt(2) * 7);
-    // 경계: 바위와 기둥
-    const rockMat = mat(boss ? 0x3a3436 : 0x8c8a84);
+    if (t.blades.length) {
+      scene.add(scatterGrass(2600, R + 1, R + 26, t.blades, seed + 2));
+      // 경기장 안은 밟혀서 풀이 드문드문하다.
+      scene.add(scatterGrass(90, 6, R - 1, t.blades, seed + 3));
+    }
+
+    if (lava) this.buildLavaProps(rand, t);
+    else this.buildGraveyardProps(rand, t);
+  }
+
+  /** 묘지: 울타리로 둘러싸고 바깥에 묘비·나무·랜턴을 둔다. */
+  private buildGraveyardProps(rand: () => number, t: ThemeColors): void {
+    const scene = this.scene;
+    const R = this.arenaRadius;
+    const fenceLen = 2.0;
+    const segments = Math.floor((Math.PI * 2 * (R + 1)) / fenceLen);
+    for (let i = 0; i < segments; i++) {
+      const a = (i / segments) * Math.PI * 2;
+      const x = Math.cos(a) * (R + 1);
+      const z = Math.sin(a) * (R + 1);
+      // 울타리는 원의 접선 방향으로 놓는다.
+      const name: PropName = rand() < 0.2 ? 'fence_broken' : 'fence';
+      placeProp(scene, name, x, z, -a + Math.PI / 2, 1);
+      if (i % 4 === 0) placeProp(scene, 'fence_pillar', x, z, -a);
+    }
+
+    const ring = (count: number, names: PropName[], rMin: number, rMax: number, scale: [number, number]): void => {
+      for (let i = 0; i < count; i++) {
+        const a = rand() * Math.PI * 2;
+        const r = rMin + rand() * (rMax - rMin);
+        const n = names[Math.floor(rand() * names.length)];
+        placeProp(scene, n, Math.cos(a) * r, Math.sin(a) * r, rand() * Math.PI * 2, scale[0] + rand() * (scale[1] - scale[0]));
+      }
+    };
+    ring(46, ['gravestone', 'grave_A', 'grave_B', 'grave_A_destroyed', 'gravemarker_A', 'gravemarker_B'], R + 3, R + 16, [0.9, 1.2]);
+    ring(10, ['coffin', 'skull', 'bone_A', 'bone_B', 'pumpkin_orange', 'pumpkin_orange_jackolantern'], R + 2.5, R + 10, [0.9, 1.3]);
+    ring(30, ['tree_dead_large', 'tree_dead_medium', 'tree_dead_small'], R + 6, R + 30, [1.2, 2.0]);
+    ring(22, ['tree_pine_orange_large', 'tree_pine_orange_medium', 'tree_pine_yellow_large'], R + 12, R + 40, [1.4, 2.2]);
+    // 경기장 안 가장자리의 작은 장식 (충돌 없음)
+    ring(10, ['gravemarker_A', 'skull', 'bone_A', 'bone_B'], R - 4, R - 1.5, [0.8, 1.1]);
+
+    const crypt = placeProp(scene, 'crypt', 0, R + 12, Math.PI, 1.6);
+    crypt.position.x = (rand() - 0.5) * 8;
+    placeProp(scene, 'arch_gate', 0, -(R + 1.2), 0, 1.2);
+
+    // 랜턴: 노을·밤에는 불을 켠다.
+    const lanterns = 8;
+    for (let i = 0; i < lanterns; i++) {
+      const a = (i / lanterns) * Math.PI * 2 + Math.PI / lanterns;
+      const x = Math.cos(a) * (R + 2.2);
+      const z = Math.sin(a) * (R + 2.2);
+      placeProp(scene, 'post_lantern', x, z, -a + Math.PI / 2, 1.2);
+      if (t.lantern > 0 && i % 2 === 0) {
+        const light = new THREE.PointLight(0xffa850, t.lantern, 14, 1.6);
+        light.position.set(x, 2.6, z);
+        scene.add(light);
+      }
+    }
+  }
+
+  /** 용암 둥지: 바위 경계, 용암 웅덩이와 균열, 해골과 촛불 */
+  private buildLavaProps(rand: () => number, t: ThemeColors): void {
+    const scene = this.scene;
+    const R = this.arenaRadius;
+    const rockMat = mat(0x3a3436);
     const count = Math.floor(R * 1.6);
     for (let i = 0; i < count; i++) {
       const a = (i / count) * Math.PI * 2;
@@ -1453,52 +1598,37 @@ export class Battle {
       rock.receiveShadow = true;
       scene.add(rock);
     }
-
-    if (boss) {
-      const lava = mat(0xff5a1f, 0xff4a0f, 1.6);
-      for (let i = 0; i < 8; i++) {
-        const a = (i / 8) * Math.PI * 2 + 0.3;
-        const pillar = box(2, 8 + rand() * 6, 2, mat(0x3a3436));
-        pillar.position.set(Math.cos(a) * (R + 6), 4, Math.sin(a) * (R + 6));
-        pillar.rotation.y = rand() * 3;
-        scene.add(pillar);
-        const pool = new THREE.Mesh(circleGeo, lava);
-        pool.rotation.x = -Math.PI / 2;
-        pool.scale.setScalar(2 + rand() * 3);
-        pool.position.set(Math.cos(a + 0.4) * (R + 12 + rand() * 10), 0.03, Math.sin(a + 0.4) * (R + 12 + rand() * 10));
-        scene.add(pool);
+    const lavaMat = mat(0xff5a1f, 0xff4a0f, 2.2);
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 + 0.3;
+      const pillar = box(2, 8 + rand() * 6, 2, rockMat);
+      pillar.position.set(Math.cos(a) * (R + 6), 4, Math.sin(a) * (R + 6));
+      pillar.rotation.y = rand() * 3;
+      scene.add(pillar);
+      const pool = new THREE.Mesh(circleGeo, lavaMat);
+      pool.rotation.x = -Math.PI / 2;
+      pool.scale.setScalar(2 + rand() * 3);
+      pool.position.set(Math.cos(a + 0.4) * (R + 12 + rand() * 10), 0.03, Math.sin(a + 0.4) * (R + 12 + rand() * 10));
+      scene.add(pool);
+      if (i % 2 === 0) {
+        const light = new THREE.PointLight(0xff5a1a, t.lantern, 18, 1.5);
+        light.position.set(pool.position.x, 1.5, pool.position.z);
+        scene.add(light);
       }
-      for (let i = 0; i < 14; i++) {
-        const crack = box(0.25, 0.02, 3 + rand() * 5, lava);
-        const a = rand() * Math.PI * 2;
-        const r = 4 + rand() * (R - 8);
-        crack.position.set(Math.cos(a) * r, 0.02, Math.sin(a) * r);
-        crack.rotation.y = rand() * Math.PI;
-        scene.add(crack);
-      }
-    } else {
-      const trunk = mat(0x6b4a2a);
-      const leaves = [mat(0x3f7a35), mat(0x4f8a3a), mat(0x356b30)];
-      for (let i = 0; i < 70; i++) {
-        const a = rand() * Math.PI * 2;
-        const r = R + 4 + rand() * 40;
-        const s = 0.8 + rand() * 0.9;
-        const t = cyl(0.25 * s, 0.35 * s, 1.6 * s, 6, trunk);
-        t.position.set(Math.cos(a) * r, 0.8 * s, Math.sin(a) * r);
-        scene.add(t);
-        const l = cone(1.4 * s, 3.2 * s, 7, leaves[i % 3]);
-        l.position.set(t.position.x, 3.0 * s, t.position.z);
-        scene.add(l);
-      }
-      const stone = mat(0x9a9890);
-      for (let i = 0; i < 26; i++) {
-        const a = rand() * Math.PI * 2;
-        const r = R + 2 + rand() * 12;
-        const g = box(0.7, 1.1, 0.25, stone);
-        g.position.set(Math.cos(a) * r, 0.5, Math.sin(a) * r);
-        g.rotation.set((rand() - 0.5) * 0.3, rand() * 3, (rand() - 0.5) * 0.3);
-        scene.add(g);
-      }
+    }
+    for (let i = 0; i < 14; i++) {
+      const crack = box(0.25, 0.02, 3 + rand() * 5, lavaMat);
+      const a = rand() * Math.PI * 2;
+      const r = 4 + rand() * (R - 8);
+      crack.position.set(Math.cos(a) * r, 0.02, Math.sin(a) * r);
+      crack.rotation.y = rand() * Math.PI;
+      scene.add(crack);
+    }
+    const names: PropName[] = ['skull', 'ribcage', 'bone_A', 'bone_B', 'candle_triple', 'shrine_candles'];
+    for (let i = 0; i < 26; i++) {
+      const a = rand() * Math.PI * 2;
+      const r = R + 2 + rand() * 12;
+      placeProp(scene, names[Math.floor(rand() * names.length)], Math.cos(a) * r, Math.sin(a) * r, rand() * 6, 1 + rand() * 0.6);
     }
   }
 }

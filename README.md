@@ -35,3 +35,13 @@ src/
   game/   전투(battle), 플레이어, 몬스터 AI, 전투 로직, 모델, 이펙트, 스탯 공식
   ui/     HUD, 마을 화면
 ```
+
+## 에셋 출처
+
+3D 모델은 [Kay Lousberg](https://www.kaylousberg.com)의 KayKit 팩(CC0)을 사용합니다.
+
+- KayKit Character Pack: Adventurers 1.0
+- KayKit Character Pack: Skeletons 1.0
+- KayKit Halloween Bits 1.0
+
+라이선스 원문은 `public/assets/LICENSE-KayKit-*.txt`에 있습니다.
