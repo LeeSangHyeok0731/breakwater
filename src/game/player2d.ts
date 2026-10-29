@@ -3,6 +3,7 @@ import type { Input } from '../core/input';
 import type { SkillDef } from '../data/skills';
 import { MELEE_TYPES, type WeaponDef } from '../data/weapons';
 import { ORIGIN_X } from './assets2d';
+import { createWeaponSprites, WEAPON_ORIGIN } from './weaponSprites';
 import { DEPTH } from './fx';
 import type { Derived } from './stats';
 
@@ -52,6 +53,9 @@ export interface Buff {
   speedMul?: number;
   time: number;
 }
+
+/** 칼 휘두르기 대신 무기 그림이 움직이는 원거리 동작 */
+const RANGED_ACTIONS: ReadonlySet<ActionKind> = new Set(['shoot', 'volley', 'rapid', 'snipe', 'barrage', 'manaball', 'cast', 'laser']);
 
 /** 1m를 몇 픽셀로 보는가 (데이터의 m/s 이동속도를 픽셀로 바꿀 때) */
 export const PX_PER_M = 24;
@@ -110,6 +114,13 @@ export class Player {
   private shieldFx: Phaser.GameObjects.Arc;
   private chargeBg: Phaser.GameObjects.Rectangle;
   private chargeFill: Phaser.GameObjects.Rectangle;
+  /** 손에 든 활·총·스태프 */
+  private held: Phaser.GameObjects.Image;
+  private flash: Phaser.GameObjects.Image;
+  private orb: Phaser.GameObjects.Image;
+  /** 무기 끝 (투사체가 나가는 곳) */
+  private tip = { x: 0, y: 0 };
+  private tipValid = false;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -134,6 +145,10 @@ export class Player {
 
     this.guardFx = scene.add.circle(x, y, 16, 0x9fd8ff, 0).setStrokeStyle(2, 0x9fd8ff, 0.8).setDepth(DEPTH.fx).setVisible(false);
     this.shieldFx = scene.add.circle(x, y, 22, 0x5fc8ff, 0.12).setStrokeStyle(1, 0xbff0ff, 0.6).setDepth(DEPTH.fx).setVisible(false);
+    createWeaponSprites(scene);
+    this.held = scene.add.image(x, y, 'w-staff').setDepth(DEPTH.player + 1).setVisible(false);
+    this.flash = scene.add.image(x, y, 'w-flash').setDepth(DEPTH.player + 2).setVisible(false).setBlendMode(Phaser.BlendModes.ADD);
+    this.orb = scene.add.image(x, y, 'dot').setDepth(DEPTH.player + 2).setVisible(false).setTint(0x7fe8ff).setBlendMode(Phaser.BlendModes.ADD);
     // 강화 공격 차징 게이지 (머리 위)
     this.chargeBg = scene.add.rectangle(x, y, 24, 4, 0x140a0a).setDepth(DEPTH.text).setVisible(false);
     this.chargeFill = scene.add.rectangle(x, y, 22, 2, 0x9fd8ff).setOrigin(0, 0.5).setDepth(DEPTH.text).setVisible(false);
@@ -344,17 +359,16 @@ export class Player {
     const a = this.action;
     if (this.dead) this.play('hero-hurt');
     else if (this.hurtTimer > 0.2) this.play('hero-hurt');
-    else if (a) {
-      const melee = ['slash', 'thrust', 'upper', 'whirl', 'sunder', 'waves', 'cleave', 'crescent', 'skyfall', 'hamstring', 'iai'];
+    else if (a && !RANGED_ACTIONS.has(a.kind)) {
       if (a.kind === 'crouchSlash') this.play('hero-crouch-slash', a);
-      else if (a.kind === 'airSlash' || (!this.grounded && melee.includes(a.kind))) this.play('hero-jump-attack', a);
+      else if (a.kind === 'airSlash' || !this.grounded) this.play('hero-jump-attack', a);
       else this.play('hero-attack', a);
     } else if (this.dodgeTime > 0) this.play('hero-run');
     else if (!this.grounded) this.play('hero-jump');
     else if (this.crouching) this.play('hero-crouch');
     else if (Math.abs(this.body.velocity.x) > 20) this.play('hero-run');
     else this.play('hero-idle');
-    if (!a) this.lastAnimAction = null;
+    if (!a || RANGED_ACTIONS.has(a.kind)) this.lastAnimAction = null;
 
     // 프레임마다 몸통 위치가 다른 시트는 기준점을 맞춘다.
     const key = s.anims.currentAnim?.key ?? 'hero-idle';
@@ -370,6 +384,8 @@ export class Player {
     this.shieldFx.setVisible(this.shield > 0 || this.wardHits > 0).setPosition(this.x, this.y);
     this.shieldFx.setStrokeStyle(this.wardHits > 0 ? 2 : 1, this.wardHits > 0 ? 0xffd34a : 0xbff0ff, 0.7);
 
+    this.updateHeld();
+
     const charging = this.charge >= 0;
     this.chargeBg.setVisible(charging);
     this.chargeFill.setVisible(charging);
@@ -384,8 +400,134 @@ export class Player {
     }
   }
 
-  /** 투사체가 나가는 위치 */
+  /**
+   * 손에 든 원거리 무기의 자세. 오른쪽을 볼 때 기준으로
+   * forward: 몸 가운데에서 앞쪽 거리, up: 위로 올림, rot: 시계 방향 회전(라디안).
+   */
+  private updateHeld(): void {
+    const type = this.weapon.def.type;
+    const showWeapon = !this.dead && this.dodgeTime <= 0 && (type === 'bow' || type === 'gun' || type === 'staff');
+    this.held.setVisible(showWeapon);
+    this.flash.setVisible(false);
+    this.orb.setVisible(false);
+    this.tipValid = false;
+    if (!showWeapon) return;
+
+    const a = this.action;
+    const ranged = a && RANGED_ACTIONS.has(a.kind) ? a : null;
+    const t = ranged ? ranged.t : 0;
+    let key = 'w-staff';
+    let forward = 7;
+    let down = 2;
+    let rot = 0;
+    let tipLocal = { x: 0, y: -22 };
+    let flash = false;
+    let orbScale = 0;
+
+    if (type === 'bow') {
+      tipLocal = { x: 12, y: 0 };
+      key = 'w-bow-0';
+      forward = 6;
+      down = 3;
+      rot = 0.35;
+      if (this.charge >= 0) {
+        // 차징: 앞으로 겨누고 당긴 만큼 시위가 뒤로
+        const c = Math.min(1, this.charge / 1.2);
+        key = c < 0.45 ? 'w-bow-1' : 'w-bow-2';
+        forward = 12 - c * 2;
+        down = -1;
+        rot = 0;
+      } else if (ranged) {
+        // 쏘기: 짧게 당겼다가 놓으면서 살짝 밀려난다
+        forward = 12;
+        down = -1;
+        rot = 0;
+        const cycle = ranged.kind === 'volley' ? (t % 0.075) / 0.075 : Math.min(1, t / 0.2);
+        key = cycle < 0.35 ? 'w-bow-2' : 'w-bow-0';
+        if (cycle >= 0.35) forward -= 2 * (1 - cycle);
+      }
+    } else if (type === 'gun') {
+      key = 'w-gun';
+      tipLocal = { x: 14, y: -4 };
+      forward = 9;
+      down = 1;
+      rot = 0.2;
+      if (this.reloadTime > 0) {
+        // 재장전: 총을 아래로 돌려 탄을 채운다
+        rot = 1.1 + Math.sin(this.reloadTime * 10) * 0.15;
+        down = 4;
+        forward = 7;
+      } else if (ranged || this.ads) {
+        forward = this.ads ? 14 : 12;
+        down = -1;
+        rot = 0;
+        if (ranged) {
+          // 반동: 쏠 때마다 총구가 위로 튀었다 돌아온다
+          const period = ranged.kind === 'rapid' ? 0.1 : ranged.kind === 'barrage' ? 0.065 : ranged.kind === 'snipe' ? 99 : 0.14;
+          const since = ranged.kind === 'snipe' ? t - 0.6 : t % period;
+          if (since >= 0 && since < 0.1) {
+            rot = -0.55 * (1 - since / 0.1);
+            forward -= 2 * (1 - since / 0.1);
+            flash = since < 0.05;
+          }
+        }
+      }
+    } else {
+      key = 'w-staff';
+      tipLocal = { x: 0, y: -22 };
+      forward = 8;
+      down = 3;
+      rot = 0.1;
+      if (this.charge >= 0) {
+        // 차징: 머리 위로 들어 끝에 마력을 모은다
+        const c = Math.min(1, this.charge / 1.2);
+        forward = 4;
+        down = -8;
+        rot = -0.25;
+        orbScale = 0.6 + c * 1.4;
+      } else if (ranged?.kind === 'laser') {
+        forward = 8;
+        down = -2;
+        rot = Math.PI / 2;
+        orbScale = 1.2 + Math.sin(t * 40) * 0.2;
+      } else if (ranged) {
+        // 시전: 뒤에서 앞으로 휘두르며 끝이 빛난다
+        const p = Math.min(1, t / Math.max(0.12, ranged.dur * 0.6));
+        const e = 1 - Math.pow(1 - p, 3);
+        rot = -0.5 + e * 1.5;
+        forward = 6 + e * 4;
+        down = 0;
+        orbScale = 1.4 * (1 - p) + 0.4;
+      }
+    }
+
+    const f = this.facing;
+    const [gx, gy] = WEAPON_ORIGIN[key];
+    const hx = this.x + f * forward;
+    const hy = this.y + down;
+    this.held
+      .setTexture(key)
+      .setFlipX(f === -1)
+      .setOrigin(f === 1 ? gx : 1 - gx, gy)
+      .setRotation(rot * f)
+      .setPosition(Math.round(hx), Math.round(hy))
+      .setAlpha(this.sprite.alpha);
+
+    // 무기 끝 위치 (회전 반영)
+    const cos = Math.cos(rot);
+    const sin = Math.sin(rot);
+    this.tip = {
+      x: hx + f * (tipLocal.x * cos - tipLocal.y * sin),
+      y: hy + tipLocal.x * sin + tipLocal.y * cos,
+    };
+    this.tipValid = true;
+    if (flash) this.flash.setVisible(true).setPosition(this.tip.x + f * 3, this.tip.y).setRotation(Math.random());
+    if (orbScale > 0) this.orb.setVisible(true).setPosition(this.tip.x, this.tip.y).setScale(orbScale);
+  }
+
+  /** 투사체가 나가는 위치: 원거리 무기는 무기 끝, 아니면 손 앞 */
   muzzle(): { x: number; y: number } {
+    if (this.tipValid) return { x: this.tip.x, y: this.tip.y };
     return { x: this.x + this.facing * 16, y: this.y - 4 };
   }
 
@@ -396,5 +538,8 @@ export class Player {
     this.shieldFx.destroy();
     this.chargeBg.destroy();
     this.chargeFill.destroy();
+    this.held.destroy();
+    this.flash.destroy();
+    this.orb.destroy();
   }
 }
