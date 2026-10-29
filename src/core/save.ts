@@ -1,5 +1,6 @@
 import { DEFAULT_KEYMAP, type Keymap } from './input';
 import { STARTER_SKILLS } from '../data/skills';
+import type { GearSlot } from '../data/gear';
 
 export interface OwnedWeapon {
   uid: string;
@@ -20,6 +21,9 @@ export interface SaveData {
   learnedSkills: string[];
   /** 공용 패시브 단계 */
   passives: Record<string, number>;
+  /** 보유한 방어구·장신구 id와 부위별 장착 */
+  gear: { owned: string[]; equipped: Partial<Record<GearSlot, string>> };
+  potions: { hp: number; mp: number };
   materials: Record<string, number>;
   cleared: string[];
   sweepTickets: number;
@@ -46,6 +50,8 @@ export function newSave(): SaveData {
     equipped: ['w1', 'w2'],
     learnedSkills: [...STARTER_SKILLS],
     passives: {},
+    gear: { owned: [], equipped: {} },
+    potions: { hp: 0, mp: 0 },
     materials: {},
     cleared: [],
     sweepTickets: 0,
@@ -68,6 +74,8 @@ function normalize(data: Partial<SaveData>): SaveData {
     allocated: { ...base.allocated, ...data.allocated },
     materials: { ...data.materials },
     passives: { ...data.passives },
+    gear: { owned: [...(data.gear?.owned ?? [])], equipped: { ...data.gear?.equipped } },
+    potions: { ...base.potions, ...data.potions },
     keymap: { ...DEFAULT_KEYMAP, ...data.keymap },
     // 새 무기 종류가 추가되면 그 기본 스킬도 배운 상태로 맞춘다.
     learnedSkills: [...new Set([...(data.learnedSkills ?? []), ...STARTER_SKILLS])],

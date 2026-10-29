@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { SLOT_ACTIONS, keyLabel, type Input } from '../core/input';
 import type { SaveData } from '../core/save';
 import { MATERIALS } from '../data/items';
+import { gearBonus, POTION_LIMIT_PER_PHASE } from '../data/gear';
 import { ELITE_MOD, type MonsterKind } from '../data/monsters';
 import type { PhaseDef, Theme } from '../data/phases';
 import { SKILLS, type SkillDef } from '../data/skills';
@@ -191,6 +192,8 @@ export class Battle {
   /** 특별 스테이지 진행 시간 */
   private missionTime = 0;
   private spawnAcc = 0;
+  private potionUsed = { hp: 0, mp: 0 };
+  private potionCd = 0;
   private beam: THREE.Group;
 
   private state: BattleState = 'intro';
@@ -230,7 +233,7 @@ export class Battle {
       const def = WEAPONS[owned.defId];
       return { def, enhance: owned.enhance, slots: buildSlots(save, def.type) };
     });
-    this.player = new Player(derive(this.stats, save.passives), weapons);
+    this.player = new Player(derive(this.stats, save.passives, gearBonus(save.gear.equipped)), weapons);
     this.player.pos.set(0, 0, -this.arenaRadius * 0.35);
     this.player.yaw = 0;
     this.player.animate(0);
@@ -280,6 +283,7 @@ export class Battle {
     p.updateTimers(dt);
     this.updateAim();
     updatePlayerCombat(this, dt);
+    this.usePotions(dt);
     p.updateMovement(dt, input, this.arenaRadius);
     p.animate(dt);
 
@@ -341,6 +345,49 @@ export class Battle {
     this.unsubscribeLock();
     this.effects.clear();
     this.hud.destroy();
+  }
+
+  /** 포션은 세이브에서 바로 빠진다 (실패해도 돌려받지 않는다). */
+  private usePotions(dt: number): void {
+    this.potionCd = Math.max(0, this.potionCd - dt);
+    const p = this.player;
+    for (const [action, id] of [
+      ['item1', 'hp'],
+      ['item2', 'mp'],
+    ] as const) {
+      if (!this.input.pressed(action) || p.dead || this.potionCd > 0) continue;
+      const name = id === 'hp' ? '체력 포션' : '마나 포션';
+      if (this.save.potions[id] <= 0) {
+        this.hud.notify(`${name}이 없습니다`);
+        continue;
+      }
+      if (this.potionUsed[id] >= POTION_LIMIT_PER_PHASE) {
+        this.hud.notify(`이번 페이즈에서는 ${name}을 더 쓸 수 없습니다`);
+        continue;
+      }
+      const head = this.tmp2.set(p.pos.x, p.pos.y + 2.1, p.pos.z);
+      if (id === 'hp') {
+        if (p.hp >= p.derived.maxHp) {
+          this.hud.notify('HP가 가득 찼습니다');
+          continue;
+        }
+        const heal = Math.round(p.derived.maxHp * 0.35);
+        p.hp = Math.min(p.derived.maxHp, p.hp + heal);
+        this.effects.text(head, `+${heal}`, 'heal');
+        this.effects.burst(p.pos.clone().setY(1.2), 0x6aff8a, 12, 3, 0.1, 0.6, -2);
+      } else {
+        if (p.mp >= p.derived.maxMp) {
+          this.hud.notify('마나가 가득 찼습니다');
+          continue;
+        }
+        p.mp = Math.min(p.derived.maxMp, p.mp + 60);
+        this.effects.text(head, '+60 마나', 'info');
+        this.effects.burst(p.pos.clone().setY(1.2), 0x6ab8ff, 12, 3, 0.1, 0.6, -2);
+      }
+      this.save.potions[id]--;
+      this.potionUsed[id]++;
+      this.potionCd = 0.8;
+    }
   }
 
   // ───────────────────────── 카메라·조준 ─────────────────────────
@@ -1321,6 +1368,12 @@ export class Battle {
       charge: p.charge >= 0 ? Math.min(1, p.charge / (w.def.type === 'dao' ? 1 : 1.2)) : -1,
       ammo: this.ammoText(),
       ads: p.ads,
+      potions: {
+        hp: Math.min(this.save.potions.hp, POTION_LIMIT_PER_PHASE - this.potionUsed.hp),
+        mp: Math.min(this.save.potions.mp, POTION_LIMIT_PER_PHASE - this.potionUsed.mp),
+        hpKey: keyLabel(keymap.item1),
+        mpKey: keyLabel(keymap.item2),
+      },
       phaseName: `${this.phase.id} ${this.phase.name}`,
       waveText,
       gold: this.pending.gold,

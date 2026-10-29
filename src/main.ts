@@ -61,8 +61,9 @@ function onBattleEnd(o: BattleOutcome): void {
     for (const [id, n] of Object.entries(o.materials)) save.materials[id] = (save.materials[id] ?? 0) + n;
     save.sweepTickets += o.sweepTickets;
     if (!save.cleared.includes(o.phase.id)) save.cleared.push(o.phase.id);
-    writeSave(save);
   }
+  // 실패해도 전투 중 사용한 포션은 반영해야 하므로 항상 저장한다.
+  writeSave(save);
   const current = battle;
   current?.hud.showResult(
     {

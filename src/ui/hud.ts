@@ -37,6 +37,8 @@ export interface HudState {
   ammo: string | null;
   /** 총 정조준 중 */
   ads: boolean;
+  /** 남은 포션 (이번 페이즈에서 더 쓸 수 있는 수) */
+  potions: { hp: number; mp: number; hpKey: string; mpKey: string };
   phaseName: string;
   waveText: string;
   gold: number;
@@ -141,6 +143,8 @@ export class Hud {
   private mpFill: HTMLDivElement;
   private mpText: HTMLSpanElement;
   private wardWrap: HTMLDivElement;
+  private potionHp: HTMLSpanElement;
+  private potionMp: HTMLSpanElement;
   private wardPips: HTMLSpanElement[] = [];
   private dodge: HTMLDivElement;
   private buffWrap: HTMLDivElement;
@@ -218,6 +222,9 @@ export class Hud {
     const mpBar = el('div', 'hud-bar hud-mp', vit);
     this.mpFill = el('div', 'hud-bar-fill', mpBar);
     this.mpText = el('span', 'hud-bar-text', mpBar);
+    const pots = el('div', 'hud-potions', vit);
+    this.potionHp = el('span', 'hud-potion hp', pots);
+    this.potionMp = el('span', 'hud-potion mp', pots);
 
     // 하단 중앙: 토스트 + 스킬 슬롯
     const bc = el('div', 'hud-bottomcenter', w);
@@ -384,6 +391,10 @@ export class Hud {
       setStyle(this.ammoEl, 'display', 'none');
     }
     setClass(this.cross, 'ads', s.ads);
+    setText(this.potionHp, `${s.potions.hpKey} 체력 포션 ${s.potions.hp}`);
+    setText(this.potionMp, `${s.potions.mpKey} 마나 포션 ${s.potions.mp}`);
+    setClass(this.potionHp, 'empty', s.potions.hp <= 0);
+    setClass(this.potionMp, 'empty', s.potions.mp <= 0);
   }
 
   notify(text: string, duration = 1.2): void {

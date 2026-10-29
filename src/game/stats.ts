@@ -1,6 +1,7 @@
 import type { SaveData } from '../core/save';
 import type { WeaponDef, WeaponType } from '../data/weapons';
 import { passiveBonus, type PassiveBonus } from '../data/passives';
+import { gearBonus, type GearStats } from '../data/gear';
 
 export interface Stats {
   str: number;
@@ -16,13 +17,15 @@ export const CRIT_DAMAGE = 2.0;
 /** 스탯으로 얻는 이동속도 증가 상한 */
 export const DEX_SPEED_CAP = 0.5;
 
+/** 레벨 자동 상승 + 분배한 포인트 + 장비 보너스 */
 export function totalStats(save: SaveData): Stats {
   const auto = BASE_STAT + (save.level - 1);
+  const g = gearBonus(save.gear.equipped);
   return {
-    str: auto + save.allocated.str,
-    dex: auto + save.allocated.dex,
-    int: auto + save.allocated.int,
-    hp: auto + save.allocated.hp,
+    str: auto + save.allocated.str + g.str,
+    dex: auto + save.allocated.dex + g.dex,
+    int: auto + save.allocated.int + g.int,
+    hp: auto + save.allocated.hp + g.hp,
   };
 }
 
@@ -37,12 +40,16 @@ export interface Derived {
   passive: PassiveBonus;
 }
 
-export function derive(s: Stats, passives: Record<string, number> = {}): Derived {
+export function derive(s: Stats, passives: Record<string, number> = {}, gear: GearStats = {}): Derived {
+  // 장신구 효과는 같은 종류의 패시브 보너스에 더한다.
   const pb = passiveBonus(passives);
+  pb.regenMul += gear.regenMul ?? 0;
+  pb.speedMul += gear.speedMul ?? 0;
+  pb.critBonus += gear.critBonus ?? 0;
   // 전환 패시브로 얻은 마력은 마나에만 쓴다. 마법 피해에는 원래 마력만 반영된다.
   const manaInt = s.int + s.str * pb.strToInt + s.dex * pb.dexToInt;
   return {
-    maxHp: Math.round((100 + s.hp * 10) * (1 + pb.hpMul)),
+    maxHp: Math.round((100 + s.hp * 10) * (1 + pb.hpMul) + (gear.flatHp ?? 0)),
     maxMp: Math.round(50 + manaInt * 5),
     mpRegen: (2 + manaInt * 0.05) * (1 + pb.regenMul),
     moveSpeed: 5 * (1 + Math.min(s.dex * 0.005, DEX_SPEED_CAP)),
