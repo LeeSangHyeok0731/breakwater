@@ -1,10 +1,11 @@
 import { exportSave, importSave, type SaveData } from '../core/save';
-import { keyLabel, SLOT_ACTIONS, type Action } from '../core/input';
+import { DEFAULT_KEYMAP, keyLabel, SLOT_ACTIONS, type Action } from '../core/input';
 import { addExp, derive, DEX_SPEED_CAP, enhanceMultiplier, expToNext, resetCost, totalStats, type Stats } from '../game/stats';
 import { PHASES, SWEEP_RATE, SWEEP_TICKET_PRICE, type PhaseDef } from '../data/phases';
 import { skillsFor, STARTER_SKILLS } from '../data/skills';
 import { enhanceCost, GRADES, MAX_ENHANCE, WEAPON_TYPE_NAME, WEAPONS, type WeaponDef } from '../data/weapons';
 import { MATERIALS } from '../data/items';
+import { PASSIVES, type PassiveDef } from '../data/passives';
 
 export interface VillageCallbacks {
   onStartPhase(phaseId: string): void;
@@ -16,13 +17,14 @@ export interface VillageCallbacks {
   onReset(): void;
 }
 
-type Tab = 'phase' | 'char' | 'skill' | 'enhance' | 'shop' | 'settings';
+type Tab = 'phase' | 'char' | 'equip' | 'skill' | 'enhance' | 'shop' | 'settings';
 type ConfirmKey = 'statReset' | 'skillReset' | 'fullReset';
 type StatKey = keyof Stats;
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'phase', label: '출정' },
   { id: 'char', label: '캐릭터' },
+  { id: 'equip', label: '장비' },
   { id: 'skill', label: '스킬' },
   { id: 'enhance', label: '강화' },
   { id: 'shop', label: '상점' },
@@ -97,6 +99,9 @@ export class VillageUI {
   private confirmTimer = 0;
   private toastTimer = 0;
   private importError = '';
+  /** 키 변경 대기 중인 동작 */
+  private rebinding: Action | null = null;
+  private onRebindKey = (e: KeyboardEvent): void => this.handleRebindKey(e);
 
   constructor(
     root: HTMLElement,
@@ -123,6 +128,7 @@ export class VillageUI {
         if (this.tab === t.id) return;
         this.tab = t.id;
         this.clearConfirm();
+        this.stopRebind();
         this.importError = '';
         this.refresh();
         this.body.scrollTop = 0;
@@ -139,9 +145,11 @@ export class VillageUI {
   hide(): void {
     this.wrap.style.display = 'none';
     this.clearConfirm();
+    this.stopRebind();
   }
 
   destroy(): void {
+    this.stopRebind();
     window.clearTimeout(this.confirmTimer);
     window.clearTimeout(this.toastTimer);
     this.wrap.remove();
@@ -161,6 +169,9 @@ export class VillageUI {
         break;
       case 'char':
         this.renderChar(save);
+        break;
+      case 'equip':
+        this.renderEquip(save);
         break;
       case 'skill':
         this.renderSkills(save);
@@ -311,7 +322,7 @@ export class VillageUI {
 
   private renderChar(save: SaveData): void {
     const stats = totalStats(save);
-    const d = derive(stats);
+    const d = derive(stats, save.passives);
 
     const s = this.section('스탯', `남은 포인트 ${save.statPoints}`);
     for (const info of STAT_INFO) {
@@ -337,10 +348,12 @@ export class VillageUI {
       if (note) el('span', 'v-muted', ve, `  ${note}`);
     };
     kv('최대 HP', fmt(d.maxHp));
-    kv('최대 마나', fmt(d.maxMp));
+    kv('최대 마나', fmt(d.maxMp), d.manaInt > stats.int ? `(마나용 마력 ${d.manaInt.toFixed(1)})` : undefined);
     kv('마나 회복', `초당 ${d.mpRegen.toFixed(2)}`);
     const bonus = Math.min(stats.dex * 0.005, DEX_SPEED_CAP);
     kv('이동속도', `${d.moveSpeed.toFixed(2)} m/s`, `(스탯 보너스 +${(bonus * 100).toFixed(1)}%, 최대 +${DEX_SPEED_CAP * 100}%)`);
+    if (d.passive.speedMul > 0) kv('패시브 이동속도', `+${(d.passive.speedMul * 100).toFixed(0)}%`, '(상한 없음)');
+    if (d.passive.critBonus > 0) kv('치명타 확률 보너스', `+${(d.passive.critBonus * 100).toFixed(0)}%`);
 
     const rs = this.section('스탯 초기화', '분배한 포인트를 모두 돌려받습니다');
     const cost = resetCost(save.level);
@@ -381,6 +394,65 @@ export class VillageUI {
     this.toast(`스탯을 초기화했습니다. 포인트 ${total} 반환`);
   }
 
+  // ---- 장비 ----
+
+  private renderEquip(save: SaveData): void {
+    const s = this.section('장착 무기', '전투 중 무기 교체 키로 두 무기를 바꿔 씁니다');
+    const slots = el('div', 'v-equip-slots', s);
+    save.equipped.forEach((uid, i) => {
+      const w = save.weapons.find((x) => x.uid === uid);
+      const def = w ? WEAPONS[w.defId] : undefined;
+      const box = el('div', 'v-equip-slot', slots);
+      el('span', 'v-muted', box, `무기 ${i + 1}`);
+      const name = el('span', 'v-card-title', box, def ? `${def.name}${w && w.enhance > 0 ? ` +${w.enhance}` : ''}` : '없음');
+      if (def) name.style.color = GRADES[def.grade].color;
+      if (def) el('span', 'v-muted', box, WEAPON_TYPE_NAME[def.type]);
+    });
+
+    const list = this.section('보유 무기', `${save.weapons.length}개`);
+    for (const w of save.weapons) {
+      const def = WEAPONS[w.defId];
+      if (!def) continue;
+      const card = el('div', 'v-card', list);
+      const head = el('div', 'v-card-head', card);
+      const name = el('span', 'v-card-title', head, def.name);
+      name.style.color = GRADES[def.grade].color;
+      if (w.enhance > 0) el('span', 'v-enh', head, `+${w.enhance}`);
+      el('span', 'v-muted', head, `${GRADES[def.grade].name} ${WEAPON_TYPE_NAME[def.type]}`);
+      const slot = save.equipped.indexOf(w.uid);
+      if (slot >= 0) el('span', 'v-badge clear', head, `무기 ${slot + 1}`);
+      el('p', 'v-desc', card, def.desc);
+      this.weaponMeta(card, def);
+      const actions = el('div', 'v-actions', card);
+      for (const i of [0, 1]) {
+        button(actions, `무기 ${i + 1}에 장착`, i === 0 ? 'primary' : '', save.equipped[i] !== w.uid, () => this.equip(w.uid, i));
+      }
+    }
+    el('p', 'v-muted v-note', list, '새 무기는 상점에서 사거나 재료로 교환해 얻습니다.');
+  }
+
+  private weaponMeta(card: HTMLElement, def: WeaponDef): void {
+    const meta = el('div', 'v-meta', card);
+    el('span', '', meta, `공격력 ${def.attack}`);
+    el('span', '', meta, def.type === 'gun' ? `치명타 보정 ${(def.critChance * 100).toFixed(0)}%` : `치명타 ${(def.critChance * 100).toFixed(0)}%`);
+    if (def.magazine) el('span', '', meta, `탄창 ${def.magazine}발`);
+  }
+
+  private equip(uid: string, slot: number): void {
+    const save = this.getSave();
+    const other = 1 - slot;
+    // 다른 칸에 이미 있으면 두 칸을 맞바꾼다.
+    if (save.equipped[other] === uid) save.equipped[other] = save.equipped[slot];
+    save.equipped[slot] = uid;
+    this.changed();
+  }
+
+  private addWeapon(defId: string): void {
+    const save = this.getSave();
+    const next = save.weapons.reduce((n, w) => Math.max(n, Number(w.uid.slice(1)) || 0), 0) + 1;
+    save.weapons.push({ uid: `w${next}`, defId, enhance: 0 });
+  }
+
   // ---- 스킬 ----
 
   private equippedDefs(save: SaveData): WeaponDef[] {
@@ -394,6 +466,7 @@ export class VillageUI {
   }
 
   private renderSkills(save: SaveData): void {
+    this.renderPassives(save);
     const seen = new Set<string>();
     for (const def of this.equippedDefs(save)) {
       if (seen.has(def.type)) continue;
@@ -434,9 +507,9 @@ export class VillageUI {
       `배운 스킬은 해당 무기의 슬롯에 목록 순서대로 자동 배치됩니다 (${SLOT_ACTIONS.map((a) => keyLabel(this.getSave().keymap[a])).join(' ')}).`,
     );
 
-    const rs = this.section('스킬 초기화', '기본 스킬을 제외한 스킬 포인트를 모두 돌려받습니다');
+    const rs = this.section('스킬 초기화', '기본 스킬을 제외한 스킬과 패시브의 포인트를 모두 돌려받습니다');
     const cost = resetCost(save.level);
-    const refundable = save.learnedSkills.filter((id) => !STARTER_SKILLS.includes(id)).length;
+    const refundable = save.learnedSkills.filter((id) => !STARTER_SKILLS.includes(id)).length + this.passivePoints(save);
     const confirming = this.confirming === 'skillReset';
     const actions = el('div', 'v-actions', rs);
     button(
@@ -452,6 +525,42 @@ export class VillageUI {
     else if (save.gold < cost) el('span', 'v-short', actions, '골드가 부족합니다');
   }
 
+  private passivePoints(save: SaveData): number {
+    return Object.values(save.passives).reduce((a, b) => a + b, 0);
+  }
+
+  private renderPassives(save: SaveData): void {
+    const s = this.section('공용 패시브', '무기와 상관없이 항상 적용됩니다');
+    const grid = el('div', 'v-passives', s);
+    for (const def of PASSIVES) {
+      const rank = save.passives[def.id] ?? 0;
+      const maxed = rank >= def.maxRank;
+      const card = el('div', `v-passive${rank > 0 ? ' learned' : ''}`, grid);
+      const head = el('div', 'v-card-head', card);
+      el('span', 'v-card-title', head, def.name);
+      const pips = el('span', 'v-pips', head);
+      for (let i = 0; i < def.maxRank; i++) el('span', `v-pip${i < rank ? ' on' : ''}`, pips);
+      el('p', 'v-desc', card, def.desc);
+      const actions = el('div', 'v-actions', card);
+      if (maxed) {
+        el('span', 'v-muted', actions, '최대 단계');
+        continue;
+      }
+      const canLevel = save.level >= def.reqLevel;
+      button(actions, rank === 0 ? '배우기 (1)' : `강화 (1)`, 'small', save.skillPoints >= 1 && canLevel, () => this.rankUp(def));
+      if (!canLevel) el('span', 'v-muted', actions, `Lv ${def.reqLevel}부터`);
+    }
+  }
+
+  private rankUp(def: PassiveDef): void {
+    const save = this.getSave();
+    const rank = save.passives[def.id] ?? 0;
+    if (save.skillPoints < 1 || rank >= def.maxRank || save.level < def.reqLevel) return;
+    save.skillPoints -= 1;
+    save.passives[def.id] = rank + 1;
+    this.changed();
+  }
+
   private learn(id: string): void {
     const save = this.getSave();
     if (save.skillPoints < 1 || save.learnedSkills.includes(id)) return;
@@ -465,9 +574,10 @@ export class VillageUI {
     const cost = resetCost(save.level);
     if (save.gold < cost) return;
     const keep = save.learnedSkills.filter((id) => STARTER_SKILLS.includes(id));
-    const refund = save.learnedSkills.length - keep.length;
+    const refund = save.learnedSkills.length - keep.length + this.passivePoints(save);
     save.gold -= cost;
     save.learnedSkills = keep;
+    save.passives = {};
     save.skillPoints += refund;
     this.changed();
     this.toast(`스킬을 초기화했습니다. 스킬 포인트 ${refund} 반환`);
@@ -554,7 +664,59 @@ export class VillageUI {
   // ---- 상점 ----
 
   private renderShop(save: SaveData): void {
-    const s = this.section('상점');
+    const owned = new Set(save.weapons.map((w) => w.defId));
+
+    const ws = this.section('무기 상점', '골드로 삽니다');
+    for (const def of Object.values(WEAPONS)) {
+      if (def.price === undefined) continue;
+      const card = el('div', 'v-card', ws);
+      const head = el('div', 'v-card-head', card);
+      const name = el('span', 'v-card-title', head, def.name);
+      name.style.color = GRADES[def.grade].color;
+      el('span', 'v-muted', head, `${GRADES[def.grade].name} ${WEAPON_TYPE_NAME[def.type]}`);
+      if (owned.has(def.id)) el('span', 'v-badge clear', head, '보유');
+      el('p', 'v-desc', card, def.desc);
+      this.weaponMeta(card, def);
+      const actions = el('div', 'v-actions', card);
+      if (owned.has(def.id)) continue;
+      const price = def.price;
+      button(actions, `구매 (${fmt(price)} 골드)`, 'primary', save.gold >= price, () => {
+        const sv = this.getSave();
+        if (sv.gold < price) return;
+        sv.gold -= price;
+        this.addWeapon(def.id);
+        this.changed();
+        this.toast(`${def.name}을(를) 샀습니다. 장비 탭에서 장착하세요`);
+      });
+      if (save.gold < price) el('span', 'v-short', actions, '골드가 부족합니다');
+    }
+
+    const xs = this.section('재료 교환', '모은 재료로 강력한 무기와 바꿉니다');
+    for (const def of Object.values(WEAPONS)) {
+      const ex = def.exchange;
+      if (!ex) continue;
+      const card = el('div', 'v-card', xs);
+      const head = el('div', 'v-card-head', card);
+      const name = el('span', 'v-card-title', head, def.name);
+      name.style.color = GRADES[def.grade].color;
+      el('span', 'v-muted', head, `${GRADES[def.grade].name} ${WEAPON_TYPE_NAME[def.type]}`);
+      if (owned.has(def.id)) el('span', 'v-badge clear', head, '보유');
+      el('p', 'v-desc', card, def.desc);
+      this.weaponMeta(card, def);
+      if (owned.has(def.id)) continue;
+      const costs = el('div', 'v-costs', card);
+      let ok = save.gold >= ex.gold;
+      el('span', save.gold >= ex.gold ? 'v-cost' : 'v-cost short', costs, `골드 ${fmt(save.gold)} / ${fmt(ex.gold)}`);
+      for (const [id, need] of Object.entries(ex.materials)) {
+        const have = save.materials[id] ?? 0;
+        if (have < need) ok = false;
+        el('span', have >= need ? 'v-cost' : 'v-cost short', costs, `${materialName(id)} ${have} / ${need}`);
+      }
+      const actions = el('div', 'v-actions', card);
+      button(actions, '교환', 'primary', ok, () => this.exchange(def));
+    }
+
+    const s = this.section('소모품');
     const card = el('div', 'v-card', s);
     const head = el('div', 'v-card-head', card);
     el('span', 'v-card-title', head, '소탕권');
@@ -570,7 +732,21 @@ export class VillageUI {
       this.toast('소탕권 1장을 구매했습니다');
     });
     if (save.gold < SWEEP_TICKET_PRICE) el('span', 'v-short', actions, '골드가 부족합니다');
-    el('p', 'v-muted v-note', s, '무기·방어구·장신구·포션은 이후 업데이트에서 추가됩니다.');
+    el('p', 'v-muted v-note', s, '방어구·장신구·포션은 이후 업데이트에서 추가됩니다.');
+  }
+
+  private exchange(def: WeaponDef): void {
+    const save = this.getSave();
+    const ex = def.exchange;
+    if (!ex || save.weapons.some((w) => w.defId === def.id) || save.gold < ex.gold) return;
+    for (const [id, need] of Object.entries(ex.materials)) {
+      if ((save.materials[id] ?? 0) < need) return;
+    }
+    save.gold -= ex.gold;
+    for (const [id, need] of Object.entries(ex.materials)) save.materials[id] -= need;
+    this.addWeapon(def.id);
+    this.changed();
+    this.toast(`${def.name}을(를) 얻었습니다. 장비 탭에서 장착하세요`);
   }
 
   // ---- 설정 ----
@@ -594,12 +770,16 @@ export class VillageUI {
     // 드래그 중에는 다시 그리지 않고, 놓을 때 저장한다.
     slider.addEventListener('change', () => this.cb.onSaveChanged());
 
-    const ks = this.section('키 설정', '키 변경은 이후 업데이트에서 지원됩니다');
+    const ks = this.section('키 설정', '키를 누른 뒤 바꿀 키를 입력하세요 (Esc: 취소)');
     const grid = el('div', 'v-kv keys', ks);
     for (const [action, label] of Object.entries(ACTION_LABELS) as [Action, string][]) {
       el('span', 'v-kv-k', grid, label);
       const v = el('span', 'v-kv-v', grid);
-      el('span', 'v-key', v, keyLabel(save.keymap[action]));
+      const listening = this.rebinding === action;
+      const b = button(v, listening ? '키를 누르세요...' : keyLabel(save.keymap[action]), `small v-keybtn${listening ? ' listening' : ''}`, true, () =>
+        this.startRebind(action),
+      );
+      b.title = '클릭해서 변경';
     }
     const fixed: [string, string][] = [
       ['기본 공격', '좌클릭'],
@@ -611,6 +791,14 @@ export class VillageUI {
       const v = el('span', 'v-kv-v', grid);
       el('span', 'v-key', v, key);
     }
+
+    const kr = el('div', 'v-actions', ks);
+    button(kr, '기본 키로 되돌리기', 'small', true, () => {
+      this.stopRebind();
+      this.getSave().keymap = { ...DEFAULT_KEYMAP };
+      this.changed();
+      this.toast('키 설정을 기본값으로 되돌렸습니다');
+    });
 
     const ds = this.section('세이브 데이터', '진행 상황은 브라우저에 자동 저장됩니다');
     const actions = el('div', 'v-actions', ds);
@@ -628,6 +816,40 @@ export class VillageUI {
       this.toast('새로 시작합니다');
     });
     if (this.importError) el('p', 'v-short v-note', ds, `불러오기 실패: ${this.importError}`);
+  }
+
+  private startRebind(action: Action): void {
+    this.rebinding = action;
+    window.removeEventListener('keydown', this.onRebindKey, true);
+    window.addEventListener('keydown', this.onRebindKey, true);
+    this.refresh();
+  }
+
+  private stopRebind(): void {
+    if (!this.rebinding) return;
+    this.rebinding = null;
+    window.removeEventListener('keydown', this.onRebindKey, true);
+  }
+
+  /** 다른 동작이 쓰던 키를 고르면 두 동작의 키를 맞바꾼다. */
+  private handleRebindKey(e: KeyboardEvent): void {
+    const action = this.rebinding;
+    if (!action) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.code === 'Escape') {
+      this.stopRebind();
+      this.refresh();
+      return;
+    }
+    const keymap = this.getSave().keymap;
+    const prev = keymap[action];
+    const owner = (Object.keys(keymap) as Action[]).find((a) => a !== action && keymap[a] === e.code);
+    if (owner) keymap[owner] = prev;
+    keymap[action] = e.code;
+    this.stopRebind();
+    this.changed();
+    if (owner) this.toast(`${ACTION_LABELS[owner]}의 키와 맞바꿨습니다`);
   }
 
   private async handleImport(): Promise<void> {

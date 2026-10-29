@@ -17,6 +17,8 @@ interface Fading {
   fromScale: number;
   toScale: number;
   startOpacity: number;
+  /** 크기를 건드리지 않는다 (늘려 놓은 메시) */
+  keepScale?: boolean;
 }
 
 interface FloatingText {
@@ -29,6 +31,7 @@ interface FloatingText {
 export type TextKind = 'normal' | 'crit' | 'player' | 'info' | 'heal' | 'quiet';
 
 const particleGeo = new THREE.IcosahedronGeometry(1, 0);
+const tracerGeo = new THREE.CylinderGeometry(1, 1, 1, 5, 1, true).translate(0, 0.5, 0);
 const particleMats = new Map<number, THREE.MeshBasicMaterial>();
 function particleMat(color: number): THREE.MeshBasicMaterial {
   let m = particleMats.get(color);
@@ -133,6 +136,26 @@ export class Effects {
     this.fading.push({ obj: m, material, life: dur, maxLife: dur, fromScale: radius * 0.6, toScale: radius * 1.1, startOpacity: 0.9 });
   }
 
+  /** 두 점을 잇는 빛줄기 (총알 궤적, 화살비) */
+  tracer(from: THREE.Vector3, to: THREE.Vector3, color: number, width = 0.03, dur = 0.08): void {
+    const material = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.9,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const dir = to.clone().sub(from);
+    const len = dir.length();
+    if (len < 0.01) return;
+    const m = new THREE.Mesh(tracerGeo, material);
+    m.position.copy(from);
+    m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
+    m.scale.set(width, len, width);
+    this.scene.add(m);
+    this.fading.push({ obj: m, material, life: dur, maxLife: dur, fromScale: 1, toScale: 1, startOpacity: 0.9, keepScale: true });
+  }
+
   text(pos: THREE.Vector3, text: string, kind: TextKind): void {
     const el = document.createElement('div');
     el.className = `float-text ft-${kind}`;
@@ -165,14 +188,14 @@ export class Effects {
         this.scene.remove(f.obj);
         f.material.dispose();
         f.obj.traverse((o) => {
-          if (o instanceof THREE.Mesh && o.geometry !== particleGeo) o.geometry.dispose();
+          if (o instanceof THREE.Mesh && o.geometry !== particleGeo && o.geometry !== tracerGeo) o.geometry.dispose();
         });
         this.fading.splice(i, 1);
         continue;
       }
       const t = f.life / f.maxLife;
       f.material.opacity = f.startOpacity * t;
-      f.obj.scale.setScalar(f.fromScale + (1 - t) * (f.toScale - f.fromScale));
+      if (!f.keepScale) f.obj.scale.setScalar(f.fromScale + (1 - t) * (f.toScale - f.fromScale));
     }
 
     const w = window.innerWidth;

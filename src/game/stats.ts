@@ -1,5 +1,6 @@
 import type { SaveData } from '../core/save';
 import type { WeaponDef, WeaponType } from '../data/weapons';
+import { passiveBonus, type PassiveBonus } from '../data/passives';
 
 export interface Stats {
   str: number;
@@ -29,15 +30,24 @@ export interface Derived {
   maxHp: number;
   maxMp: number;
   mpRegen: number;
+  /** 스탯으로 정해지는 이동속도 (상한 적용). 스킬·패시브 보너스는 따로 더한다. */
   moveSpeed: number;
+  /** 마나 계산에 쓰는 마력 (스탯 전환 패시브 포함) */
+  manaInt: number;
+  passive: PassiveBonus;
 }
 
-export function derive(s: Stats): Derived {
+export function derive(s: Stats, passives: Record<string, number> = {}): Derived {
+  const pb = passiveBonus(passives);
+  // 전환 패시브로 얻은 마력은 마나에만 쓴다. 마법 피해에는 원래 마력만 반영된다.
+  const manaInt = s.int + s.str * pb.strToInt + s.dex * pb.dexToInt;
   return {
-    maxHp: 100 + s.hp * 10,
-    maxMp: 50 + s.int * 5,
-    mpRegen: 2 + s.int * 0.05,
+    maxHp: Math.round((100 + s.hp * 10) * (1 + pb.hpMul)),
+    maxMp: Math.round(50 + manaInt * 5),
+    mpRegen: (2 + manaInt * 0.05) * (1 + pb.regenMul),
     moveSpeed: 5 * (1 + Math.min(s.dex * 0.005, DEX_SPEED_CAP)),
+    manaInt,
+    passive: pb,
   };
 }
 

@@ -29,7 +29,10 @@ let battle: Battle | null = null;
 
 const village = new VillageUI(uiRoot, () => save, {
   onStartPhase: startPhase,
-  onSaveChanged: () => writeSave(save),
+  onSaveChanged: () => {
+    writeSave(save);
+    input.setKeymap(save.keymap);
+  },
   onImport: (s) => replaceSave(s),
   onReset: () => replaceSave(newSave()),
 });

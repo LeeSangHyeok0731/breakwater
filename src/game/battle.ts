@@ -28,7 +28,8 @@ export interface HitOpts {
   basic?: boolean;
   stun?: number;
   vuln?: [number, number];
-  slow?: number;
+  /** [감속 비율, 지속 시간] */
+  slow?: [number, number];
   quiet?: boolean;
 }
 
@@ -44,6 +45,9 @@ interface PlayerBolt {
   life: number;
   pierce: boolean;
   hit: Set<Monster>;
+  gravity: number;
+  stun: number;
+  arrow: boolean;
 }
 
 interface EnemyBolt {
@@ -66,6 +70,10 @@ export interface FieldSpec {
   damage: number;
   slow?: number;
   color: number;
+  /** 공중의 적도 맞는다 */
+  hitsAir?: boolean;
+  /** 화살비 연출 */
+  rain?: boolean;
 }
 
 interface Field extends FieldSpec {
@@ -113,6 +121,8 @@ const circleGeo = new THREE.CircleGeometry(1, 40);
 const ringGeo = new THREE.RingGeometry(0.93, 1, 48);
 const waveRingGeo = new THREE.RingGeometry(0.88, 1, 64);
 const boltGeo = new THREE.IcosahedronGeometry(1, 1);
+const arrowGeo = new THREE.CylinderGeometry(0.025, 0.025, 1, 4).rotateX(Math.PI / 2);
+const arrowTipGeo = new THREE.ConeGeometry(0.06, 0.18, 4).rotateX(Math.PI / 2).translate(0, 0, 0.55);
 
 /** 장착 무기의 스킬 슬롯: 배운 스킬을 목록 순서대로 최대 8개 채운다. */
 export function buildSlots(save: SaveData, type: WeaponType): (SkillDef | null)[] {
@@ -186,7 +196,7 @@ export class Battle {
       const def = WEAPONS[owned.defId];
       return { def, enhance: owned.enhance, slots: buildSlots(save, def.type) };
     });
-    this.player = new Player(derive(this.stats), weapons);
+    this.player = new Player(derive(this.stats, save.passives), weapons);
     this.player.pos.set(0, 0, -this.arenaRadius * 0.35);
     this.player.yaw = 0;
     this.player.animate(0);
@@ -291,7 +301,12 @@ export class Battle {
     const right = rightOf(p.yaw, this.tmp2);
     const pivot = this.tmp.set(p.pos.x, p.pos.y + 1.65, p.pos.z);
     const cam = this.camera.position;
-    cam.copy(pivot).addScaledVector(this.camDir, -4.3).addScaledVector(right, 0.75);
+    const targetFov = p.ads ? 42 : 65;
+    if (dt > 0 && Math.abs(this.camera.fov - targetFov) > 0.1) {
+      this.camera.fov += (targetFov - this.camera.fov) * Math.min(1, dt * 12);
+      this.camera.updateProjectionMatrix();
+    }
+    cam.copy(pivot).addScaledVector(this.camDir, p.ads ? -3.2 : -4.3).addScaledVector(right, p.ads ? 0.9 : 0.75);
     if (cam.y < 0.4) cam.y = 0.4;
     if (this.shakeAmount > 0) {
       cam.x += (Math.random() - 0.5) * this.shakeAmount;
@@ -362,8 +377,18 @@ export class Battle {
   hitMonster(m: Monster, base: number, opts: HitOpts = {}): void {
     if (!m.alive) return;
     const p = this.player;
-    const crit = Math.random() < p.weapon.def.critChance;
-    const dmg = Math.max(1, Math.round(base * p.damageMul * (1 + m.vuln) * (crit ? 1 + CRIT_DAMAGE : 1)));
+    const w = p.weapon.def;
+    let crit = false;
+    let critMul: number;
+    const critChance = w.critChance + p.derived.passive.critBonus;
+    if (w.type === 'gun') {
+      // 총: 치명타 대신 (치명타 데미지 + 치명타 확률)의 80%만큼 항상 증가
+      critMul = 1 + (CRIT_DAMAGE + critChance) * 0.8;
+    } else {
+      crit = Math.random() < critChance;
+      critMul = crit ? 1 + CRIT_DAMAGE : 1;
+    }
+    const dmg = Math.max(1, Math.round(base * p.damageMul * (1 + m.vuln) * critMul));
     m.hp -= dmg;
     m.onHit();
 
@@ -373,8 +398,8 @@ export class Battle {
       m.vulnTime = opts.vuln[1];
     }
     if (opts.slow) {
-      m.slowMul = Math.min(m.slowMul, 1 - opts.slow);
-      m.slowTime = 0.6;
+      m.slowMul = Math.min(m.slowMul, 1 - opts.slow[0]);
+      m.slowTime = Math.max(m.slowTime, opts.slow[1]);
     }
     if (opts.basic) p.mp = Math.min(p.derived.maxMp, p.mp + 2);
 
@@ -433,7 +458,7 @@ export class Battle {
         if (p.parryTimer > 0) {
           this.effects.text(head, '패링!', 'heal');
           this.effects.flash(head.clone().setY(p.pos.y + 1.3).addScaledVector(f, 0.8), 1.2, 0xfff2a0, 0.25);
-          p.mp = Math.min(p.derived.maxMp, p.mp + 10);
+          p.mp = Math.min(p.derived.maxMp, p.mp + 10 + p.derived.passive.parryMana);
           if (src.monster && src.melee && !src.monster.boss) src.monster.stun = Math.max(src.monster.stun, 1.5);
           return;
         }
@@ -605,10 +630,30 @@ export class Battle {
   spawnPlayerBolt(
     origin: THREE.Vector3,
     vel: THREE.Vector3,
-    o: { damage: number; radius: number; color: number; basic?: boolean; aoe?: number },
+    o: {
+      damage: number;
+      radius: number;
+      color: number;
+      basic?: boolean;
+      aoe?: number;
+      pierce?: boolean;
+      arrow?: boolean;
+      gravity?: number;
+      stun?: number;
+    },
   ): void {
-    const mesh = new THREE.Mesh(boltGeo, mat(o.color, o.color, 2));
-    mesh.scale.setScalar(o.radius);
+    let mesh: THREE.Object3D;
+    if (o.arrow) {
+      const g = new THREE.Group();
+      const shaft = new THREE.Mesh(arrowGeo, mat(0x8a6a44));
+      const tip = new THREE.Mesh(arrowTipGeo, mat(o.color, o.color, 1.5));
+      g.add(shaft, tip);
+      if (o.radius > 0.2) g.scale.setScalar(1 + (o.radius - 0.2) * 3);
+      mesh = g;
+    } else {
+      mesh = new THREE.Mesh(boltGeo, mat(o.color, o.color, 2));
+      mesh.scale.setScalar(o.radius);
+    }
     mesh.position.copy(origin);
     this.scene.add(mesh);
     this.playerBolts.push({
@@ -621,8 +666,11 @@ export class Battle {
       aoe: o.aoe ?? 0,
       color: o.color,
       life: 2.5,
-      pierce: false,
+      pierce: !!o.pierce,
       hit: new Set(),
+      gravity: o.gravity ?? 0,
+      stun: o.stun ?? 0,
+      arrow: !!o.arrow,
     });
   }
 
@@ -657,7 +705,47 @@ export class Battle {
       life: 0.75,
       pierce: true,
       hit: new Set(),
+      gravity: 0,
+      stun: 0,
+      arrow: false,
     });
+  }
+
+  /** 총알처럼 즉시 판정하는 사격. 관통이면 경로의 모든 적, 아니면 가장 가까운 적 하나. */
+  fireHitscan(
+    origin: THREE.Vector3,
+    dir: THREE.Vector3,
+    damage: number,
+    o: { pierce: boolean; color: number; width: number },
+  ): void {
+    const maxDist = 60;
+    const hits: { m: Monster; t: number }[] = [];
+    const c = new THREE.Vector3();
+    for (const m of this.monsters) {
+      if (!m.alive) continue;
+      m.center(c);
+      const r = Math.max(m.radius, m.height * 0.4);
+      const ox = origin.x - c.x;
+      const oy = origin.y - c.y;
+      const oz = origin.z - c.z;
+      const bq = ox * dir.x + oy * dir.y + oz * dir.z;
+      const disc = bq * bq - (ox * ox + oy * oy + oz * oz - r * r);
+      if (disc < 0) continue;
+      const t = -bq - Math.sqrt(disc);
+      if (t > 0 && t < maxDist) hits.push({ m, t });
+    }
+    hits.sort((a, b) => a.t - b.t);
+    let end = maxDist;
+    if (dir.y < -1e-3) end = Math.min(end, -origin.y / dir.y);
+    const targets = o.pierce ? hits : hits.slice(0, 1);
+    if (!o.pierce && targets.length) end = Math.min(end, targets[0].t);
+    for (const h of targets) {
+      if (h.t > end + 0.01 && !o.pierce) break;
+      this.hitMonster(h.m, damage);
+    }
+    const to = origin.clone().addScaledVector(dir, end);
+    this.effects.tracer(origin, to, o.color, o.width);
+    if (!targets.length && end < maxDist) this.effects.burst(to, 0x9a8a70, 3, 2, 0.06, 0.25);
   }
 
   private boltHits(b: { pos: THREE.Vector3; radius: number }, m: Monster): boolean {
@@ -665,7 +753,7 @@ export class Battle {
     return b.pos.y >= m.y - b.radius && b.pos.y <= m.y + m.height + b.radius;
   }
 
-  private explode(at: THREE.Vector3, radius: number, damage: number, color: number): void {
+  private explode(at: THREE.Vector3, radius: number, damage: number, color: number, stun = 0): void {
     this.effects.flash(at, radius, color, 0.3);
     this.effects.ring(at.clone().setY(Math.max(0, at.y - 1)), radius, color, 0.35);
     for (const m of this.monsters) {
@@ -673,7 +761,7 @@ export class Battle {
       const c = m.center(this.tmp2);
       if (Math.hypot(c.x - at.x, c.z - at.z) > radius + m.radius) continue;
       if (Math.abs(c.y - at.y) > radius + m.height / 2) continue;
-      this.hitMonster(m, damage);
+      this.hitMonster(m, damage, { stun });
     }
   }
 
@@ -691,8 +779,11 @@ export class Battle {
     const limit = this.arenaRadius + 15;
     this.playerBolts = this.playerBolts.filter((b) => {
       b.life -= dt;
+      b.vel.y -= b.gravity * dt;
       b.pos.addScaledVector(b.vel, dt);
       b.mesh.position.copy(b.pos);
+      if (b.arrow) b.mesh.lookAt(this.tmp.copy(b.pos).add(b.vel));
+      else if (b.gravity > 0) b.mesh.rotation.x += dt * 10;
       let alive = b.life > 0 && Math.hypot(b.pos.x, b.pos.z) < limit;
 
       if (alive) {
@@ -700,10 +791,10 @@ export class Battle {
           if (!m.alive || b.hit.has(m) || !this.boltHits(b, m)) continue;
           if (b.pierce) {
             b.hit.add(m);
-            this.hitMonster(m, b.damage);
+            this.hitMonster(m, b.damage, { basic: b.basic });
             continue;
           }
-          if (b.aoe > 0) this.explode(b.pos, b.aoe, b.damage, b.color);
+          if (b.aoe > 0) this.explode(b.pos, b.aoe, b.damage, b.color, b.stun);
           else {
             this.hitMonster(m, b.damage, { basic: b.basic });
             this.effects.burst(b.pos, b.color, 5, 3, 0.08, 0.3);
@@ -713,7 +804,10 @@ export class Battle {
         }
       }
       if (alive && b.pos.y <= 0.05) {
-        if (b.aoe > 0) this.explode(b.pos, b.aoe, b.damage, b.color);
+        if (b.aoe > 0) {
+          this.explode(b.pos, b.aoe, b.damage, b.color, b.stun);
+          this.shake(0.25);
+        }
         else this.effects.burst(b.pos, b.color, 4, 2, 0.07, 0.25);
         alive = false;
       }
@@ -819,11 +913,18 @@ export class Battle {
       if (f.tickTimer <= 0) {
         f.tickTimer = f.tickEvery;
         for (const m of this.monsters) {
-          if (!m.alive || m.y > 2.5) continue;
+          if (!m.alive || (!f.hitsAir && m.y > 2.5)) continue;
           if (Math.hypot(m.pos.x - f.pos.x, m.pos.z - f.pos.z) > f.radius + m.radius) continue;
-          this.hitMonster(m, f.damage, { quiet: true, slow: f.slow });
+          this.hitMonster(m, f.damage, { quiet: true, slow: f.slow ? [f.slow, 0.6] : undefined });
         }
-        if (Math.random() < 0.8) {
+        if (f.rain) {
+          for (let i = 0; i < 6; i++) {
+            const a = Math.random() * Math.PI * 2;
+            const r = Math.random() * f.radius;
+            const from = new THREE.Vector3(f.pos.x + Math.cos(a) * r, 9, f.pos.z + Math.sin(a) * r);
+            this.effects.tracer(from, from.clone().setY(0.1), 0xe8dcc0, 0.025, 0.12);
+          }
+        } else if (Math.random() < 0.8) {
           const a = Math.random() * Math.PI * 2;
           const r = Math.random() * f.radius;
           this.effects.burst(new THREE.Vector3(f.pos.x + Math.cos(a) * r, 0.2, f.pos.z + Math.sin(a) * r), f.color, 3, 2, 0.08, 0.5, -2);
@@ -1069,7 +1170,9 @@ export class Battle {
       swapKey: keyLabel(keymap.swap),
       slots,
       buffs: p.buffs.map((b) => ({ name: b.name, time: b.time })),
-      charge: p.charge >= 0 ? Math.min(1, p.charge / 1.2) : -1,
+      charge: p.charge >= 0 ? Math.min(1, p.charge / (w.def.type === 'dao' ? 1 : 1.2)) : -1,
+      ammo: this.ammoText(),
+      ads: p.ads,
       phaseName: `${this.phase.id} ${this.phase.name}`,
       waveText,
       gold: this.pending.gold,
@@ -1079,6 +1182,14 @@ export class Battle {
         : null,
       dodgeReady: p.dodgeCd <= 0,
     };
+  }
+
+  private ammoText(): string | null {
+    const p = this.player;
+    const w = p.weapon;
+    if (w.def.type === 'gun') return p.reloadTime > 0 ? '재장전 중...' : `탄약 ${w.ammo} / ${w.magazine}`;
+    if (w.def.type === 'bow') return p.drawCd > 0 ? '장전 중...' : '발사 준비';
+    return null;
   }
 
   // ───────────────────────── 경기장 ─────────────────────────

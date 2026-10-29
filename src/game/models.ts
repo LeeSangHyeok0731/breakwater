@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { MonsterKind } from '../data/monsters';
+import type { WeaponType } from '../data/weapons';
 
 // 로우폴리 카툰 모델을 기본 도형으로 조립한다. 나중에 CC0 glTF 에셋으로 교체할 수 있도록
 // 모든 모델은 같은 Rig 구조(root/body/팔/다리/손)를 돌려준다.
@@ -169,6 +170,96 @@ export function makeStaff(): THREE.Group {
   g.add(orb);
   g.rotation.x = Math.PI / 2;
   return g;
+}
+
+export function makeDao(): THREE.Group {
+  const g = new THREE.Group();
+  const grip = cyl(0.045, 0.045, 0.34, 6, mat(0x2a1a14));
+  g.add(grip);
+  const guard = cyl(0.11, 0.11, 0.04, 8, mat(0xb08a3a, 0x2a1a00));
+  guard.position.y = 0.19;
+  g.add(guard);
+  // 외날: 칼등은 두껍고 어두우며 끝으로 갈수록 살짝 휜다.
+  const blade = box(0.1, 1.0, 0.025, mat(0xe8eef4, 0x223344, 0.4));
+  blade.position.set(0.01, 0.71, 0);
+  g.add(blade);
+  const spine = box(0.025, 1.0, 0.04, mat(0x5a6470));
+  spine.position.set(-0.05, 0.71, 0);
+  g.add(spine);
+  const tip = box(0.08, 0.22, 0.025, mat(0xe8eef4, 0x223344, 0.4));
+  tip.position.set(0.03, 1.28, 0);
+  tip.rotation.z = -0.35;
+  g.add(tip);
+  g.rotation.x = Math.PI / 2;
+  return g;
+}
+
+export function makeBow(): THREE.Group {
+  // 팔을 앞으로 뻗었을 때의 공간에서 조립한다: 활대는 세로(Y), 등은 앞(+Z), 시위는 플레이어 쪽.
+  const bow = new THREE.Group();
+  const half = Math.PI * 0.425;
+  const limb = new THREE.Mesh(
+    geo('bowArc', () => new THREE.TorusGeometry(0.7, 0.035, 5, 16, half * 2)),
+    mat(0x7a4a26),
+  );
+  limb.castShadow = true;
+  limb.rotation.set(0, -Math.PI / 2, -half);
+  limb.position.z = -0.7;
+  bow.add(limb);
+  const grip = box(0.08, 0.2, 0.08, mat(0x3a2414));
+  bow.add(grip);
+  const string = new THREE.Mesh(
+    geo('bowString', () => new THREE.CylinderGeometry(0.006, 0.006, 1.36, 3)),
+    mat(0xeeeeee),
+  );
+  string.position.z = 0.7 * Math.cos(half) - 0.7;
+  bow.add(string);
+  // 손의 회전(팔 앞으로 -90도)을 되돌려 위 공간과 맞춘다.
+  const holder = new THREE.Group();
+  holder.add(bow);
+  holder.rotation.x = Math.PI / 2;
+  return holder;
+}
+
+export function makeGun(): THREE.Group {
+  const g = new THREE.Group();
+  const metal = mat(0x3a3f46);
+  const body = box(0.12, 0.16, 0.34, metal);
+  body.position.set(0, 0.06, 0.08);
+  g.add(body);
+  const barrel = cyl(0.04, 0.04, 0.42, 8, mat(0x2a2e33));
+  barrel.rotation.x = Math.PI / 2;
+  barrel.position.set(0, 0.1, 0.42);
+  g.add(barrel);
+  const drum = cyl(0.075, 0.075, 0.12, 8, mat(0x555b63));
+  drum.rotation.x = Math.PI / 2;
+  drum.position.set(0, 0.06, 0.1);
+  g.add(drum);
+  const grip = box(0.09, 0.24, 0.12, mat(0x6b4526));
+  grip.position.set(0, -0.08, -0.06);
+  grip.rotation.x = -0.35;
+  g.add(grip);
+  const sight = box(0.03, 0.04, 0.04, metal);
+  sight.position.set(0, 0.17, 0.58);
+  g.add(sight);
+  // 총구가 손 기준 아래(-Y, 팔 방향의 연장)가 아니라 앞(+Z)을 보도록 둔다.
+  g.rotation.x = Math.PI / 2;
+  return g;
+}
+
+export function makeWeaponModel(type: WeaponType): THREE.Group {
+  switch (type) {
+    case 'sword':
+      return makeSword();
+    case 'dao':
+      return makeDao();
+    case 'staff':
+      return makeStaff();
+    case 'bow':
+      return makeBow();
+    case 'gun':
+      return makeGun();
+  }
 }
 
 function makeZombie(): Rig {

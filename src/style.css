@@ -229,6 +229,14 @@ body {
   height: 0;
 }
 
+.hud-crosshair.ads {
+  transform: scale(0.5);
+}
+
+.hud-crosshair {
+  transition: transform 0.12s ease-out;
+}
+
 .hud-crosshair span {
   position: absolute;
   background: rgba(255, 255, 255, 0.9);
@@ -771,6 +779,17 @@ body {
 .hud-weapon-name {
   font-size: 16px;
   font-weight: 800;
+}
+
+.hud-weapon-ammo {
+  font-size: 13px;
+  font-weight: 700;
+  color: #ffe2a8;
+  font-variant-numeric: tabular-nums;
+}
+
+.hud-weapon-ammo.busy {
+  color: var(--text-muted);
 }
 
 .hud-weapon-other {
@@ -1453,5 +1472,83 @@ body {
 
   .village-toast.show {
     transform: translate(-50%, 0);
+  }
+}
+
+/* 장비 탭 */
+.v-equip-slots {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.v-equip-slot {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--accent-soft, rgba(224, 180, 90, 0.35));
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* 공용 패시브 */
+.v-passives {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.v-passive {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.v-passive.learned {
+  border-color: rgba(224, 180, 90, 0.45);
+}
+
+.v-passive .v-desc {
+  font-size: 12px;
+  margin: 0;
+}
+
+.v-pips {
+  display: inline-flex;
+  gap: 3px;
+  margin-left: auto;
+}
+
+.v-pip {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  border: 1px solid var(--accent);
+  background: transparent;
+}
+
+.v-pip.on {
+  background: var(--accent);
+}
+
+.v-keybtn {
+  min-width: 64px;
+  font-variant-numeric: tabular-nums;
+}
+
+.v-keybtn.listening {
+  border-color: var(--accent);
+  color: var(--accent-2);
+  animation: v-key-blink 1s ease-in-out infinite;
+}
+
+@keyframes v-key-blink {
+  50% {
+    opacity: 0.55;
   }
 }
