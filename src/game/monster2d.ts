@@ -1,0 +1,643 @@
+import Phaser from 'phaser';
+import { ELITE_MOD, MONSTERS, type MonsterDef, type MonsterKind } from '../data/monsters';
+import { DEPTH } from './fx';
+import { PX_PER_M } from './player2d';
+import type { BattleScene } from './battleScene';
+
+interface Look {
+  walk: string;
+  attack?: string;
+  spawn?: string;
+  /** 그림이 기본으로 왼쪽을 본다 */
+  facesLeft: boolean;
+  body: [number, number];
+  scale?: number;
+  tint?: number;
+}
+
+const LOOKS: Record<MonsterKind, Look> = {
+  zombie: { walk: 'skeleton-walk', spawn: 'skeleton-rise', facesLeft: true, body: [16, 40] },
+  poison_zombie: { walk: 'skeleton-clothed-walk', spawn: 'skeleton-clothed-rise', facesLeft: true, body: [16, 40], tint: 0xa8ff90 },
+  mage: { walk: 'wizard-idle', attack: 'wizard-cast', facesLeft: false, body: [18, 44] },
+  fire_mage: { walk: 'ghoul-walk', facesLeft: true, body: [18, 44] },
+  minion: { walk: 'ghost-idle', attack: 'ghost-shriek', facesLeft: true, body: [22, 34], scale: 0.85 },
+  golem: { walk: 'beast-idle', attack: 'beast-breath', facesLeft: true, body: [26, 52], scale: 1.15 },
+  grave_knight: { walk: 'nightmare-idle', attack: 'nightmare-gallop', facesLeft: true, body: [64, 54], scale: 0.9 },
+  golem_lord: { walk: 'demon-idle', attack: 'demon-attack', facesLeft: true, body: [70, 96], scale: 1.1 },
+};
+
+type State = 'move' | 'windup' | 'recover' | 'dash' | 'dive' | 'rise' | 'pattern';
+type Pattern = 'breath' | 'volley' | 'slam' | 'charge' | 'leap' | 'combo';
+
+const HOVER_Y = 190;
+
+export class Monster {
+  readonly def: MonsterDef;
+  readonly elite: boolean;
+  readonly look: Look;
+  readonly zone: Phaser.GameObjects.Zone;
+  readonly body: Phaser.Physics.Arcade.Body;
+  readonly sprite: Phaser.GameObjects.Sprite;
+  facing: 1 | -1 = -1;
+
+  hp: number;
+  readonly maxHp: number;
+  readonly damage: number;
+  readonly speed: number;
+  alive = true;
+  /** 쓰러진 뒤 사라질 때까지 */
+  dying = 0;
+  spawnTime = 0;
+  stun = 0;
+  slowTime = 0;
+  slowMul = 1;
+  vulnTime = 0;
+  vuln = 0;
+  phase2 = false;
+
+  state: State = 'move';
+  stateTime = 0;
+  attackTimer: number;
+  private pattern: Pattern = 'breath';
+  private step = 0;
+  private hitDone = false;
+  private dashCd = 3;
+  private targetX = 0;
+  private targetY = 0;
+  private bob = Math.random() * 10;
+  private summonAt = [0.7, 0.4];
+  private bar: Phaser.GameObjects.Rectangle | null = null;
+  private barBg: Phaser.GameObjects.Rectangle | null = null;
+  private barW = 26;
+
+  constructor(
+    private readonly scene: BattleScene,
+    kind: MonsterKind,
+    elite: boolean,
+    hpMul: number,
+    x: number,
+    y: number,
+  ) {
+    this.def = MONSTERS[kind];
+    this.elite = elite;
+    this.look = LOOKS[kind];
+    this.maxHp = Math.round(this.def.hp * hpMul * (elite ? ELITE_MOD.hp : 1));
+    this.hp = this.maxHp;
+    this.damage = this.def.damage * (elite ? ELITE_MOD.damage : 1);
+    this.speed = this.def.speed * PX_PER_M * 0.75 * (elite ? 1.15 : 1);
+    this.attackTimer = this.def.attackCd * (0.4 + Math.random() * 0.6);
+
+    const scale = (this.look.scale ?? 1) * (elite ? 1.3 : 1);
+    const [bw, bh] = this.look.body;
+    this.zone = scene.add.zone(x, y, bw * scale, bh * scale);
+    scene.physics.add.existing(this.zone);
+    this.body = this.zone.body as Phaser.Physics.Arcade.Body;
+    this.body.setCollideWorldBounds(true);
+    if (this.flying) this.body.setAllowGravity(false);
+
+    this.sprite = scene.add.sprite(x, y, 'dot').setOrigin(0.5, 1).setDepth(DEPTH.monster).setScale(scale);
+    const tint = elite ? 0xffb070 : this.look.tint;
+    if (tint !== undefined) this.sprite.setTint(tint);
+    if (this.look.spawn) {
+      this.spawnTime = 0.75;
+      this.sprite.play(this.look.spawn);
+    } else {
+      this.sprite.play(this.look.walk);
+      this.sprite.setAlpha(0);
+      scene.tweens.add({ targets: this.sprite, alpha: 1, duration: 400 });
+    }
+
+    if (!this.def.boss && !this.def.miniboss) {
+      this.barW = elite ? 36 : 26;
+      this.barBg = scene.add.rectangle(x, y, this.barW + 2, 4, 0x140a0a).setOrigin(0, 0.5).setDepth(DEPTH.text - 1).setVisible(elite);
+      this.bar = scene.add
+        .rectangle(x, y, this.barW, 2, elite ? 0xff9a1a : 0xe53935)
+        .setOrigin(0, 0.5)
+        .setDepth(DEPTH.text - 1)
+        .setVisible(elite);
+    }
+  }
+
+  get flying(): boolean {
+    return this.def.flying || this.def.kind === 'golem_lord';
+  }
+
+  get boss(): boolean {
+    return !!this.def.boss;
+  }
+
+  get showsBossBar(): boolean {
+    return !!this.def.boss || !!this.def.miniboss;
+  }
+
+  get x(): number {
+    return this.body.center.x;
+  }
+
+  get y(): number {
+    return this.body.center.y;
+  }
+
+  get removable(): boolean {
+    return !this.alive && this.dying <= 0;
+  }
+
+  /** 맞았을 때: 번쩍임과 체력바 표시 */
+  onHit(fromX: number, knock: number): void {
+    this.scene.fx.flash(this.sprite, 0xffffff, 70);
+    this.bar?.setVisible(true);
+    this.barBg?.setVisible(true);
+    if (knock > 0 && !this.showsBossBar) {
+      const dir = this.x >= fromX ? 1 : -1;
+      this.body.setVelocityX(dir * knock * (this.elite ? 0.4 : 1));
+      if (!this.flying) this.body.setVelocityY(-knock * 0.35);
+      this.knockTime = 0.18;
+    }
+  }
+
+  private knockTime = 0;
+
+  kill(): void {
+    this.alive = false;
+    this.dying = 0.35;
+    this.bar?.setVisible(false);
+    this.barBg?.setVisible(false);
+    this.body.enable = false;
+    this.scene.fx.death(this.x, this.body.bottom, this.showsBossBar ? 2 : this.elite ? 1.3 : 1);
+    this.scene.tweens.add({ targets: this.sprite, alpha: 0, duration: 300 });
+  }
+
+  destroy(): void {
+    this.sprite.destroy();
+    this.zone.destroy();
+    this.bar?.destroy();
+    this.barBg?.destroy();
+  }
+
+  update(dt: number): void {
+    if (!this.alive) {
+      this.dying -= dt;
+      return;
+    }
+    const b = this.scene;
+    if (this.slowTime > 0) {
+      this.slowTime -= dt;
+      if (this.slowTime <= 0) this.slowMul = 1;
+    }
+    if (this.vulnTime > 0) {
+      this.vulnTime -= dt;
+      if (this.vulnTime <= 0) this.vuln = 0;
+    }
+    this.knockTime = Math.max(0, this.knockTime - dt);
+
+    if (this.spawnTime > 0) {
+      this.spawnTime -= dt;
+      if (this.spawnTime <= 0) this.sprite.play(this.look.walk);
+      this.body.setVelocityX(0);
+    } else if (this.stun > 0) {
+      this.stun -= dt;
+      if (this.knockTime <= 0) this.body.setVelocityX(this.body.velocity.x * 0.85);
+      if (this.flying && this.def.kind === 'minion') this.body.setVelocityY(60);
+      if (this.stun <= 0) this.state = this.def.kind === 'minion' ? 'rise' : 'move';
+      this.sprite.anims.timeScale = 0;
+    } else {
+      this.sprite.anims.timeScale = 1;
+      if (this.knockTime <= 0) {
+        switch (this.def.kind) {
+          case 'zombie':
+          case 'poison_zombie':
+            this.updateWalker(dt);
+            break;
+          case 'mage':
+          case 'fire_mage':
+            this.updateCaster(dt);
+            break;
+          case 'minion':
+            this.updateGhost(dt);
+            break;
+          case 'golem':
+            this.updateBeast(dt);
+            break;
+          case 'grave_knight':
+            this.updateNightmare(dt);
+            break;
+          case 'golem_lord':
+            this.updateDemon(dt);
+            break;
+        }
+      }
+    }
+
+    this.sync();
+    void b;
+  }
+
+  private sync(): void {
+    const s = this.sprite;
+    s.setFlipX(this.look.facesLeft ? this.facing === 1 : this.facing === -1);
+    const bob = this.flying ? Math.sin((this.bob += 0.06)) * 2 : 0;
+    s.setPosition(Math.round(this.x), Math.round(this.body.bottom + 2 + bob));
+    if (this.bar && this.barBg) {
+      const top = this.body.top - 6;
+      this.barBg.setPosition(this.x - this.barW / 2 - 1, top);
+      this.bar.setPosition(this.x - this.barW / 2, top);
+      this.bar.width = this.barW * Math.max(0, this.hp / this.maxHp);
+    }
+  }
+
+  private toPlayer(): { dx: number; dy: number; dist: number } {
+    const p = this.scene.player;
+    const dx = p.x - this.x;
+    const dy = p.y - this.y;
+    return { dx, dy, dist: Math.abs(dx) };
+  }
+
+  private face(dx: number): void {
+    if (dx !== 0) this.facing = dx > 0 ? 1 : -1;
+  }
+
+  /** 발판 끝에서 떨어지지 않도록 멈춘다. */
+  private walk(dir: number, speedMul = 1): void {
+    const v = dir * this.speed * this.slowMul * speedMul;
+    if (dir !== 0 && this.body.blocked.down) {
+      const s = this.scene.surfaceUnder(this);
+      if (s) {
+        const ahead = this.x + dir * (this.body.width / 2 + 4);
+        if (ahead < s.x + 2 || ahead > s.x + s.w - 2) {
+          this.body.setVelocityX(0);
+          return;
+        }
+      }
+    }
+    this.body.setVelocityX(v);
+    if (dir !== 0) this.face(dir);
+  }
+
+  private play(key: string | undefined): void {
+    if (key && this.sprite.anims.currentAnim?.key !== key) this.sprite.play(key);
+  }
+
+  // ─── 해골 병사 / 독 해골: 다가가서 휘두른다 ───
+  private updateWalker(dt: number): void {
+    const { dx, dy, dist } = this.toPlayer();
+    this.stateTime -= dt;
+    const sameLevel = Math.abs(dy) < 40;
+    switch (this.state) {
+      case 'move':
+        this.play(this.look.walk);
+        if (sameLevel || dist > 160) this.walk(Math.sign(dx));
+        else this.walk(0);
+        if (this.elite) {
+          this.dashCd -= dt;
+          if (this.dashCd <= 0 && sameLevel && dist > 70 && dist < 220) {
+            this.state = 'windup';
+            this.stateTime = 0.5;
+            this.step = 1;
+            this.hitDone = false;
+            this.sprite.setTint(0xff7050);
+            break;
+          }
+        }
+        if (sameLevel && dist < 26 + this.body.width / 2) {
+          this.state = 'windup';
+          this.stateTime = this.elite ? 0.32 : 0.42;
+          this.step = 0;
+          this.body.setVelocityX(0);
+          this.face(dx);
+        }
+        break;
+      case 'windup':
+        this.body.setVelocityX(0);
+        this.sprite.anims.timeScale = 0.3;
+        if (this.stateTime <= 0) {
+          if (this.step === 1) {
+            this.state = 'dash';
+            this.stateTime = 0.45;
+            this.face(dx);
+          } else {
+            // 앞으로 한 발 내디디며 할퀸다.
+            this.body.setVelocityX(this.facing * 90);
+            if (dist < 34 + this.body.width / 2 && sameLevel) {
+              this.scene.damagePlayer(this.damage, { x: this.x, monster: this, melee: true });
+            }
+            this.scene.fx.slash(this.x + this.facing * 12, this.y - 4, this.facing, 14, 0xff8a6a);
+            this.state = 'recover';
+            this.stateTime = 0.55;
+          }
+        }
+        break;
+      case 'dash':
+        this.body.setVelocityX(this.facing * 260);
+        if (!this.hitDone && dist < 24 && sameLevel) {
+          this.hitDone = true;
+          this.scene.damagePlayer(this.damage * 1.2, { x: this.x, monster: this, melee: true });
+        }
+        if (this.stateTime <= 0) {
+          this.state = 'recover';
+          this.stateTime = 0.6;
+          this.dashCd = 5;
+          const tint = this.elite ? 0xffb070 : this.look.tint;
+          if (tint !== undefined) this.sprite.setTint(tint);
+          else this.sprite.clearTint();
+        }
+        break;
+      default:
+        this.body.setVelocityX(this.body.velocity.x * 0.85);
+        if (this.stateTime <= 0) this.state = 'move';
+    }
+  }
+
+  // ─── 해골 마법사 / 불타는 구울: 거리를 두고 쏜다 ───
+  private updateCaster(dt: number): void {
+    const { dx, dy, dist } = this.toPlayer();
+    const mage = this.def.kind === 'mage';
+    this.stateTime -= dt;
+    this.attackTimer -= dt;
+    if (this.state === 'move') {
+      this.play(this.look.walk);
+      const want = mage ? 170 : 130;
+      if (dist > want + 50) this.walk(Math.sign(dx), 1);
+      else if (dist < want - 50) this.walk(-Math.sign(dx), 0.8);
+      else this.walk(0);
+      this.face(dx);
+      if (this.attackTimer <= 0 && dist < 340 && Math.abs(dy) < 90) {
+        this.state = 'windup';
+        this.stateTime = mage ? 0.75 : 0.6;
+        this.body.setVelocityX(0);
+        this.play(this.look.attack);
+        if (!mage) this.sprite.setTint(0xffd080);
+      }
+    } else if (this.state === 'windup') {
+      this.body.setVelocityX(0);
+      this.face(dx);
+      if (this.stateTime <= 0) {
+        const p = this.scene.player;
+        const ox = this.x + this.facing * 14;
+        const oy = this.y - (mage ? 10 : 6);
+        const ang = Math.atan2(p.y - oy, p.x - ox);
+        const spreads = this.elite ? [-0.22, 0, 0.22] : [0];
+        for (const s of spreads) {
+          const v = mage ? 170 : 150;
+          this.scene.spawnEnemyBolt(ox, oy, Math.cos(ang + s) * v, Math.sin(ang + s) * v, this.damage, this, mage ? 0 : 26);
+        }
+        this.attackTimer = this.def.attackCd;
+        this.state = 'move';
+        if (!mage) {
+          if (this.elite) this.sprite.setTint(0xffb070);
+          else this.sprite.clearTint();
+        }
+      }
+    }
+  }
+
+  // ─── 유령: 위에서 떠돌다 내리꽂는다 ───
+  private updateGhost(dt: number): void {
+    const p = this.scene.player;
+    this.stateTime -= dt;
+    const body = this.body;
+    switch (this.state) {
+      case 'move': {
+        this.play(this.look.walk);
+        this.targetX = p.x + Math.sin(this.bob * 0.4) * 90;
+        const ty = p.y - 80;
+        body.setVelocity((this.targetX - this.x) * 1.2 * this.slowMul, (ty - this.y) * 1.5);
+        this.face(p.x - this.x);
+        this.attackTimer -= dt;
+        if (this.attackTimer <= 0) {
+          this.state = 'windup';
+          this.stateTime = 0.4;
+          this.play(this.look.attack);
+        }
+        break;
+      }
+      case 'windup':
+        body.setVelocity(0, -20);
+        if (this.stateTime <= 0) {
+          this.state = 'dive';
+          this.stateTime = 0.9;
+          this.hitDone = false;
+          this.targetX = p.x;
+          this.targetY = p.y;
+          const ang = Math.atan2(this.targetY - this.y, this.targetX - this.x);
+          body.setVelocity(Math.cos(ang) * 230, Math.sin(ang) * 230);
+        }
+        break;
+      case 'dive':
+        if (!this.hitDone && Math.abs(p.x - this.x) < 18 && Math.abs(p.y - this.y) < 24) {
+          this.hitDone = true;
+          this.scene.damagePlayer(this.damage, { x: this.x, monster: this, melee: true });
+        }
+        if (this.stateTime <= 0 || this.y > p.y + 10) {
+          this.state = 'rise';
+          this.stateTime = 0.6;
+          body.setVelocity(0, 0);
+        }
+        break;
+      default:
+        // 낮게 머문 뒤 올라간다 (이때 근접 공격으로 맞힐 수 있다).
+        body.setVelocity(0, this.stateTime > 0 ? 0 : -90);
+        if (this.y < p.y - 70) {
+          this.state = 'move';
+          this.attackTimer = this.def.attackCd * (this.elite ? 0.6 : 1) * (0.8 + Math.random() * 0.4);
+        }
+    }
+  }
+
+  // ─── 헬 비스트: 느리게 다가와 불을 뿜는다 ───
+  private updateBeast(dt: number): void {
+    const { dx, dy, dist } = this.toPlayer();
+    this.stateTime -= dt;
+    this.attackTimer -= dt;
+    switch (this.state) {
+      case 'move':
+        this.play(this.look.walk);
+        this.walk(Math.abs(dy) < 60 ? Math.sign(dx) : 0);
+        if (dist < 110 && Math.abs(dy) < 50 && this.attackTimer <= 0) {
+          this.face(dx);
+          this.state = 'windup';
+          this.stateTime = 0.9;
+          this.body.setVelocityX(0);
+          const w = this.elite ? 130 : 100;
+          const x0 = this.facing === 1 ? this.x + 10 : this.x - 10 - w;
+          this.scene.addTelegraph(x0, this.body.bottom - 40, w, 40, 0.9, this, () => {
+            this.play(this.look.attack);
+            this.scene.areaHit(x0, this.body.bottom - 44, w, 44, this.damage, this, false);
+            for (let i = 0; i < 6; i++) this.scene.fx.burst(x0 + (w * i) / 6, this.body.bottom - 18, 0xff7a2a, 4, 60, 400);
+            if (this.elite) this.scene.addShockwave(this.x, this.damage * 0.5, this);
+          });
+        }
+        break;
+      case 'windup':
+        this.body.setVelocityX(0);
+        if (this.stateTime <= 0) {
+          this.state = 'recover';
+          this.stateTime = 0.8;
+          this.attackTimer = this.def.attackCd;
+        }
+        break;
+      default:
+        if (this.stateTime <= 0) this.state = 'move';
+    }
+  }
+
+  // ─── 악몽마 (미니보스): 돌진, 도약, 체력 절반 이하에서 소환 ───
+  private updateNightmare(dt: number): void {
+    const { dx, dist } = this.toPlayer();
+    if (!this.phase2 && this.hp / this.maxHp < 0.5) {
+      this.phase2 = true;
+      this.scene.announce('악몽마가 망자를 불러낸다!', 1.6);
+      for (let i = 0; i < 3; i++) this.scene.spawnMonster('zombie', false, this.x + (i - 1) * 60);
+    }
+    this.stateTime -= dt;
+    this.attackTimer -= dt;
+    if (this.state === 'move') {
+      this.play(this.look.walk);
+      this.walk(Math.sign(dx), 0.6);
+      if (this.attackTimer <= 0) {
+        this.state = 'pattern';
+        this.step = 0;
+        this.face(dx);
+        this.pattern = dist > 200 || Math.random() < 0.5 ? 'charge' : 'leap';
+        this.stateTime = 0.6;
+        this.sprite.setTint(0xff6a6a);
+        if (this.pattern === 'leap') {
+          this.targetX = this.scene.player.x;
+          this.scene.addTelegraph(this.targetX - 50, this.scene.floorY() - 30, 100, 30, 1.2, null, null);
+        }
+      }
+      return;
+    }
+    if (this.state === 'recover') {
+      this.body.setVelocityX(this.body.velocity.x * 0.9);
+      if (this.stateTime <= 0) this.state = 'move';
+      return;
+    }
+    if (this.pattern === 'charge') {
+      if (this.step === 0) {
+        this.body.setVelocityX(0);
+        if (this.stateTime <= 0) {
+          this.step = 1;
+          this.stateTime = 1.1;
+          this.hitDone = false;
+          this.play(this.look.attack);
+        }
+      } else {
+        this.body.setVelocityX(this.facing * (this.phase2 ? 330 : 280));
+        if (!this.hitDone && Math.abs(this.scene.player.x - this.x) < 40 && Math.abs(this.scene.player.y - this.y) < 40) {
+          this.hitDone = true;
+          this.scene.damagePlayer(this.damage, { x: this.x, monster: this, melee: true });
+          this.scene.player.knockback(this.x, 220);
+        }
+        if (this.stateTime <= 0 || this.body.blocked.left || this.body.blocked.right) this.endPattern();
+      }
+    } else {
+      if (this.step === 0) {
+        this.body.setVelocityX(0);
+        if (this.stateTime <= 0) {
+          this.step = 1;
+          this.stateTime = 0.6;
+          this.face(this.targetX - this.x);
+          this.body.setVelocity((this.targetX - this.x) / 0.6, -420);
+          this.play(this.look.attack);
+        }
+      } else if (this.body.blocked.down && this.stateTime < 0.4) {
+        this.scene.groundSlam(this.x, 60, this.damage * 1.2, this);
+        this.scene.fx.shake(1.2, 200);
+        this.endPattern();
+      }
+    }
+  }
+
+  // ─── 악마 군주 (보스): 떠다니며 화염 숨결, 불덩이, 내려찍기 충격파, 소환 ───
+  private updateDemon(dt: number): void {
+    const p = this.scene.player;
+    const ratio = this.hp / this.maxHp;
+    if (!this.phase2 && ratio < 0.5) {
+      this.phase2 = true;
+      this.scene.announce('악마 군주가 격노했다!');
+    }
+    if (this.summonAt.length && ratio < this.summonAt[0]) {
+      this.summonAt.shift();
+      this.scene.announce('악마 군주가 하수인을 부른다!');
+      for (let i = 0; i < 4; i++) this.scene.spawnMonster(i < 3 ? 'zombie' : 'minion', false, 100 + Math.random() * (this.scene.level.width - 200));
+      if (this.phase2) this.scene.spawnMonster('golem', true);
+    }
+    const fast = this.phase2 ? 0.7 : 1;
+    this.stateTime -= dt;
+    this.attackTimer -= dt;
+    const body = this.body;
+    if (this.state === 'move') {
+      this.play(this.look.walk);
+      const tx = p.x + (this.x < p.x ? -140 : 140);
+      body.setVelocity((tx - this.x) * 0.8, (HOVER_Y - this.y) * 2);
+      this.face(p.x - this.x);
+      if (this.attackTimer <= 0) {
+        const options: Pattern[] = ['breath', 'volley', 'slam', 'breath'];
+        this.pattern = options[Math.floor(Math.random() * options.length)];
+        this.state = 'pattern';
+        this.step = 0;
+        this.stateTime = 0.7 * fast;
+        body.setVelocity(0, 0);
+        if (this.pattern === 'breath') {
+          this.play(this.look.attack);
+          const w = 220;
+          const x0 = this.facing === 1 ? this.x : this.x - w;
+          this.scene.addTelegraph(x0, this.scene.floorY() - 70, w, 70, 0.9 * fast, this, () => {
+            this.scene.areaHit(x0, this.scene.floorY() - 74, w, 74, this.damage, this, false);
+            for (let i = 0; i < 10; i++) this.scene.fx.burst(x0 + (w * i) / 10, this.scene.floorY() - 30, 0x5ff0ff, 5, 70, 500);
+            this.scene.fx.shake(1, 200);
+          });
+        } else if (this.pattern === 'slam') {
+          this.scene.announce('점프로 충격파를 피하라!', 1.1);
+        }
+      }
+      return;
+    }
+    if (this.state === 'recover') {
+      body.setVelocity(0, (HOVER_Y - this.y) * 2);
+      if (this.stateTime <= 0) this.state = 'move';
+      return;
+    }
+    switch (this.pattern) {
+      case 'breath':
+        if (this.stateTime <= -0.6) this.endPattern();
+        break;
+      case 'volley': {
+        const count = this.phase2 ? 5 : 3;
+        if (this.step < count && this.stateTime <= -0.25 * this.step) {
+          const ang = Math.atan2(p.y - this.y, p.x - this.x) + (Math.random() - 0.5) * 0.35;
+          this.scene.spawnEnemyBolt(this.x + this.facing * 30, this.y, Math.cos(ang) * 190, Math.sin(ang) * 190, this.damage * 0.6, this, 30);
+          this.step++;
+        }
+        if (this.stateTime <= -0.25 * count - 0.3) this.endPattern();
+        break;
+      }
+      case 'slam':
+        if (this.step === 0) {
+          body.setVelocity(0, 0);
+          if (this.stateTime <= 0) {
+            this.step = 1;
+            body.setVelocity(0, 520);
+          }
+        } else if (this.body.bottom >= this.scene.floorY() - 2) {
+          body.setVelocity(0, 0);
+          this.scene.addShockwave(this.x, this.damage * 0.8, this);
+          if (this.phase2) this.scene.time.delayedCall(450, () => this.alive && this.scene.addShockwave(this.x, this.damage * 0.8, this));
+          this.scene.fx.shake(2, 300);
+          this.endPattern();
+        }
+        break;
+      default:
+        this.endPattern();
+    }
+  }
+
+  private endPattern(): void {
+    this.state = 'recover';
+    this.stateTime = this.phase2 ? 0.5 : 0.9;
+    this.attackTimer = this.def.attackCd * (this.phase2 ? 0.7 : 1);
+    const tint = this.elite ? 0xffb070 : this.look.tint;
+    if (tint !== undefined) this.sprite.setTint(tint);
+    else this.sprite.clearTint();
+  }
+}

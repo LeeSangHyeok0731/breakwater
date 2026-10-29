@@ -57,7 +57,7 @@ export class TownHud {
 
     this.resume = el('div', 'th-resume', this.wrap);
     this.resumeText = el('div', 'th-resume-text', this.resume, '클릭해서 시작');
-    el('div', 'th-resume-sub', this.resume, '마우스로 둘러보고 WASD로 이동하세요');
+    el('div', 'th-resume-sub', this.resume, '방향키로 이동하세요');
     this.resume.style.display = 'none';
   }
 
@@ -69,7 +69,7 @@ export class TownHud {
     this.wrap.style.display = 'none';
   }
 
-  /** 클릭해서 마우스 잠금을 다시 거는 안내 */
+  /** 클릭해서 계속하는 안내 */
   showResume(text: string, onClick: () => void): void {
     this.resumeText.textContent = text;
     this.resume.style.display = '';
@@ -106,10 +106,10 @@ export class TownHud {
     const k = (a: keyof SaveData['keymap']): string => keyLabel(save.keymap[a]);
     this.hints.replaceChildren();
     for (const [keys, label] of [
-      [`${k('forward')}${k('left')}${k('back')}${k('right')}`, '이동'],
-      [k('interact'), '상호작용'],
-      [k('view'), '시점'],
-      ['Esc', '메뉴'],
+      [`${k('left')}${k('right')}`, '이동'],
+      [k('jump'), '점프'],
+      [k('interact'), '대화'],
+      [k('menu'), '메뉴'],
     ]) {
       const row = el('span', 'th-hint', this.hints);
       el('span', 'th-key small', row, keys);

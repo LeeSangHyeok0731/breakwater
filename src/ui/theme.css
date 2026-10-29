@@ -623,3 +623,46 @@ body,
   color: #ffd8c8;
   text-shadow: 0 2px 0 #2a0a05;
 }
+
+/* ───────── 2D 화면 배치: 아래 상태 바 ───────── */
+
+:root {
+  --statusbar-h: 96px;
+}
+
+body::after {
+  content: '';
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--statusbar-h);
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.015) 0 2px, transparent 2px 9px),
+    linear-gradient(180deg, #2a1f17, #120d09);
+  border-top: 2px solid var(--gold-lo);
+  box-shadow: inset 0 1px 0 rgba(246, 214, 142, 0.3);
+  z-index: 1;
+}
+
+/* 2D에서는 화면 중앙 조준점이 필요 없다. */
+.hud-crosshair,
+.hud-charge {
+  display: none !important;
+}
+
+.hud-bottomleft {
+  bottom: 10px;
+}
+
+.hud-bottomcenter {
+  bottom: 10px;
+}
+
+.hud-weapon {
+  bottom: 10px;
+}
+
+.th-hints {
+  bottom: 36px;
+}

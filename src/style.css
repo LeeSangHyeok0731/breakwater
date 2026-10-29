@@ -46,15 +46,15 @@ body {
   user-select: none;
 }
 
+/* 게임 화면은 아래 상태 바 위에만 그린다 (횡스크롤 게임의 화면 배치). */
 #app {
   position: fixed;
-  inset: 0;
+  inset: 0 0 var(--statusbar-h, 96px) 0;
 }
 
 #app canvas {
   display: block;
-  width: 100% !important;
-  height: 100% !important;
+  image-rendering: pixelated;
 }
 
 #ui {
