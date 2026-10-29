@@ -16,6 +16,7 @@ import { fitWidth, VIEW_H } from './game/world';
 import type { Hud } from './ui/hud';
 import { TownHud } from './ui/townHud';
 import { VillageUI, type Tab } from './ui/village';
+import { DevPanel } from './ui/devPanel';
 
 const uiRoot = document.getElementById('ui')!;
 
@@ -89,6 +90,26 @@ const game = new Phaser.Game({
     TownScene,
     BattleScene,
   ],
+});
+
+// ───────── 개발자 모드 (` 키) ─────────
+const devPanel = new DevPanel(uiRoot, {
+  getSave: () => save,
+  saveChanged: () => {
+    writeSave(save);
+    if (village.isOpen) village.refresh();
+  },
+  battle: () => (game.scene.isActive('battle') ? (game.scene.getScene('battle') as BattleScene) : null),
+  onClose: () => {
+    input.enabled = !village.isOpen;
+    input.endFrame();
+  },
+});
+window.addEventListener('keydown', (e) => {
+  if (e.code !== 'Backquote' || e.repeat) return;
+  e.preventDefault();
+  devPanel.toggle();
+  if (devPanel.isOpen) input.enabled = false;
 });
 
 // 창 비율이 바뀌면 가로 해상도를 다시 맞춘다 (세로 360 고정).

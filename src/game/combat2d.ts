@@ -155,27 +155,28 @@ function performHit(b: BattleScene, kind: ActionKind, index: number): void {
   switch (kind) {
     case 'slash': {
       const second = p.comboStep % 2 === 0;
-      b.fx.slash(p.x + f * 10, p.y - 2, f, 24, color, !second);
-      box(b, 4, 46, 40, 2, base * (second ? 0.9 : 1.0) * mul, { basic: true, knock: 90 });
+      // 칼끝까지 닿도록 넉넉하게: 몸 앞 72px
+      b.fx.slash(p.x + f * 18, p.y - 2, f, 40, color, !second);
+      box(b, 0, 72, 48, 2, base * (second ? 0.9 : 1.0) * mul, { basic: true, knock: 90 });
       break;
     }
     case 'airSlash':
-      b.fx.slash(p.x + f * 8, p.y - 4, f, 28, color, true);
-      box(b, 0, 50, 64, 6, base * 1.0 * mul, { basic: true, knock: 70 });
+      b.fx.slash(p.x + f * 14, p.y - 4, f, 40, color, true);
+      box(b, -8, 76, 76, 6, base * 1.0 * mul, { basic: true, knock: 70 });
       break;
     case 'crouchSlash':
-      b.fx.slash(p.x + f * 12, p.y + 10, f, 22, color);
-      box(b, 4, 54, 22, -10, base * 0.9 * mul, { basic: true, knock: 60 });
+      b.fx.slash(p.x + f * 18, p.y + 10, f, 34, color);
+      box(b, 0, 70, 24, -10, base * 0.9 * mul, { basic: true, knock: 60 });
       break;
     case 'thrust':
       p.body.setVelocityX(f * 220);
       for (let i = 0; i < 5; i++) b.fx.burst(p.x + f * (14 + i * 16), p.y - 2, 0xdff4ff, 2, 30, 200);
-      box(b, 0, 84, 20, 2, base * 1.3, { basic: true, knock: 120 });
+      box(b, 0, 110, 22, 2, base * 1.3, { basic: true, knock: 120 });
       break;
     case 'cleave': {
       const c = cleaveCharge;
-      b.fx.slash(p.x + f * 12, p.y - 2, f, 34 + c * 10, c > 0.95 ? 0xffb060 : color);
-      box(b, 0, 72, 52, 2, base * (1.1 + 1.4 * c), { basic: true, knock: 140 + c * 80 });
+      b.fx.slash(p.x + f * 20, p.y - 2, f, 44 + c * 12, c > 0.95 ? 0xffb060 : color);
+      box(b, 0, 90 + c * 20, 56, 2, base * (1.1 + 1.4 * c), { basic: true, knock: 140 + c * 80 });
       if (c > 0.95) b.fx.shake(0.8);
       break;
     }

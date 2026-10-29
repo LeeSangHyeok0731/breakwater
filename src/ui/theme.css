@@ -748,3 +748,160 @@ body::after {
   display: flex;
   animation: th-pulse-text 1.2s ease-in-out infinite;
 }
+
+/* ───────── 개발자 모드 ───────── */
+
+.dev-panel {
+  position: absolute;
+  top: 76px;
+  right: 16px;
+  width: 380px;
+  max-height: calc(100vh - var(--statusbar-h) - 96px);
+  display: flex;
+  flex-direction: column;
+  pointer-events: auto;
+  z-index: 20;
+  background: linear-gradient(180deg, rgba(20, 30, 28, 0.96), rgba(10, 16, 15, 0.96));
+  border: 2px solid #3fae8a;
+  border-radius: 6px;
+  box-shadow:
+    0 0 0 1px #050a08,
+    0 10px 30px rgba(0, 0, 0, 0.6);
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.dev-head {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 14px 8px;
+  border-bottom: 1px solid rgba(63, 174, 138, 0.4);
+}
+
+.dev-title {
+  font-family: var(--title-font);
+  font-size: 18px;
+  color: #8ff0c8;
+}
+
+.dev-hint {
+  font-size: 11px;
+  color: var(--ink-mute);
+}
+
+.dev-close {
+  top: 6px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  font-size: 18px;
+  line-height: 22px;
+}
+
+.dev-body {
+  overflow-y: auto;
+  padding: 6px 14px 12px;
+}
+
+.dev-section {
+  margin-top: 10px;
+}
+
+.dev-section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.dev-section-title {
+  font-weight: 900;
+  color: #bff5df;
+}
+
+.dev-note {
+  font-size: 11px;
+  color: var(--ink-mute);
+}
+
+.dev-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.dev-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  cursor: pointer;
+}
+
+.dev-toggle.inline {
+  padding: 0 4px;
+}
+
+.dev-toggle input {
+  accent-color: #3fae8a;
+  width: 16px;
+  height: 16px;
+}
+
+.dev-slider {
+  display: grid;
+  grid-template-columns: 1fr 120px 44px;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.dev-slider-label {
+  color: var(--ink-dim);
+}
+
+.dev-slider-val {
+  font-weight: 800;
+  color: #8ff0c8;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.dev-number,
+.dev-select {
+  background: #0d1412;
+  color: var(--ink);
+  border: 1px solid #3a5a50;
+  border-radius: 3px;
+  padding: 3px 6px;
+  font: inherit;
+}
+
+.dev-number {
+  width: 64px;
+}
+
+.dev-toast {
+  position: absolute;
+  left: 50%;
+  bottom: -38px;
+  transform: translateX(-50%);
+  padding: 6px 14px;
+  border-radius: 4px;
+  background: #143a2e;
+  border: 1px solid #3fae8a;
+  color: #bff5df;
+  font-weight: 800;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none;
+}
+
+.dev-toast.show {
+  opacity: 1;
+}
