@@ -3,6 +3,7 @@ import './style.css';
 import { Input } from './core/input';
 import { loadSave, newSave, writeSave, type SaveData } from './core/save';
 import { PHASE_BY_ID } from './data/phases';
+import type { MonsterKind } from './data/monsters';
 import { MATERIALS } from './data/items';
 import { Battle, type BattleOutcome } from './game/battle';
 import { addExp } from './game/stats';
@@ -60,8 +61,9 @@ function onBattleEnd(o: BattleOutcome): void {
     for (const [id, n] of Object.entries(o.materials)) save.materials[id] = (save.materials[id] ?? 0) + n;
     save.sweepTickets += o.sweepTickets;
     if (!save.cleared.includes(o.phase.id)) save.cleared.push(o.phase.id);
-    writeSave(save);
   }
+  // 실패해도 전투 중 사용한 포션은 반영해야 하므로 항상 저장한다.
+  writeSave(save);
   const current = battle;
   current?.hud.showResult(
     {
@@ -101,3 +103,19 @@ renderer.setAnimationLoop(() => {
     input.endFrame();
   }
 });
+
+// 개발 서버 전용: 자동화 테스트에서 화면 갱신이 멈춰도 게임을 원하는 만큼 진행시킨다.
+// 예) __bw.step(120) — 60fps 기준 2초 진행
+if (import.meta.env.DEV) {
+  (window as unknown as Record<string, unknown>).__bw = {
+    step(frames = 60, dt = 1 / 60): string {
+      for (let i = 0; i < frames && battle; i++) battle.update(dt);
+      if (battle) battle.render(renderer);
+      return battle ? battle.debugSummary() : 'no battle';
+    },
+    spawn(kind: MonsterKind, elite = false): string {
+      battle?.spawnMonster(kind, elite);
+      return battle ? battle.debugSummary() : 'no battle';
+    },
+  };
+}

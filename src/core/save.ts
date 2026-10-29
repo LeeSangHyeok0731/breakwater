@@ -1,5 +1,6 @@
 import { DEFAULT_KEYMAP, type Keymap } from './input';
 import { STARTER_SKILLS } from '../data/skills';
+import type { GearSlot } from '../data/gear';
 
 export interface OwnedWeapon {
   uid: string;
@@ -20,6 +21,9 @@ export interface SaveData {
   learnedSkills: string[];
   /** 공용 패시브 단계 */
   passives: Record<string, number>;
+  /** 보유한 방어구·장신구 id와 부위별 장착 */
+  gear: { owned: string[]; equipped: Partial<Record<GearSlot, string>> };
+  potions: { hp: number; mp: number };
   materials: Record<string, number>;
   cleared: string[];
   sweepTickets: number;
@@ -27,7 +31,7 @@ export interface SaveData {
   sensitivity: number;
 }
 
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 const STORAGE_KEY = 'breakwater-save';
 
 export function newSave(): SaveData {
@@ -46,6 +50,8 @@ export function newSave(): SaveData {
     equipped: ['w1', 'w2'],
     learnedSkills: [...STARTER_SKILLS],
     passives: {},
+    gear: { owned: [], equipped: {} },
+    potions: { hp: 0, mp: 0 },
     materials: {},
     cleared: [],
     sweepTickets: 0,
@@ -57,6 +63,10 @@ export function newSave(): SaveData {
 /** 옛 버전이나 일부 필드가 빠진 세이브를 현재 형식으로 맞춘다. 버전이 올라가면 여기서 변환한다. */
 function normalize(data: Partial<SaveData>): SaveData {
   const base = newSave();
+  // v1 → v2: 챕터 1이 5개 페이즈로 늘면서 보스가 1-2에서 1-5로 옮겨졌다.
+  if ((data.version ?? 1) < 2 && data.cleared?.includes('1-2')) {
+    data = { ...data, cleared: [...data.cleared.filter((id) => id !== '1-2'), '1-2', '1-3', '1-4', '1-5'] };
+  }
   return {
     ...base,
     ...data,
@@ -64,6 +74,8 @@ function normalize(data: Partial<SaveData>): SaveData {
     allocated: { ...base.allocated, ...data.allocated },
     materials: { ...data.materials },
     passives: { ...data.passives },
+    gear: { owned: [...(data.gear?.owned ?? [])], equipped: { ...data.gear?.equipped } },
+    potions: { ...base.potions, ...data.potions },
     keymap: { ...DEFAULT_KEYMAP, ...data.keymap },
     // 새 무기 종류가 추가되면 그 기본 스킬도 배운 상태로 맞춘다.
     learnedSkills: [...new Set([...(data.learnedSkills ?? []), ...STARTER_SKILLS])],
