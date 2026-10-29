@@ -80,7 +80,7 @@ export class Effects {
     const material = new THREE.MeshBasicMaterial({
       color,
       transparent: true,
-      opacity: 0.85,
+      opacity: 0.55,
       side: THREE.DoubleSide,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
@@ -91,14 +91,14 @@ export class Effects {
       g = new THREE.RingGeometry(radius * 0.45, radius, 20, 1, -Math.PI / 2.4, span);
       inner.rotation.y = -Math.PI / 2;
     } else {
-      g = new THREE.RingGeometry(radius * 0.45, radius, 20, 1, -Math.PI / 2 - span / 2, span);
+      g = new THREE.RingGeometry(radius * 0.7, radius, 20, 1, -Math.PI / 2 - span / 2, span);
       inner.rotation.x = -Math.PI / 2;
     }
     inner.geometry = g;
     outer.add(inner);
     this.scene.add(outer);
     const life = opts.dur ?? 0.22;
-    this.fading.push({ obj: outer, material, life, maxLife: life, fromScale: 1, toScale: 1.15, startOpacity: 0.85 });
+    this.fading.push({ obj: outer, material, life, maxLife: life, fromScale: 1, toScale: 1.15, startOpacity: 0.55 });
   }
 
   /** 바닥에 퍼지는 원형 충격파 */

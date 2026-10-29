@@ -111,10 +111,22 @@ export class Input {
     window.addEventListener('contextmenu', (e) => e.preventDefault());
 
     document.addEventListener('pointerlockchange', () => {
-      this.locked = document.pointerLockElement === this.target;
-      if (!this.locked) this.releaseAll();
-      for (const fn of this.lockListeners) fn(this.locked);
+      if (!this.fakeLock) this.setLocked(document.pointerLockElement === this.target);
     });
+    // 잠금이 거부되면(예: Esc 직후 1초 안에 다시 요청) 잠기지 않은 상태를 다시 알린다.
+    document.addEventListener('pointerlockerror', () => this.setLocked(false));
+    window.addEventListener('keydown', (e) => {
+      if (this.fakeLock && this.locked && e.code === 'Escape') this.setLocked(false);
+    });
+  }
+
+  /** 개발용: 실제 포인터 잠금 없이 잠긴 것처럼 동작한다 (자동화 테스트에서 잠금이 거부될 때). */
+  fakeLock = false;
+
+  private setLocked(locked: boolean): void {
+    this.locked = locked;
+    if (!locked) this.releaseAll();
+    for (const fn of this.lockListeners) fn(locked);
   }
 
   setKeymap(keymap: Keymap): void {
@@ -133,11 +145,20 @@ export class Input {
   }
 
   requestLock(): void {
-    this.target.requestPointerLock();
+    if (this.fakeLock) {
+      this.setLocked(true);
+      return;
+    }
+    const result = this.target.requestPointerLock() as unknown as Promise<void> | undefined;
+    result?.catch(() => this.setLocked(false));
   }
 
   exitLock(): void {
-    if (document.pointerLockElement) document.exitPointerLock();
+    if (this.fakeLock) {
+      if (this.locked) this.setLocked(false);
+    } else if (document.pointerLockElement) {
+      document.exitPointerLock();
+    }
   }
 
   isDown(action: Action): boolean {
