@@ -209,7 +209,7 @@ export class Player {
   startDodge(dir: THREE.Vector3): void {
     this.dodgeDir.copy(dir.lengthSq() > 0 ? dir : forwardOf(this.yaw));
     this.dodgeTime = DODGE_TIME;
-    this.dodgeCd = 0.75;
+    this.dodgeCd = 0.75 * this.derived.passive.dodgeCdMul;
     this.invuln = DODGE_TIME + 0.05;
     this.action = null;
     this.charge = -1;
@@ -286,9 +286,9 @@ export class Player {
     }
   }
 
-  /** 스킬·장비로 얻는 이동속도 보너스. 스탯 보너스와 달리 상한이 없다. */
+  /** 스킬·패시브로 얻는 이동속도 보너스. 스탯 보너스와 달리 상한이 없다. */
   bonusSpeed(): number {
-    let mul = 0;
+    let mul = this.derived.passive.speedMul;
     for (const b of this.buffs) mul += b.speedMul ?? 0;
     return 5 * mul;
   }

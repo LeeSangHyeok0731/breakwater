@@ -196,7 +196,7 @@ export class Battle {
       const def = WEAPONS[owned.defId];
       return { def, enhance: owned.enhance, slots: buildSlots(save, def.type) };
     });
-    this.player = new Player(derive(this.stats), weapons);
+    this.player = new Player(derive(this.stats, save.passives), weapons);
     this.player.pos.set(0, 0, -this.arenaRadius * 0.35);
     this.player.yaw = 0;
     this.player.animate(0);
@@ -380,11 +380,12 @@ export class Battle {
     const w = p.weapon.def;
     let crit = false;
     let critMul: number;
+    const critChance = w.critChance + p.derived.passive.critBonus;
     if (w.type === 'gun') {
       // 총: 치명타 대신 (치명타 데미지 + 치명타 확률)의 80%만큼 항상 증가
-      critMul = 1 + (CRIT_DAMAGE + w.critChance) * 0.8;
+      critMul = 1 + (CRIT_DAMAGE + critChance) * 0.8;
     } else {
-      crit = Math.random() < w.critChance;
+      crit = Math.random() < critChance;
       critMul = crit ? 1 + CRIT_DAMAGE : 1;
     }
     const dmg = Math.max(1, Math.round(base * p.damageMul * (1 + m.vuln) * critMul));
@@ -457,7 +458,7 @@ export class Battle {
         if (p.parryTimer > 0) {
           this.effects.text(head, '패링!', 'heal');
           this.effects.flash(head.clone().setY(p.pos.y + 1.3).addScaledVector(f, 0.8), 1.2, 0xfff2a0, 0.25);
-          p.mp = Math.min(p.derived.maxMp, p.mp + 10);
+          p.mp = Math.min(p.derived.maxMp, p.mp + 10 + p.derived.passive.parryMana);
           if (src.monster && src.melee && !src.monster.boss) src.monster.stun = Math.max(src.monster.stun, 1.5);
           return;
         }

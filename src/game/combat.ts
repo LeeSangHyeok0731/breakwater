@@ -81,7 +81,7 @@ export function updatePlayerCombat(b: Battle, dt: number): void {
 
   const melee = p.isMelee;
   const wantGuard = melee && input.isDown('guard') && !p.action && p.dodgeTime <= 0;
-  if (wantGuard && !p.guarding) p.parryTimer = 0.22;
+  if (wantGuard && !p.guarding) p.parryTimer = 0.22 + p.derived.passive.parryWindow;
   p.guarding = wantGuard;
 
   advanceAction(b, dt);

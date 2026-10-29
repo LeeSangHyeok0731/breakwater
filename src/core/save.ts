@@ -18,6 +18,8 @@ export interface SaveData {
   weapons: OwnedWeapon[];
   equipped: [string, string];
   learnedSkills: string[];
+  /** 공용 패시브 단계 */
+  passives: Record<string, number>;
   materials: Record<string, number>;
   cleared: string[];
   sweepTickets: number;
@@ -43,6 +45,7 @@ export function newSave(): SaveData {
     ],
     equipped: ['w1', 'w2'],
     learnedSkills: [...STARTER_SKILLS],
+    passives: {},
     materials: {},
     cleared: [],
     sweepTickets: 0,
@@ -60,6 +63,7 @@ function normalize(data: Partial<SaveData>): SaveData {
     version: SAVE_VERSION,
     allocated: { ...base.allocated, ...data.allocated },
     materials: { ...data.materials },
+    passives: { ...data.passives },
     keymap: { ...DEFAULT_KEYMAP, ...data.keymap },
     // 새 무기 종류가 추가되면 그 기본 스킬도 배운 상태로 맞춘다.
     learnedSkills: [...new Set([...(data.learnedSkills ?? []), ...STARTER_SKILLS])],

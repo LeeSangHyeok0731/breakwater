@@ -1491,3 +1491,64 @@ body {
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.03);
 }
+
+/* 공용 패시브 */
+.v-passives {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.v-passive {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.v-passive.learned {
+  border-color: rgba(224, 180, 90, 0.45);
+}
+
+.v-passive .v-desc {
+  font-size: 12px;
+  margin: 0;
+}
+
+.v-pips {
+  display: inline-flex;
+  gap: 3px;
+  margin-left: auto;
+}
+
+.v-pip {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  border: 1px solid var(--accent);
+  background: transparent;
+}
+
+.v-pip.on {
+  background: var(--accent);
+}
+
+.v-keybtn {
+  min-width: 64px;
+  font-variant-numeric: tabular-nums;
+}
+
+.v-keybtn.listening {
+  border-color: var(--accent);
+  color: var(--accent-2);
+  animation: v-key-blink 1s ease-in-out infinite;
+}
+
+@keyframes v-key-blink {
+  50% {
+    opacity: 0.55;
+  }
+}
