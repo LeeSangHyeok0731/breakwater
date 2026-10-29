@@ -31,8 +31,12 @@ export interface HudState {
   /** 항상 8개 */
   slots: HudSlot[];
   buffs: { name: string; time: number }[];
-  /** 스태프 차징 0..1, 차징 중이 아니면 -1 */
+  /** 차징(스태프·도·활) 0..1, 차징 중이 아니면 -1 */
   charge: number;
+  /** 총·활의 탄약/장전 상태 문구. 해당 없으면 null */
+  ammo: string | null;
+  /** 총 정조준 중 */
+  ads: boolean;
   phaseName: string;
   waveText: string;
   gold: number;
@@ -110,6 +114,8 @@ export class Hud {
   private wrap: HTMLDivElement;
   private vignette: HTMLDivElement;
 
+  private cross: HTMLDivElement;
+  private ammoEl: HTMLDivElement;
   private chargeWrap: HTMLDivElement;
   private chargeFill: HTMLDivElement;
 
@@ -162,9 +168,9 @@ export class Hud {
     this.vignette = el('div', 'hud-vignette', w);
 
     // 크로스헤어 + 차징 바
-    const cross = el('div', 'hud-crosshair', w);
-    el('span', 'ch-dot', cross);
-    for (const d of ['t', 'b', 'l', 'r']) el('span', `ch-line ch-${d}`, cross);
+    this.cross = el('div', 'hud-crosshair', w);
+    el('span', 'ch-dot', this.cross);
+    for (const d of ['t', 'b', 'l', 'r']) el('span', `ch-line ch-${d}`, this.cross);
     this.chargeWrap = el('div', 'hud-charge', w);
     this.chargeFill = el('div', 'hud-charge-fill', this.chargeWrap);
 
@@ -234,6 +240,8 @@ export class Hud {
     const other = el('div', 'hud-weapon-other', this.weaponPanel);
     this.swapKey = el('span', 'hud-key', other);
     this.otherWeapon = el('span', 'hud-weapon-other-name', other);
+    this.ammoEl = el('div', 'hud-weapon-ammo', this.weaponPanel);
+    this.weaponPanel.insertBefore(this.ammoEl, other);
 
     this.banner = el('div', 'hud-banner', w);
   }
@@ -368,6 +376,14 @@ export class Hud {
     setStyle(this.weaponName, 'color', s.weaponGradeColor);
     setText(this.otherWeapon, s.otherWeaponName);
     setText(this.swapKey, s.swapKey);
+    if (s.ammo) {
+      setStyle(this.ammoEl, 'display', '');
+      setText(this.ammoEl, s.ammo);
+      setClass(this.ammoEl, 'busy', s.ammo.endsWith('...'));
+    } else {
+      setStyle(this.ammoEl, 'display', 'none');
+    }
+    setClass(this.cross, 'ads', s.ads);
   }
 
   notify(text: string, duration = 1.2): void {

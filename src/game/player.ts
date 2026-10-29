@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { Input } from '../core/input';
 import type { SkillDef } from '../data/skills';
 import { MELEE_TYPES, type WeaponDef } from '../data/weapons';
-import { makePlayer, makeStaff, makeSword, type Rig } from './models';
+import { makePlayer, makeWeaponModel, type Rig } from './models';
 import type { Derived } from './stats';
 
 export interface EquippedWeapon {
@@ -10,6 +10,9 @@ export interface EquippedWeapon {
   enhance: number;
   slots: (SkillDef | null)[];
   model: THREE.Group;
+  /** 총 전용: 남은 탄약과 탄창 크기 (총이 아니면 0) */
+  ammo: number;
+  magazine: number;
 }
 
 export type ActionKind =
@@ -22,7 +25,17 @@ export type ActionKind =
   | 'waves'
   | 'cast'
   | 'manaball'
-  | 'laser';
+  | 'laser'
+  | 'cleave'
+  | 'crescent'
+  | 'skyfall'
+  | 'hamstring'
+  | 'iai'
+  | 'shoot'
+  | 'volley'
+  | 'rapid'
+  | 'snipe'
+  | 'barrage';
 
 export interface PlayerAction {
   kind: ActionKind;
@@ -37,6 +50,8 @@ export interface Buff {
   id: string;
   name: string;
   damageMul: number;
+  /** 이동속도 보너스 비율 (상한 없음) */
+  speedMul?: number;
   time: number;
 }
 
@@ -89,6 +104,14 @@ export class Player {
   wardTime = 0;
 
   swapCd = 0;
+  /** 총 재장전 남은 시간 */
+  reloadTime = 0;
+  /** 총 연사 간격 */
+  fireCd = 0;
+  /** 활 장전 남은 시간 (0이면 쏠 수 있다) */
+  drawCd = 0;
+  /** 총 정조준 중 */
+  ads = false;
   hurtTimer = 0;
   dead = false;
 
@@ -101,7 +124,12 @@ export class Player {
     this.hp = derived.maxHp;
     this.mp = derived.maxMp;
     this.rig = makePlayer();
-    this.weapons = weapons.map((w) => ({ ...w, model: w.def.type === 'staff' ? makeStaff() : makeSword() }));
+    this.weapons = weapons.map((w) => ({
+      ...w,
+      model: makeWeaponModel(w.def.type),
+      ammo: w.def.magazine ?? 0,
+      magazine: w.def.magazine ?? 0,
+    }));
     this.equipModel();
 
     this.shieldBubble = new THREE.Mesh(
@@ -127,10 +155,19 @@ export class Player {
     return MELEE_TYPES.has(this.weapon.def.type);
   }
 
+  get isRanged(): boolean {
+    const t = this.weapon.def.type;
+    return t === 'bow' || t === 'gun';
+  }
+
   get damageMul(): number {
     let m = 1;
     for (const b of this.buffs) m += b.damageMul;
     return m;
+  }
+
+  hasBuff(id: string): boolean {
+    return this.buffs.some((b) => b.id === id);
   }
 
   equipModel(): void {
@@ -143,6 +180,8 @@ export class Player {
     this.action = null;
     this.charge = -1;
     this.guarding = false;
+    this.reloadTime = 0;
+    this.ads = false;
     this.swapCd = 0.3;
     this.equipModel();
   }
@@ -182,6 +221,15 @@ export class Player {
     this.invuln = Math.max(0, this.invuln - dt);
     this.parryTimer = Math.max(0, this.parryTimer - dt);
     this.swapCd = Math.max(0, this.swapCd - dt);
+    this.fireCd = Math.max(0, this.fireCd - dt);
+    this.drawCd = Math.max(0, this.drawCd - dt);
+    if (this.reloadTime > 0) {
+      this.reloadTime -= dt;
+      if (this.reloadTime <= 0) {
+        this.reloadTime = 0;
+        this.weapon.ammo = this.weapon.magazine;
+      }
+    }
     this.hurtTimer = Math.max(0, this.hurtTimer - dt);
     this.comboTimer = Math.max(0, this.comboTimer - dt);
     if (this.comboTimer === 0) this.comboStep = 0;
@@ -209,7 +257,8 @@ export class Player {
       const wish = this.wishDir(input);
       let speed = this.derived.moveSpeed + this.bonusSpeed();
       if (this.guarding) speed *= 0.4;
-      else if (this.charge >= 0 || this.action?.kind === 'laser') speed *= 0.45;
+      else if (this.charge >= 0 || this.action?.kind === 'laser' || this.action?.kind === 'snipe') speed *= 0.45;
+      else if (this.ads) speed *= 0.6;
       else if (this.action && this.grounded) speed *= 0.55;
       const accel = this.grounded ? 14 : 5;
       const k = Math.min(1, accel * dt);
@@ -237,9 +286,11 @@ export class Player {
     }
   }
 
-  /** 스킬·장비로 얻는 이동속도 보너스 (상한 없음). MVP에서는 아직 없다. */
+  /** 스킬·장비로 얻는 이동속도 보너스. 스탯 보너스와 달리 상한이 없다. */
   bonusSpeed(): number {
-    return 0;
+    let mul = 0;
+    for (const b of this.buffs) mul += b.speedMul ?? 0;
+    return 5 * mul;
   }
 
   animate(dt: number): void {
@@ -254,9 +305,9 @@ export class Player {
     rig.legR.rotation.x = -swing;
 
     // 기본 자세
-    let armR = this.isMelee ? -0.35 : -0.75;
+    let armR = this.isMelee ? -0.35 : this.isRanged ? -1.45 : -0.75;
     let armRz = 0;
-    let armL = -swing * 0.4;
+    let armL = this.isRanged ? -1.2 : -swing * 0.4;
     let bodyYaw = 0;
     let bodyPitch = 0;
     let bodyY = 0;
@@ -281,15 +332,20 @@ export class Player {
           break;
         case 'slashH':
         case 'sunder':
+        case 'cleave':
+        case 'crescent':
+        case 'hamstring':
           armR = -1.5;
           bodyYaw = 1.1 - e * 2.2;
           break;
         case 'thrust':
+        case 'iai':
           armR = -1.6;
           bodyPitch = 0.25 * e;
           rig.armR.position.z = 0.35 * e;
           break;
         case 'upper':
+        case 'skyfall':
           armR = -0.2 - e * 2.9;
           bodyPitch = -0.2 * e;
           break;
@@ -304,6 +360,11 @@ export class Player {
         case 'cast':
         case 'manaball':
         case 'laser':
+        case 'shoot':
+        case 'volley':
+        case 'rapid':
+        case 'snipe':
+        case 'barrage':
           armR = -1.55;
           armL = -1.3;
           break;
@@ -312,7 +373,7 @@ export class Player {
       armR = -1.55;
       armL = -1.4;
     }
-    if (!a || a.kind !== 'thrust') rig.armR.position.z = 0;
+    if (!a || (a.kind !== 'thrust' && a.kind !== 'iai')) rig.armR.position.z = 0;
 
     rig.armR.rotation.x = armR;
     rig.armR.rotation.z = armRz;

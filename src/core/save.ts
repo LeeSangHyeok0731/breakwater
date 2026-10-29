@@ -61,6 +61,8 @@ function normalize(data: Partial<SaveData>): SaveData {
     allocated: { ...base.allocated, ...data.allocated },
     materials: { ...data.materials },
     keymap: { ...DEFAULT_KEYMAP, ...data.keymap },
+    // 새 무기 종류가 추가되면 그 기본 스킬도 배운 상태로 맞춘다.
+    learnedSkills: [...new Set([...(data.learnedSkills ?? []), ...STARTER_SKILLS])],
   };
 }
 

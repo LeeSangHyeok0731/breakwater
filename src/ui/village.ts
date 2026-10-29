@@ -16,13 +16,14 @@ export interface VillageCallbacks {
   onReset(): void;
 }
 
-type Tab = 'phase' | 'char' | 'skill' | 'enhance' | 'shop' | 'settings';
+type Tab = 'phase' | 'char' | 'equip' | 'skill' | 'enhance' | 'shop' | 'settings';
 type ConfirmKey = 'statReset' | 'skillReset' | 'fullReset';
 type StatKey = keyof Stats;
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'phase', label: '출정' },
   { id: 'char', label: '캐릭터' },
+  { id: 'equip', label: '장비' },
   { id: 'skill', label: '스킬' },
   { id: 'enhance', label: '강화' },
   { id: 'shop', label: '상점' },
@@ -161,6 +162,9 @@ export class VillageUI {
         break;
       case 'char':
         this.renderChar(save);
+        break;
+      case 'equip':
+        this.renderEquip(save);
         break;
       case 'skill':
         this.renderSkills(save);
@@ -381,6 +385,65 @@ export class VillageUI {
     this.toast(`스탯을 초기화했습니다. 포인트 ${total} 반환`);
   }
 
+  // ---- 장비 ----
+
+  private renderEquip(save: SaveData): void {
+    const s = this.section('장착 무기', '전투 중 무기 교체 키로 두 무기를 바꿔 씁니다');
+    const slots = el('div', 'v-equip-slots', s);
+    save.equipped.forEach((uid, i) => {
+      const w = save.weapons.find((x) => x.uid === uid);
+      const def = w ? WEAPONS[w.defId] : undefined;
+      const box = el('div', 'v-equip-slot', slots);
+      el('span', 'v-muted', box, `무기 ${i + 1}`);
+      const name = el('span', 'v-card-title', box, def ? `${def.name}${w && w.enhance > 0 ? ` +${w.enhance}` : ''}` : '없음');
+      if (def) name.style.color = GRADES[def.grade].color;
+      if (def) el('span', 'v-muted', box, WEAPON_TYPE_NAME[def.type]);
+    });
+
+    const list = this.section('보유 무기', `${save.weapons.length}개`);
+    for (const w of save.weapons) {
+      const def = WEAPONS[w.defId];
+      if (!def) continue;
+      const card = el('div', 'v-card', list);
+      const head = el('div', 'v-card-head', card);
+      const name = el('span', 'v-card-title', head, def.name);
+      name.style.color = GRADES[def.grade].color;
+      if (w.enhance > 0) el('span', 'v-enh', head, `+${w.enhance}`);
+      el('span', 'v-muted', head, `${GRADES[def.grade].name} ${WEAPON_TYPE_NAME[def.type]}`);
+      const slot = save.equipped.indexOf(w.uid);
+      if (slot >= 0) el('span', 'v-badge clear', head, `무기 ${slot + 1}`);
+      el('p', 'v-desc', card, def.desc);
+      this.weaponMeta(card, def);
+      const actions = el('div', 'v-actions', card);
+      for (const i of [0, 1]) {
+        button(actions, `무기 ${i + 1}에 장착`, i === 0 ? 'primary' : '', save.equipped[i] !== w.uid, () => this.equip(w.uid, i));
+      }
+    }
+    el('p', 'v-muted v-note', list, '새 무기는 상점에서 사거나 재료로 교환해 얻습니다.');
+  }
+
+  private weaponMeta(card: HTMLElement, def: WeaponDef): void {
+    const meta = el('div', 'v-meta', card);
+    el('span', '', meta, `공격력 ${def.attack}`);
+    el('span', '', meta, def.type === 'gun' ? `치명타 보정 ${(def.critChance * 100).toFixed(0)}%` : `치명타 ${(def.critChance * 100).toFixed(0)}%`);
+    if (def.magazine) el('span', '', meta, `탄창 ${def.magazine}발`);
+  }
+
+  private equip(uid: string, slot: number): void {
+    const save = this.getSave();
+    const other = 1 - slot;
+    // 다른 칸에 이미 있으면 두 칸을 맞바꾼다.
+    if (save.equipped[other] === uid) save.equipped[other] = save.equipped[slot];
+    save.equipped[slot] = uid;
+    this.changed();
+  }
+
+  private addWeapon(defId: string): void {
+    const save = this.getSave();
+    const next = save.weapons.reduce((n, w) => Math.max(n, Number(w.uid.slice(1)) || 0), 0) + 1;
+    save.weapons.push({ uid: `w${next}`, defId, enhance: 0 });
+  }
+
   // ---- 스킬 ----
 
   private equippedDefs(save: SaveData): WeaponDef[] {
@@ -554,7 +617,59 @@ export class VillageUI {
   // ---- 상점 ----
 
   private renderShop(save: SaveData): void {
-    const s = this.section('상점');
+    const owned = new Set(save.weapons.map((w) => w.defId));
+
+    const ws = this.section('무기 상점', '골드로 삽니다');
+    for (const def of Object.values(WEAPONS)) {
+      if (def.price === undefined) continue;
+      const card = el('div', 'v-card', ws);
+      const head = el('div', 'v-card-head', card);
+      const name = el('span', 'v-card-title', head, def.name);
+      name.style.color = GRADES[def.grade].color;
+      el('span', 'v-muted', head, `${GRADES[def.grade].name} ${WEAPON_TYPE_NAME[def.type]}`);
+      if (owned.has(def.id)) el('span', 'v-badge clear', head, '보유');
+      el('p', 'v-desc', card, def.desc);
+      this.weaponMeta(card, def);
+      const actions = el('div', 'v-actions', card);
+      if (owned.has(def.id)) continue;
+      const price = def.price;
+      button(actions, `구매 (${fmt(price)} 골드)`, 'primary', save.gold >= price, () => {
+        const sv = this.getSave();
+        if (sv.gold < price) return;
+        sv.gold -= price;
+        this.addWeapon(def.id);
+        this.changed();
+        this.toast(`${def.name}을(를) 샀습니다. 장비 탭에서 장착하세요`);
+      });
+      if (save.gold < price) el('span', 'v-short', actions, '골드가 부족합니다');
+    }
+
+    const xs = this.section('재료 교환', '모은 재료로 강력한 무기와 바꿉니다');
+    for (const def of Object.values(WEAPONS)) {
+      const ex = def.exchange;
+      if (!ex) continue;
+      const card = el('div', 'v-card', xs);
+      const head = el('div', 'v-card-head', card);
+      const name = el('span', 'v-card-title', head, def.name);
+      name.style.color = GRADES[def.grade].color;
+      el('span', 'v-muted', head, `${GRADES[def.grade].name} ${WEAPON_TYPE_NAME[def.type]}`);
+      if (owned.has(def.id)) el('span', 'v-badge clear', head, '보유');
+      el('p', 'v-desc', card, def.desc);
+      this.weaponMeta(card, def);
+      if (owned.has(def.id)) continue;
+      const costs = el('div', 'v-costs', card);
+      let ok = save.gold >= ex.gold;
+      el('span', save.gold >= ex.gold ? 'v-cost' : 'v-cost short', costs, `골드 ${fmt(save.gold)} / ${fmt(ex.gold)}`);
+      for (const [id, need] of Object.entries(ex.materials)) {
+        const have = save.materials[id] ?? 0;
+        if (have < need) ok = false;
+        el('span', have >= need ? 'v-cost' : 'v-cost short', costs, `${materialName(id)} ${have} / ${need}`);
+      }
+      const actions = el('div', 'v-actions', card);
+      button(actions, '교환', 'primary', ok, () => this.exchange(def));
+    }
+
+    const s = this.section('소모품');
     const card = el('div', 'v-card', s);
     const head = el('div', 'v-card-head', card);
     el('span', 'v-card-title', head, '소탕권');
@@ -570,7 +685,21 @@ export class VillageUI {
       this.toast('소탕권 1장을 구매했습니다');
     });
     if (save.gold < SWEEP_TICKET_PRICE) el('span', 'v-short', actions, '골드가 부족합니다');
-    el('p', 'v-muted v-note', s, '무기·방어구·장신구·포션은 이후 업데이트에서 추가됩니다.');
+    el('p', 'v-muted v-note', s, '방어구·장신구·포션은 이후 업데이트에서 추가됩니다.');
+  }
+
+  private exchange(def: WeaponDef): void {
+    const save = this.getSave();
+    const ex = def.exchange;
+    if (!ex || save.weapons.some((w) => w.defId === def.id) || save.gold < ex.gold) return;
+    for (const [id, need] of Object.entries(ex.materials)) {
+      if ((save.materials[id] ?? 0) < need) return;
+    }
+    save.gold -= ex.gold;
+    for (const [id, need] of Object.entries(ex.materials)) save.materials[id] -= need;
+    this.addWeapon(def.id);
+    this.changed();
+    this.toast(`${def.name}을(를) 얻었습니다. 장비 탭에서 장착하세요`);
   }
 
   // ---- 설정 ----
