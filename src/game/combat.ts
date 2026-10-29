@@ -218,7 +218,7 @@ function performHit(b: Battle, kind: ActionKind, index: number): void {
       performIai(b);
       break;
     case 'volley': {
-      const origin = p.muzzle();
+      const origin = b.muzzle();
       const dir = b.aimPoint.clone().sub(origin).normalize();
       jitter(dir, 0.05);
       b.spawnPlayerBolt(origin, dir.multiplyScalar(50), {
@@ -237,7 +237,7 @@ function performHit(b: Battle, kind: ActionKind, index: number): void {
       gunShot(b, 0.6, 0.06);
       break;
     case 'snipe': {
-      const origin = p.muzzle();
+      const origin = b.muzzle();
       const dir = b.aimPoint.clone().sub(origin).normalize();
       b.fireHitscan(origin, dir, base * 6, { pierce: true, color: 0xfff0a0, width: 0.08 });
       b.shake(0.3);
@@ -275,7 +275,7 @@ function performHit(b: Battle, kind: ActionKind, index: number): void {
       break;
     }
     case 'manaball': {
-      const origin = p.muzzle();
+      const origin = b.muzzle();
       const dir = b.aimPoint.clone().sub(origin).normalize();
       b.spawnPlayerBolt(origin, dir.multiplyScalar(28), {
         damage: base,
@@ -309,7 +309,7 @@ function jitter(dir: THREE.Vector3, spread: number): THREE.Vector3 {
 
 function fireArrow(b: Battle, c: number): void {
   const p = b.player;
-  const origin = p.muzzle();
+  const origin = b.muzzle();
   const dir = b.aimPoint.clone().sub(origin).normalize();
   b.spawnPlayerBolt(origin, dir.multiplyScalar(42 + 20 * c), {
     damage: b.weaponBase() * (1 + 2.5 * c),
@@ -343,7 +343,7 @@ function startReload(b: Battle): void {
 /** 총알 한 발: 조준 방향으로 즉시 판정한다. */
 function gunShot(b: Battle, mul: number, extraSpread: number): void {
   const p = b.player;
-  const origin = p.muzzle();
+  const origin = b.muzzle();
   const dir = b.aimPoint.clone().sub(origin).normalize();
   const moving = Math.hypot(p.vel.x, p.vel.z) > 1;
   const spread = (p.ads ? 0.004 : moving ? 0.045 : 0.025) + extraSpread;
@@ -398,7 +398,7 @@ function releaseCharge(b: Battle): void {
   const c = Math.min(p.charge, 1.2) / 1.2;
   p.charge = -1;
   sfx.play('magic', 1 + c);
-  const origin = p.muzzle();
+  const origin = b.muzzle();
   const dir = b.aimPoint.clone().sub(origin).normalize();
   b.spawnPlayerBolt(origin, dir.multiplyScalar(24), {
     damage: b.weaponBase() * (1 + 2.5 * c),
@@ -520,7 +520,7 @@ function castSkill(b: Battle, skill: SkillDef): void {
       p.startAction('iai', 0.5, [0.1]);
       break;
     case 'bow_fan': {
-      const origin = p.muzzle();
+      const origin = b.muzzle();
       const base = b.aimPoint.clone().sub(origin).normalize();
       const up = new THREE.Vector3(0, 1, 0);
       for (let k = -2; k <= 2; k++) {
@@ -551,7 +551,7 @@ function castSkill(b: Battle, skill: SkillDef): void {
       break;
     }
     case 'bow_pierce': {
-      const origin = p.muzzle();
+      const origin = b.muzzle();
       const dir = b.aimPoint.clone().sub(origin).normalize();
       b.spawnPlayerBolt(origin, dir.multiplyScalar(60), {
         damage: b.skillBase({ dex: 2.5, str: 1.0 }),
@@ -578,7 +578,7 @@ function castSkill(b: Battle, skill: SkillDef): void {
       p.startAction('rapid', 0.65, [0, 0.1, 0.2, 0.3, 0.4, 0.5]);
       break;
     case 'gun_grenade': {
-      const origin = p.muzzle();
+      const origin = b.muzzle();
       const target = b.groundAim(22);
       const g = 18;
       const t = 0.8;

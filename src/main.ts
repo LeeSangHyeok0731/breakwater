@@ -4,6 +4,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import './style.css';
+import './ui/theme.css';
 import { Input } from './core/input';
 import { sfx } from './core/audio';
 import { loadSave, newSave, writeSave, type SaveData } from './core/save';
@@ -13,8 +14,9 @@ import { MATERIALS } from './data/items';
 import { loadAssets } from './game/assets';
 import { Battle, type BattleOutcome } from './game/battle';
 import { addExp } from './game/stats';
-import { VillageScene } from './game/villageScene';
-import { VillageUI } from './ui/village';
+import { Town, type Station, type StationId } from './game/town';
+import { TownHud } from './ui/townHud';
+import { VillageUI, type Tab } from './ui/village';
 
 const app = document.getElementById('app')!;
 const uiRoot = document.getElementById('ui')!;
@@ -46,9 +48,51 @@ sfx.setVolume(save.sfxVolume);
 window.addEventListener('pointerdown', () => sfx.unlock());
 window.addEventListener('keydown', () => sfx.unlock());
 
-let villageScene: VillageScene | null = null;
+let town: Town | null = null;
+let townHud: TownHud | null = null;
 let village: VillageUI | null = null;
 let battle: Battle | null = null;
+/** 창을 닫은 프레임에는 같은 키로 다시 열리지 않게 한다. */
+let justClosed = false;
+/** 창을 닫고 마우스 잠금을 다시 거는 중 */
+let relocking = false;
+
+const STATION_TABS: Record<StationId, Tab[]> = {
+  board: ['phase'],
+  smith: ['enhance', 'exchange'],
+  shop: ['shop'],
+  trainer: ['char', 'skill'],
+  chest: ['equip'],
+};
+
+function openStation(s: Station): void {
+  if (!town || !village) return;
+  town.frozen = true;
+  town.greet(s);
+  // 창을 먼저 연 뒤 잠금을 푼다 (잠금 해제 이벤트가 메뉴를 열지 않도록).
+  village.open(STATION_TABS[s.id], s.name);
+  input.exitLock();
+}
+
+function openMenu(): void {
+  if (!town || !village) return;
+  town.frozen = true;
+  village.open(['settings'], '메뉴');
+}
+
+input.onLockChange((locked) => {
+  if (battle || !town || !townHud || !village) return;
+  if (locked) {
+    relocking = false;
+    townHud.hideResume();
+  } else if (relocking) {
+    // 잠금 요청이 거부됐다 (예: Esc 직후). 클릭해서 다시 시작하게 한다.
+    relocking = false;
+    townHud.showResume('클릭해서 계속', () => input.requestLock());
+  } else if (!village.isOpen) {
+    openMenu();
+  }
+});
 
 function replaceSave(next: SaveData): void {
   save = next;
@@ -61,6 +105,8 @@ function startPhase(id: string): void {
   const phase = PHASE_BY_ID[id];
   if (!phase || battle) return;
   village?.hide();
+  townHud?.hide();
+  if (town) town.frozen = false;
   battle = new Battle(input, save, phase, uiRoot, onBattleEnd);
 }
 
@@ -90,7 +136,10 @@ function onBattleEnd(o: BattleOutcome): void {
     () => {
       current?.dispose();
       battle = null;
-      village?.show();
+      town?.enter();
+      townHud?.show();
+      // 결과 창의 버튼 클릭으로 바로 마우스를 잠근다.
+      input.requestLock();
     },
   );
 }
@@ -99,9 +148,9 @@ function render(): void {
   if (battle) {
     renderPass.scene = battle.scene;
     renderPass.camera = battle.camera;
-  } else if (villageScene) {
-    renderPass.scene = villageScene.scene;
-    renderPass.camera = villageScene.camera;
+  } else if (town) {
+    renderPass.scene = town.scene;
+    renderPass.camera = town.camera;
   } else return;
   composer.render();
 }
@@ -111,7 +160,7 @@ window.addEventListener('resize', () => {
   const h = window.innerHeight;
   renderer.setSize(w, h);
   composer.setSize(w, h);
-  villageScene?.resize(w, h);
+  town?.resize(w, h);
   battle?.resize(w, h);
 });
 
@@ -143,7 +192,10 @@ async function init(): Promise<void> {
   }
   loading.remove();
 
-  villageScene = new VillageScene();
+  town = new Town(input, () => save);
+  town.enter();
+  townHud = new TownHud(uiRoot);
+  townHud.showResume('클릭해서 시작', () => input.requestLock());
   village = new VillageUI(uiRoot, () => save, {
     onStartPhase: startPhase,
     onSaveChanged: () => {
@@ -153,8 +205,24 @@ async function init(): Promise<void> {
     },
     onImport: (s) => replaceSave(s),
     onReset: () => replaceSave(newSave()),
+    onClose: () => {
+      if (town) town.frozen = false;
+      justClosed = true;
+      relocking = true;
+      writeSave(save);
+      input.requestLock();
+    },
   });
-  village.show();
+}
+
+/** 마을: 걸어 다니다 가까운 대상과 상호작용한다. */
+function updateTown(dt: number): void {
+  if (!town || !townHud || !village) return;
+  town.update(dt);
+  const near = !village.isOpen && input.locked ? town.nearest() : null;
+  if (near && input.pressed('interact') && !justClosed) openStation(near);
+  townHud.update(save, near && !village.isOpen ? near.verb : null);
+  justClosed = false;
 }
 
 const clock = new THREE.Clock();
@@ -162,7 +230,7 @@ renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.05);
   if (battle) battle.update(dt);
   else {
-    villageScene?.update(dt);
+    updateTown(dt);
     input.endFrame();
   }
   render();
@@ -181,6 +249,9 @@ if (import.meta.env.DEV) {
     },
     get battle(): Battle | null {
       return battle;
+    },
+    get town(): Town | null {
+      return town;
     },
     spawn(kind: MonsterKind, elite = false): string {
       battle?.spawnMonster(kind, elite);

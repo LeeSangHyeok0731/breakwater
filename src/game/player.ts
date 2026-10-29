@@ -146,6 +146,8 @@ export class Player {
   ads = false;
   hurtTimer = 0;
   dead = false;
+  /** 1인칭에서는 내 몸을 그리지 않는다. */
+  hidden = false;
 
   private dodgeToken = 0;
   private shieldBubble: THREE.Mesh;
@@ -396,7 +398,8 @@ export class Player {
     if (this.wardBubble.visible) this.wardBubble.rotation.y += dt * 1.5;
 
     // 피격 시 짧게 깜빡인다.
-    av.setVisible(this.hurtTimer <= 0 || Math.floor(this.hurtTimer * 30) % 2 === 0);
+    av.setVisible(!this.hidden && (this.hurtTimer <= 0 || Math.floor(this.hurtTimer * 30) % 2 === 0));
+    this.weapon.model.visible = !this.hidden;
   }
 
   /** 무기 끝(대략) 위치 */

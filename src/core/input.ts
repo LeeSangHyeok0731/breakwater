@@ -17,7 +17,9 @@ export type Action =
   | 'slot7'
   | 'slot8'
   | 'item1'
-  | 'item2';
+  | 'item2'
+  | 'view'
+  | 'interact';
 
 export type Keymap = Record<Action, string>;
 
@@ -42,6 +44,9 @@ export const DEFAULT_KEYMAP: Keymap = {
   slot8: 'KeyG',
   item1: 'KeyZ',
   item2: 'KeyX',
+  view: 'KeyV',
+  // 마을 전용이라 전투 키(F = 스킬 슬롯 7)와 겹쳐도 된다.
+  interact: 'KeyF',
 };
 
 export const SLOT_ACTIONS: Action[] = ['slot1', 'slot2', 'slot3', 'slot4', 'slot5', 'slot6', 'slot7', 'slot8'];
@@ -67,22 +72,24 @@ export class Input {
 
   private down = new Set<Action>();
   private pressedSet = new Set<Action>();
-  private codeToAction = new Map<string, Action>();
+  /** 한 키에 여러 동작이 묶일 수 있다 (마을의 상호작용과 전투의 스킬 슬롯처럼 쓰는 곳이 다를 때). */
+  private codeToActions = new Map<string, Action[]>();
   private lockListeners: ((locked: boolean) => void)[] = [];
 
   constructor(private target: HTMLElement, keymap: Keymap) {
     this.setKeymap(keymap);
 
     window.addEventListener('keydown', (e) => {
-      const action = this.codeToAction.get(e.code);
-      if (!action) return;
+      const actions = this.codeToActions.get(e.code);
+      if (!actions) return;
       if (this.locked) e.preventDefault();
-      if (!e.repeat) this.pressedSet.add(action);
-      this.down.add(action);
+      for (const action of actions) {
+        if (!e.repeat) this.pressedSet.add(action);
+        this.down.add(action);
+      }
     });
     window.addEventListener('keyup', (e) => {
-      const action = this.codeToAction.get(e.code);
-      if (action) this.down.delete(action);
+      for (const action of this.codeToActions.get(e.code) ?? []) this.down.delete(action);
     });
     window.addEventListener('blur', () => this.releaseAll());
 
@@ -130,9 +137,11 @@ export class Input {
   }
 
   setKeymap(keymap: Keymap): void {
-    this.codeToAction.clear();
+    this.codeToActions.clear();
     for (const [action, code] of Object.entries(keymap) as [Action, string][]) {
-      this.codeToAction.set(code, action);
+      const list = this.codeToActions.get(code) ?? [];
+      list.push(action);
+      this.codeToActions.set(code, list);
     }
   }
 
@@ -149,8 +158,17 @@ export class Input {
       this.setLocked(true);
       return;
     }
-    const result = this.target.requestPointerLock() as unknown as Promise<void> | undefined;
-    result?.catch(() => this.setLocked(false));
+    // 운영체제의 마우스 가속을 빼고 원시 이동량을 받는다 (지원하지 않는 브라우저는 일반 잠금).
+    const lock = this.target.requestPointerLock as (opts?: { unadjustedMovement?: boolean }) => Promise<void> | undefined;
+    const result = lock.call(this.target, { unadjustedMovement: true });
+    result?.catch((err: unknown) => {
+      if (err instanceof DOMException && err.name === 'NotSupportedError') {
+        const plain = lock.call(this.target);
+        plain?.catch(() => this.setLocked(false));
+      } else {
+        this.setLocked(false);
+      }
+    });
   }
 
   exitLock(): void {

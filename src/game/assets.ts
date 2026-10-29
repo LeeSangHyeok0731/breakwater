@@ -4,7 +4,16 @@ import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js
 
 // KayKit (CC0) 에셋. public/assets 아래에 있다.
 
-export const CHARACTERS = ['Knight', 'Skeleton_Minion', 'Skeleton_Mage', 'Skeleton_Warrior', 'Skeleton_Rogue'] as const;
+export const CHARACTERS = [
+  'Knight',
+  'Barbarian',
+  'Mage',
+  'Rogue',
+  'Skeleton_Minion',
+  'Skeleton_Mage',
+  'Skeleton_Warrior',
+  'Skeleton_Rogue',
+] as const;
 export type CharacterName = (typeof CHARACTERS)[number];
 
 export const WEAPON_MODELS = [
@@ -55,6 +64,9 @@ export type PropName = (typeof PROPS)[number];
 /** 캐릭터를 이 키(m)에 맞춘다. */
 const CHARACTER_HEIGHT: Record<CharacterName, number> = {
   Knight: 1.95,
+  Barbarian: 2.05,
+  Mage: 1.95,
+  Rogue: 1.9,
   Skeleton_Minion: 1.9,
   Skeleton_Mage: 2.05,
   Skeleton_Warrior: 2.2,
