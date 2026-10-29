@@ -253,6 +253,10 @@ if (import.meta.env.DEV) {
     get town(): Town | null {
       return town;
     },
+    start(phaseId: string): string {
+      startPhase(phaseId);
+      return battle ? 'started' : 'failed';
+    },
     spawn(kind: MonsterKind, elite = false): string {
       battle?.spawnMonster(kind, elite);
       return battle ? battle.debugSummary() : 'no battle';

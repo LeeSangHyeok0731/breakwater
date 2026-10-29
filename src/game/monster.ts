@@ -85,7 +85,11 @@ export class Monster {
   phase2 = false;
   private readonly leapFrom = new THREE.Vector3();
 
+  /** 화면 기준 오른쪽 방향. 체력바를 왼쪽 끝에 맞추는 데 쓴다 (Battle이 매 프레임 갱신). */
+  static readonly camRight = new THREE.Vector3(1, 0, 0);
+
   private hpBar: THREE.Group | null = null;
+  private hpBg: THREE.Sprite | null = null;
   private hpFg: THREE.Sprite | null = null;
   private barWidth = 1;
 
@@ -121,13 +125,16 @@ export class Monster {
     if (!this.showsBossBar) {
       this.barWidth = elite ? 1.6 : 1;
       this.hpBar = new THREE.Group();
-      const bg = new THREE.Sprite(barBgMat);
-      bg.scale.set(this.barWidth + 0.06, 0.14, 1);
-      bg.renderOrder = 10;
+      // 두 스프라이트 모두 왼쪽 끝을 기준점으로 삼아, 체력이 줄면 오른쪽에서부터 줄어든다.
+      this.hpBg = new THREE.Sprite(barBgMat);
+      this.hpBg.center.set(0, 0.5);
+      this.hpBg.scale.set(this.barWidth + 0.06, 0.14, 1);
+      this.hpBg.renderOrder = 10;
       this.hpFg = new THREE.Sprite(elite ? barEliteMat : barFgMat);
+      this.hpFg.center.set(0, 0.5);
       this.hpFg.scale.set(this.barWidth, 0.09, 1);
       this.hpFg.renderOrder = 11;
-      this.hpBar.add(bg, this.hpFg);
+      this.hpBar.add(this.hpBg, this.hpFg);
       this.hpBar.visible = elite;
     }
   }
@@ -312,8 +319,12 @@ export class Monster {
       const pulse = this.hitPulse > 0 ? 1 + this.hitPulse * 1.2 : 1;
       root.scale.set(this.scale * pulse, this.scale / pulse, this.scale * pulse);
     }
-    if (this.hpBar && this.hpFg) {
+    if (this.hpBar && this.hpBg && this.hpFg) {
       this.hpBar.position.set(this.pos.x, this.y + this.height + 0.45, this.pos.z);
+      // 막대의 가운데가 머리 위에 오도록, 왼쪽 끝을 화면 왼쪽으로 반 폭만큼 옮긴다.
+      const r = Monster.camRight;
+      this.hpBg.position.copy(r).multiplyScalar(-(this.barWidth + 0.06) / 2);
+      this.hpFg.position.copy(r).multiplyScalar(-this.barWidth / 2);
       const ratio = Math.max(0, this.hp / this.maxHp);
       this.hpFg.scale.x = this.barWidth * ratio;
     }

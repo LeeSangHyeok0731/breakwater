@@ -358,6 +358,8 @@ export class Battle {
     this.viewModel.update(dt, p);
 
     this.updateWaves(dt);
+    this.camera.updateMatrixWorld();
+    Monster.camRight.setFromMatrixColumn(this.camera.matrixWorld, 0);
     for (const m of this.monsters) m.update(dt, this);
     this.separate();
     this.monsters = this.monsters.filter((m) => {
