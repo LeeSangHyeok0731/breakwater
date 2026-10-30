@@ -1,3 +1,5 @@
+import { combatPower, powerVerdict, recommendedPower } from '../game/power';
+import { koNum } from './format';
 import { exportSave, importSave, type SaveData, skillSlotIds } from '../core/save';
 import { DEFAULT_KEYMAP, keyLabel, SLOT_ACTIONS, type Action } from '../core/input';
 import { weaponIconUrl } from '../game/weaponArt';
@@ -369,6 +371,17 @@ export class VillageUI {
     if (p.type === 'boss') el('span', 'v-badge boss', head, '보스');
     if (p.type === 'special') el('span', 'v-badge special', head, '특별');
     if (cleared) el('span', 'v-badge clear', head, '클리어');
+    // 권장 전투력과 내 전투력을 비교한 판정. 입장은 막지 않는다.
+    const need = recommendedPower(p.id);
+    const mine = combatPower(save);
+    const power = el('div', 'v-power', card);
+    el('span', 'v-power-label', power, '권장 전투력');
+    el('span', 'v-power-num', power, koNum(need));
+    if (!locked) {
+      const v = powerVerdict(mine, need);
+      el('span', `v-power-verdict ${v.cls}`, power, v.label);
+      el('span', 'v-muted', power, `내 전투력 ${koNum(mine)}`);
+    }
     el('p', 'v-desc', card, p.desc);
 
     const info = el('div', 'v-meta', card);

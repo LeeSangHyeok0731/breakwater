@@ -1,6 +1,9 @@
 import type { SaveData } from '../core/save';
 import { keyLabel } from '../core/input';
 import { expToNext } from '../game/stats';
+import { combatPower } from '../game/power';
+import { koNum } from './format';
+import { PowerPopup } from './powerPopup';
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, parent?: HTMLElement, text?: string): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -19,6 +22,8 @@ export class TownHud {
   private gold: HTMLSpanElement;
   private tickets: HTMLSpanElement;
   private points: HTMLDivElement;
+  private power: HTMLSpanElement;
+  private powerPop: PowerPopup;
   private prompt: HTMLDivElement;
   private promptKey: HTMLSpanElement;
   private promptText: HTMLSpanElement;
@@ -35,7 +40,12 @@ export class TownHud {
     el('span', 'th-badge-lv', badge, 'LV');
     this.level = el('span', 'th-badge-num', badge);
     const info = el('div', 'th-info', plate);
-    el('div', 'th-name', info, '모험가');
+    // 이름 옆에 전투력을 나란히 둬서 판 높이가 늘지 않게 한다.
+    const head = el('div', 'th-head', info);
+    el('div', 'th-name', head, '모험가');
+    const pw = el('div', 'th-power', head);
+    el('span', 'th-power-label', pw, '전투력');
+    this.power = el('span', 'th-power-num', pw);
     const exp = el('div', 'th-exp', info);
     this.expFill = el('div', 'th-exp-fill', exp);
     this.expText = el('span', 'th-exp-text', info);
@@ -59,6 +69,8 @@ export class TownHud {
     this.resumeText = el('div', 'th-resume-text', this.resume, '클릭해서 시작');
     el('div', 'th-resume-sub', this.resume, '방향키로 이동하세요');
     this.resume.style.display = 'none';
+
+    this.powerPop = new PowerPopup(root);
   }
 
   show(): void {
@@ -82,10 +94,14 @@ export class TownHud {
 
   update(save: SaveData, prompt: string | null): void {
     const need = expToNext(save.level);
-    const key = `${save.level}|${save.exp}|${save.gold}|${save.sweepTickets}|${save.statPoints}|${save.skillPoints}|${prompt}|${save.keymap.interact}`;
+    // 마을에 있는 동안 스탯·장비·강화·패시브가 바뀌거나, 전투에서 레벨이 올라 돌아오면 팝업이 뜬다.
+    const power = combatPower(save);
+    this.powerPop.check(power);
+    const key = `${power}|${save.level}|${save.exp}|${save.gold}|${save.sweepTickets}|${save.statPoints}|${save.skillPoints}|${prompt}|${save.keymap.interact}`;
     if (key === this.last) return;
     this.last = key;
     this.level.textContent = String(save.level);
+    this.power.textContent = koNum(power);
     this.expFill.style.width = `${Math.min(100, (save.exp / need) * 100).toFixed(1)}%`;
     this.expText.textContent = `${save.exp.toLocaleString('ko-KR')} / ${need.toLocaleString('ko-KR')}`;
     this.gold.textContent = save.gold.toLocaleString('ko-KR');
