@@ -1,7 +1,9 @@
+import Phaser from 'phaser';
 import { SLOT_ACTIONS } from '../core/input';
 import { sfx } from '../core/audio';
 import type { SkillDef } from '../data/skills';
 import type { BattleScene, HitOpts } from './battleScene';
+import { DEPTH } from './fx';
 import type { ActionKind } from './player2d';
 
 // 플레이어의 공격 입력과 무기 동작, 스킬. 히트박스는 플레이어 앞쪽의 사각형이다.
@@ -43,6 +45,11 @@ function around(b: BattleScene, w: number, h: number, up: number, damage: number
 
 let cleaveCharge = 0;
 let laserTick = 0;
+/** 발도가 지나간 길 (뒤따르는 칼바람이 친다) */
+let iaiPath: { x0: number; len: number; y: number } | null = null;
+
+/** 검사 스킬 잔상 색 */
+const SWORD_FX = 0x9fd8ff;
 
 export function updatePlayerCombat(b: BattleScene, dt: number): void {
   const p = b.player;
@@ -169,51 +176,121 @@ function performHit(b: BattleScene, kind: ActionKind, index: number): void {
       box(b, 0, 70, 24, -10, base * 0.9 * mul, { basic: true, knock: 60 });
       break;
     case 'thrust':
+      // 찌르기: 칼끝에서 빛이 앞으로 꿰뚫고 나간다.
       p.body.setVelocityX(f * 220);
-      for (let i = 0; i < 5; i++) b.fx.burst(p.x + f * (14 + i * 16), p.y - 2, 0xdff4ff, 2, 30, 200);
+      b.fx.streak(p.x + f * 118, p.y - 2, f === 1 ? 0 : Math.PI, 104, 0xdff4ff, 220, 3);
+      b.fx.spark(p.x + f * 112, p.y - 2, 0xdff4ff, 2);
+      b.fx.burst(p.x + f * 60, p.y - 2, 0xdff4ff, 8, 80, 260);
       box(b, 0, 110, 22, 2, base * 1.3, { basic: true, knock: 120 });
       break;
     case 'cleave': {
+      // 차징 횡베기: 모은 만큼 커지고, 끝까지 모으면 불꽃처럼 터진다.
       const c = cleaveCharge;
-      b.fx.slash(p.x + f * 20, p.y - 2, f, 44 + c * 12, c > 0.95 ? 0xffb060 : color);
+      const col = c > 0.95 ? 0xffb060 : color;
+      b.fx.slash(p.x + f * 14, p.y - 2, f, 46 + c * 16, col, true);
+      if (c > 0.5) b.fx.slash(p.x + f * 10, p.y - 2, f, 36 + c * 10, col, false, { up: true, speed: 1.4 });
       box(b, 0, 90 + c * 20, 56, 2, base * (1.1 + 1.4 * c), { basic: true, knock: 140 + c * 80 });
-      if (c > 0.95) b.fx.shake(0.8);
+      if (c > 0.95) {
+        b.fx.shake(0.8);
+        b.fx.spark(p.x + f * 50, p.y - 2, 0xffc080, 3);
+        b.fx.burst(p.x + f * 40, p.y - 2, 0xffb060, 16, 160, 380);
+        b.fx.ring(p.x + f * 30, p.feet, 70, 0xffa040);
+      }
+      break;
+    }
+    // ─── 검사 초식 ───
+    case 'whirl': {
+      // 선풍: 몸을 돌리며 앞뒤로 네 번 벤다.
+      const dir = (index % 2 === 0 ? f : -f) as 1 | -1;
+      b.fx.slash(p.x + dir * 4, p.y - 2, dir, 42, SWORD_FX, true, { up: index % 2 === 1, speed: 1.3 });
+      b.fx.burst(p.x, p.y, 0xbfe8ff, 5, 130, 260);
+      if (index === 3) {
+        b.fx.ring(p.x, p.feet, 80, SWORD_FX, 360);
+        b.fx.shake(0.5);
+      }
+      around(b, 120, 60, 2, b.skillBase({ str: 0.75 }), { stun: 1.0, knock: index === 3 ? 140 : 40 });
       break;
     }
     case 'upper':
-      b.fx.slash(p.x + f * 6, p.y - 20, f, 32, 0xffe08a, true);
-      box(b, 0, 52, 110, 34, b.skillBase({ str: 3.0 }), { stun: 1.2, knock: 40 });
-      break;
-    case 'whirl':
-      b.fx.slash(p.x, p.y - 2, 1, 34, 0x9fd8ff);
-      b.fx.slash(p.x, p.y - 2, -1, 34, 0x9fd8ff);
-      around(b, 120, 60, 2, b.skillBase({ str: 1.5 }), { stun: 1.0, knock: 100 });
+      // 승천: 두 번 빠르게 베고, 마지막에 하늘로 올려 벤다.
+      if (index < 2) {
+        b.fx.slash(p.x + f * 14, p.y - 2, f, 30, 0xffe08a, false, { rot: index === 0 ? -0.25 : 0.25, up: index === 1, speed: 1.3 });
+        p.body.setVelocityX(f * 90);
+        box(b, 0, 60, 44, 2, b.skillBase({ str: 0.6 }), { knock: 30 });
+      } else {
+        b.fx.slash(p.x + f * 6, p.y - 20, f, 40, 0xffe08a, true, { up: true });
+        b.fx.pillar(p.x + f * 34, p.feet, 0xffd060, 120, 420);
+        b.fx.embers(p.x + f * 34, p.y - 20, 0xffe08a, 12, 18, 70);
+        b.fx.shake(0.6);
+        box(b, 0, 52, 110, 34, b.skillBase({ str: 1.8 }), { stun: 1.2, knock: 40 });
+      }
       break;
     case 'sunder':
-      b.fx.slash(p.x + f * 10, p.y - 2, f, 30, 0xff6a6a);
-      box(b, 0, 60, 44, 2, b.skillBase({ str: 2.0 }), { vuln: [0.25, 6], knock: 80 });
-      break;
-    case 'crescent':
-      b.fx.slash(p.x, p.y - 2, 1, 44, 0xff9a6a);
-      b.fx.slash(p.x, p.y - 2, -1, 44, 0xff9a6a);
-      around(b, 160, 64, 2, b.skillBase({ str: 2.2 }), { knock: 130 });
-      break;
-    case 'skyfall':
-      b.fx.slash(p.x + f * 6, p.y - 22, f, 34, 0xc8b0ff, true);
-      box(b, 0, 56, 116, 36, b.skillBase({ str: 2.8 }), { stun: 1.0 });
-      break;
-    case 'hamstring':
-      b.fx.slash(p.x + f * 12, p.y + 8, f, 26, 0x8fe0ff);
-      box(b, 0, 64, 30, -8, b.skillBase({ str: 2.0 }), { slow: [0.5, 4], knock: 40 });
-      break;
-    case 'iai':
-      performIai(b);
+      // 십자: 엇갈려 두 번 베어 X자를 새기고, 그 가운데를 찌른다.
+      if (index < 2) {
+        b.fx.slash(p.x + f * 14, p.y - 2, f, 32, 0xff6a6a, false, { rot: index === 0 ? -0.65 : 0.65, up: index === 1, speed: 1.3 });
+        box(b, 0, 60, 44, 2, b.skillBase({ str: 0.6 }), { vuln: [0.25, 6], knock: 30 });
+      } else {
+        p.body.setVelocityX(f * 160);
+        b.fx.streak(p.x + f * 92, p.y - 2, f === 1 ? 0 : Math.PI, 84, 0xff6a6a, 240, 3);
+        b.fx.spark(p.x + f * 86, p.y - 2, 0xff9a9a, 2, Math.PI / 4);
+        b.fx.burst(p.x + f * 70, p.y - 2, 0xff6a6a, 10, 120, 320);
+        box(b, 0, 80, 22, 2, b.skillBase({ str: 0.8 }), { vuln: [0.25, 6], knock: 110 });
+      }
       break;
     case 'waves': {
+      // 검기 난무: 위아래로 번갈아 휘두를 때마다 검기가 날아간다.
       const dy = [-12, 6, -4, 12][index % 4];
+      b.fx.slash(p.x + f * 10, p.y + dy * 0.5, f, 26, 0x9fdcff, false, { up: index % 2 === 1, rot: dy * 0.02, speed: 1.6 });
       b.spawnPlayerBolt({ x: p.x + f * 14, y: p.y + dy, vx: f * 340, vy: 0, damage: b.skillBase({ str: 4.0 }), kind: 'wave', pierce: true, life: 0.8 });
       break;
     }
+    // ─── 도객 초식 ───
+    case 'crescent':
+      // 만월: 앞뒤로 크게 휘두른 뒤, 둥근 달을 그리며 마무리한다.
+      if (index < 2) {
+        const dir = (index === 0 ? f : -f) as 1 | -1;
+        b.fx.slash(p.x + dir * 6, p.y - 2, dir, 50, 0xff9a6a, true, { up: index === 1 });
+        b.fx.burst(p.x + dir * 30, p.y - 2, 0xffb080, 6, 110, 300);
+        around(b, 160, 64, 2, b.skillBase({ str: 0.7 }), { knock: 60 });
+      } else {
+        b.fx.slash(p.x, p.y - 2, 1, 56, 0xffc08a, true);
+        b.fx.slash(p.x, p.y - 2, -1, 56, 0xffc08a, true, { up: true });
+        b.fx.ring(p.x, p.feet, 100, 0xff9a6a, 400);
+        b.fx.burst(p.x, p.y - 4, 0xffd0a0, 18, 170, 420);
+        b.fx.shake(0.8);
+        around(b, 160, 64, 2, b.skillBase({ str: 0.8 }), { knock: 130 });
+      }
+      break;
+    case 'skyfall':
+      // 낙월: 뛰어오르며 올려 베고, 달이 떨어지듯 내려찍는다.
+      if (index === 0) {
+        if (p.grounded) p.body.setVelocityY(-260);
+        b.fx.slash(p.x + f * 6, p.y - 22, f, 36, 0xc8b0ff, true, { up: true });
+        b.fx.embers(p.x, p.feet, 0xd8c8ff, 8, 10, 40);
+        box(b, 0, 56, 116, 36, b.skillBase({ str: 0.8 }), { knock: 20 });
+      } else {
+        p.body.setVelocityY(520);
+        const gy = b.floorY();
+        b.fx.slash(p.x + f * 8, p.y - 6, f, 44, 0xc8b0ff, true, { rot: 0.35 });
+        b.fx.ring(p.x + f * 20, gy, 90, 0xc8b0ff, 380);
+        b.fx.boom(p.x + f * 24, gy - 10, 24, 'dark');
+        for (let i = -2; i <= 2; i++) b.fx.smoke(p.x + f * 24 + i * 14, gy - 4, 1, 0x9a8aa8, -10);
+        b.fx.shake(1);
+        box(b, 0, 70, 90, -6, b.skillBase({ str: 2.0 }), { stun: 1.0, knock: 90 });
+      }
+      break;
+    case 'hamstring':
+      // 연환각: 바닥을 쓸 듯 낮게 세 번 벤다.
+      b.fx.slash(p.x + f * 12, p.y + 10, f, 30, 0x8fe0ff, false, { squash: 0.55, up: index === 1, rot: 0.15, speed: 1.4 });
+      b.fx.smoke(p.x + f * 24, p.feet - 4, 1, 0x9a8a70, -6);
+      p.body.setVelocityX(f * 70);
+      box(b, 0, 64, 30, -8, b.skillBase({ str: index === 2 ? 0.8 : 0.6 }), { slow: [0.5, 4], knock: index === 2 ? 60 : 20 });
+      break;
+    case 'iai':
+      if (index === 0) performIai(b);
+      else iaiAftershock(b, index);
+      break;
     case 'manaball': {
       sfx.play('magic');
       const m = p.muzzle();
@@ -223,6 +300,7 @@ function performHit(b: BattleScene, kind: ActionKind, index: number): void {
     case 'volley': {
       sfx.play('arrow');
       const m = p.muzzle();
+      b.fx.spark(m.x, m.y, 0x9fdcff);
       const ang = (Math.random() - 0.5) * 0.12;
       b.spawnPlayerBolt({
         x: m.x,
@@ -245,6 +323,8 @@ function performHit(b: BattleScene, kind: ActionKind, index: number): void {
     case 'snipe': {
       const m = p.muzzle();
       b.hitscan(m.x, m.y, p.facing === 1 ? 0 : Math.PI, 600, base * 6, { pierce: true, color: 0xfff0a0, width: 4 });
+      b.fx.muzzle(m.x, m.y, p.facing, 2);
+      b.fx.casing(p.x + p.facing * 8, p.y - 8, p.facing, p.feet);
       b.fx.shake(1);
       break;
     }
@@ -259,6 +339,10 @@ function releaseOrb(b: BattleScene): void {
   p.charge = -1;
   sfx.play('magic', 1 + c);
   const m = p.muzzle();
+  if (c > 0.95) {
+    b.fx.spark(m.x, m.y, 0x7fe8ff, 2);
+    b.fx.burst(m.x, m.y, 0xbff6ff, 10, 120, 300);
+  }
   b.spawnPlayerBolt({
     x: m.x,
     y: m.y,
@@ -277,6 +361,10 @@ function fireArrow(b: BattleScene, c: number): void {
   const p = b.player;
   const m = p.muzzle();
   sfx.play('arrow', 0.8 + c * 0.6);
+  if (c > 0.95) {
+    b.fx.circle(m.x + p.facing * 6, m.y, 0xffe08a, 30, 260, true, DEPTH.fx);
+    b.fx.spark(m.x, m.y, 0xffe08a, 2);
+  }
   b.spawnPlayerBolt({
     x: m.x,
     y: m.y,
@@ -309,20 +397,44 @@ function gunShot(b: BattleScene, mul: number, spread: number): void {
   const base = p.facing === 1 ? 0 : Math.PI;
   const ang = base + (Math.random() - 0.5) * 2 * (spread + (p.ads ? 0 : 0.03));
   b.hitscan(m.x, m.y, ang, p.ads ? 520 : 420, b.weaponBase() * mul * (p.ads ? 1.25 : 1), { pierce: false, color: 0xffd890, width: 2 });
-  b.fx.burst(m.x, m.y, 0xffd080, 3, 50, 120);
+  b.fx.muzzle(m.x, m.y, p.facing, 1, ang - (p.facing === 1 ? 0 : Math.PI));
+  b.fx.casing(p.x + p.facing * 8, p.y - 8, p.facing, p.feet);
 }
 
-/** 발도: 앞으로 순간 돌진하며 경로의 적을 벤다. */
+/** 발도: 앞으로 순간 돌진하며 경로의 적을 벤다. 지나간 길은 iaiPath에 남겨 뒤따르는 칼바람이 쓴다. */
 function performIai(b: BattleScene): void {
   const p = b.player;
   const len = 170;
-  const x0 = p.facing === 1 ? p.x : p.x - len;
-  b.hitArea(x0, p.y - 26, len, 52, b.skillBase({ str: 5.0 }), { knock: 60 });
-  for (let i = 0; i <= 8; i++) b.fx.burst(p.x + p.facing * (i * len) / 8, p.y - 2, 0xffe2c4, 2, 30, 250);
-  p.zone.x += p.facing * len;
+  const f = p.facing;
+  const x0 = f === 1 ? p.x : p.x - len;
+  iaiPath = { x0, len, y: p.y };
+  b.hitArea(x0, p.y - 26, len, 52, b.skillBase({ str: 1.0 }), { knock: 20 });
+  // 지나간 자리: 하얀 섬광 선과 잔상
+  b.fx.streak(p.x + f * len, p.y - 2, f === 1 ? 0 : Math.PI, len + 20, 0xffe2c4, 320, 2);
+  b.fx.streak(p.x + f * len, p.y + 4, f === 1 ? 0 : Math.PI, len, 0xffffff, 180, 1);
+  for (let i = 0; i <= 8; i++) b.fx.burst(p.x + (f * (i * len)) / 8, p.y - 2, 0xffe2c4, 2, 40, 260);
+  p.zone.x += f * len;
   p.invuln = Math.max(p.invuln, 0.35);
-  b.fx.slash(p.x, p.y, p.facing === 1 ? -1 : 1, 30, 0xffe2c4);
-  b.fx.stop(0.08);
+  b.fx.stop(0.06);
+}
+
+/** 발도 직후 지나간 길에 칼바람이 몰아친다. 마지막 바람은 화면을 가른다. */
+function iaiAftershock(b: BattleScene, index: number): void {
+  const path = iaiPath;
+  if (!path) return;
+  const x = path.x0 + path.len * (0.15 + Math.random() * 0.7);
+  const dir = (Math.random() < 0.5 ? 1 : -1) as 1 | -1;
+  b.fx.slash(x, path.y - 2, dir, 30 + Math.random() * 10, 0xffe2c4, false, { rot: (Math.random() - 0.5) * 1.6, up: Math.random() < 0.5, speed: 1.5 });
+  b.fx.spark(x, path.y - 2, 0xffe2c4, 1, Math.random());
+  const last = index === 4;
+  b.hitArea(path.x0, path.y - 26, path.len, 52, b.skillBase({ str: 1.0 }), { knock: last ? 80 : 10 });
+  if (last) {
+    b.fx.slash(path.x0 + path.len / 2, path.y - 2, 1, path.len * 0.55, 0xffffff, true, { squash: 0.35 });
+    b.fx.flashScreen(0xffe2c4, 0.28, 180);
+    b.fx.shake(0.9, 160);
+    b.fx.stop(0.08);
+    iaiPath = null;
+  }
 }
 
 function updateLaser(b: BattleScene, dt: number): void {
@@ -333,6 +445,49 @@ function updateLaser(b: BattleScene, dt: number): void {
   const p = b.player;
   const m = p.muzzle();
   b.hitscan(m.x, m.y, p.facing === 1 ? 0 : Math.PI, 380, b.skillBase({ int: 0.5 }), { pierce: true, color: 0x9fe8ff, width: 0, quiet: true });
+}
+
+/** 시전 연출: 발밑 마법진과 피어오르는 기운. 버프는 빛기둥까지 솟는다. */
+function castCircle(b: BattleScene, color: number, pillar = false): void {
+  const p = b.player;
+  b.fx.circle(p.x, p.feet, color, 72, 650);
+  b.fx.embers(p.x, p.feet - 4, color, 10, 16, 50);
+  if (pillar) b.fx.pillar(p.x, p.feet, color, 110, 650);
+}
+
+/** 보호막이 몸을 감싸며 펼쳐진다. */
+function hexPop(b: BattleScene, color: number): void {
+  const p = b.player;
+  const h = b.add.image(p.x, p.y, 'fx-hex').setTint(color).setBlendMode(Phaser.BlendModes.ADD).setDepth(DEPTH.fx).setScale(0.3);
+  b.tweens.add({ targets: h, scale: 1.5, alpha: 0, duration: 380, ease: 'Quad.Out', onComplete: () => h.destroy() });
+  b.fx.burst(p.x, p.y, color, 12, 120, 380);
+}
+
+/** 저격 조준: 붉은 조준선이 깜빡이고 총구로 빛이 모인다. */
+function snipeSight(b: BattleScene): void {
+  const p = b.player;
+  const g = b.add.graphics().setDepth(DEPTH.fx).setBlendMode(Phaser.BlendModes.ADD);
+  let t = 0;
+  const ev = b.time.addEvent({
+    delay: 16,
+    loop: true,
+    callback: () => {
+      t += 16;
+      g.clear();
+      if (p.action?.kind !== 'snipe' || t > 600) {
+        ev.remove();
+        g.destroy();
+        return;
+      }
+      const m = p.muzzle();
+      g.lineStyle(1, 0xff3a2a, 0.35 + 0.35 * Math.sin(t * 0.04)).lineBetween(m.x, m.y, m.x + p.facing * 600, m.y);
+      if (Math.random() < 0.5) {
+        const a = Math.random() * Math.PI * 2;
+        const dot = b.add.image(m.x + Math.cos(a) * 14, m.y + Math.sin(a) * 14, 'fx-px').setTint(0xfff0a0).setBlendMode(Phaser.BlendModes.ADD).setDepth(DEPTH.fx);
+        b.tweens.add({ targets: dot, x: m.x, y: m.y, alpha: 0.2, duration: 160, onComplete: () => dot.destroy() });
+      }
+    },
+  });
 }
 
 function tryCast(b: BattleScene, skill: SkillDef | null, slot: number): void {
@@ -375,13 +530,13 @@ function castSkill(b: BattleScene, skill: SkillDef): void {
   const f = p.facing;
   switch (skill.id) {
     case 'sword_whirl':
-      p.startAction('whirl', 0.6, [0.15, 0.4]);
+      p.startAction('whirl', 0.62, [0.08, 0.2, 0.32, 0.46]);
       break;
     case 'sword_upper':
-      p.startAction('upper', 0.42, [0.14]);
+      p.startAction('upper', 0.56, [0.08, 0.2, 0.36]);
       break;
     case 'sword_sunder':
-      p.startAction('sunder', 0.4, [0.14]);
+      p.startAction('sunder', 0.52, [0.08, 0.2, 0.34]);
       break;
     case 'sword_waves': {
       const hits: number[] = [];
@@ -391,66 +546,85 @@ function castSkill(b: BattleScene, skill: SkillDef): void {
     }
     case 'sword_cry':
       p.addBuff({ id: 'cry', name: '전투의 함성', damageMul: 0.3, time: 12 });
-      b.fx.ring(p.x, p.feet, 70, 0xffb040);
-      b.fx.burst(p.x, p.y, 0xffc060, 18, 120, 600);
+      castCircle(b, 0xffb040, true);
+      b.fx.ring(p.x, p.feet, 100, 0xffb040, 420);
+      b.fx.flashScreen(0xffb040, 0.15, 220);
+      b.fx.shake(0.5);
       p.startAction('cast', 0.3);
       break;
     case 'staff_meteor':
+      castCircle(b, 0xff8a3a);
       b.castMeteor(targetAhead(b, 320, 150), b.skillBase({ int: 6.0 }), b.skillBase({ int: 0.4 }));
       p.startAction('cast', 0.4);
       break;
     case 'staff_shield':
       p.shield = s.int * 10;
       p.shieldTime = 10;
-      b.fx.ring(p.x, p.feet, 40, 0x5fc8ff);
+      castCircle(b, 0x5fc8ff);
+      hexPop(b, 0x5fc8ff);
       p.startAction('cast', 0.3);
       break;
     case 'staff_ward':
       p.wardHits = 3;
       p.wardTime = 12;
-      b.fx.ring(p.x, p.feet, 40, 0xffd34a);
+      castCircle(b, 0xffd34a);
+      hexPop(b, 0xffd34a);
       p.startAction('cast', 0.3);
       break;
     case 'staff_laser':
+      castCircle(b, 0x7fe8ff);
       p.startAction('laser', 1.5);
       laserTick = 0;
       break;
     case 'staff_frost': {
       const cx = targetAhead(b, 260, 110);
-      b.addField({ x: cx - 70, w: 140, life: 5, tickEvery: 0.5, damage: b.skillBase({ int: 0.3 }), slow: 0.5, color: 0x8fe0ff });
+      castCircle(b, 0x8fe0ff);
+      b.addField({ x: cx - 70, w: 140, life: 5, tickEvery: 0.5, damage: b.skillBase({ int: 0.3 }), slow: 0.5, color: 0x8fe0ff, style: 'frost' });
       p.startAction('cast', 0.35);
       break;
     }
     case 'staff_curse': {
       const cx = targetAhead(b, 260, 110);
       b.hitArea(cx - 60, p.y - 80, 120, 140, 0, { vuln: [0.3, 6], quiet: true, noDamage: true });
-      b.fx.ring(cx, b.floorY(), 60, 0xb04aff);
-      b.fx.burst(cx, b.floorY() - 30, 0xb04aff, 16, 80, 500);
+      // 낙인: 땅에 보랏빛 마법진이 새겨지고 하늘에서 저주의 벼락이 내리친다.
+      const gy = b.floorY();
+      castCircle(b, 0xb04aff);
+      b.fx.circle(cx, gy, 0xb04aff, 130, 900, false, DEPTH.fx - 2);
+      b.fx.pillar(cx, gy, 0xb04aff, 150, 600);
+      b.fx.lightning(cx - 8, gy - 180, cx, gy - 6, 0xc060ff, 2, 220);
+      b.time.delayedCall(90, () => b.fx.lightning(cx + 12, gy - 180, cx + 4, gy - 6, 0xc060ff, 2, 200));
+      b.fx.boom(cx, gy - 24, 26, 'dark');
+      b.fx.embers(cx, gy - 4, 0xd890ff, 14, 50, 60);
+      b.fx.shake(0.6);
       p.startAction('cast', 0.35);
       break;
     }
     case 'staff_amp':
       p.addBuff({ id: 'amp', name: '마력 증폭', damageMul: 0.3, time: 10 });
-      b.fx.ring(p.x, p.feet, 60, 0x7fe8ff);
+      castCircle(b, 0x7fe8ff, true);
+      b.fx.ring(p.x, p.feet, 80, 0x7fe8ff, 380);
       p.startAction('cast', 0.35);
       break;
     case 'dao_crescent':
-      p.startAction('crescent', 0.45, [0.15]);
+      p.startAction('crescent', 0.62, [0.1, 0.25, 0.42]);
       break;
     case 'dao_skyfall':
-      p.startAction('skyfall', 0.45, [0.15]);
+      p.startAction('skyfall', 0.62, [0.1, 0.42]);
       break;
     case 'dao_hamstring':
-      p.startAction('hamstring', 0.4, [0.14]);
+      p.startAction('hamstring', 0.5, [0.08, 0.2, 0.32]);
       break;
     case 'dao_rage':
       p.addBuff({ id: 'rage', name: '투혼', damageMul: 0.25, speedMul: 0.2, time: 10 });
-      b.fx.ring(p.x, p.feet, 60, 0xff5a3a);
-      b.fx.burst(p.x, p.y, 0xff6a4a, 16, 110, 500);
+      castCircle(b, 0xff5a3a, true);
+      b.fx.boom(p.x, p.y - 4, 22, 'fire');
+      b.fx.ring(p.x, p.feet, 90, 0xff5a3a, 380);
+      b.fx.flashScreen(0xff3a1a, 0.18, 200);
+      b.fx.shake(0.6);
       p.startAction('cast', 0.3);
       break;
     case 'dao_iai':
-      p.startAction('iai', 0.4, [0.08]);
+      p.startAction('iai', 0.6, [0.06, 0.22, 0.28, 0.34, 0.42]);
       break;
     case 'bow_fan': {
       const m = p.muzzle();
@@ -465,20 +639,31 @@ function castSkill(b: BattleScene, skill: SkillDef): void {
           kind: 'arrow',
           color: 0xe8dcc0,
         });
+        b.fx.streak(m.x + f * Math.cos(ang) * 26, m.y + Math.sin(ang) * 26, f === 1 ? ang : Math.PI - ang, 26, 0xfff0c0, 160);
       }
+      b.fx.spark(m.x, m.y, 0xfff0c0, 2);
       sfx.play('arrow');
       p.startAction('shoot', 0.25);
       break;
     }
     case 'bow_rain': {
       const cx = targetAhead(b, 300, 130);
-      b.addField({ x: cx - 70, w: 140, life: 2, tickEvery: 0.25, damage: b.skillBase({ dex: 0.35, str: 0.15 }), color: 0xd8c8a0, hitsAir: true, rain: true });
+      b.addField({ x: cx - 70, w: 140, life: 2, tickEvery: 0.25, damage: b.skillBase({ dex: 0.35, str: 0.15 }), color: 0xd8c8a0, hitsAir: true, rain: true, style: 'rain' });
+      // 하늘로 화살 다발을 쏘아 올린다.
+      const m = p.muzzle();
+      for (let i = 0; i < 5; i++) b.fx.streak(m.x + (i - 2) * 3, m.y - 30 - i * 6, -Math.PI / 2 + (i - 2) * 0.12, 30, 0xffe08a, 200);
+      b.fx.spark(m.x, m.y, 0xffe08a);
       p.startAction('shoot', 0.3);
       break;
     }
     case 'bow_pierce': {
       const m = p.muzzle();
       b.spawnPlayerBolt({ x: m.x, y: m.y, vx: f * 520, vy: 0, damage: b.skillBase({ dex: 2.5, str: 1.0 }), kind: 'arrow', color: 0xffe08a, size: 2, pierce: true });
+      // 관통: 활 앞에 금빛 마법진이 서고 공기가 갈라진다.
+      b.fx.circle(m.x + f * 8, m.y, 0xffe08a, 46, 420, true, DEPTH.fx);
+      b.fx.spark(m.x + f * 8, m.y, 0xffffff, 2);
+      b.fx.burst(m.x, m.y, 0xffe08a, 10, 140, 300);
+      b.fx.shake(0.4);
       sfx.play('arrow', 1.4);
       p.startAction('shoot', 0.3);
       break;
@@ -486,9 +671,16 @@ function castSkill(b: BattleScene, skill: SkillDef): void {
     case 'bow_haste':
       p.addBuff({ id: 'haste', name: '질풍', damageMul: 0, speedMul: 0.4, time: 8 });
       p.drawCd = 0;
-      b.fx.ring(p.x, p.feet, 50, 0x9ff0c0);
+      castCircle(b, 0x9ff0c0, true);
+      // 질풍: 몸 주위로 바람결이 스친다.
+      for (let i = 0; i < 6; i++) {
+        const y = p.y - 20 + i * 8;
+        b.time.delayedCall(i * 40, () => b.fx.streak(p.x + 24 - i * 4, y, Math.PI, 40, 0xbff8d8, 220));
+      }
       break;
     case 'bow_mana_arrows': {
+      const m = p.muzzle();
+      b.fx.circle(m.x + f * 8, m.y, 0x9fdcff, 40, 1050, true, DEPTH.fx);
       const hits: number[] = [];
       for (let i = 0; i < 12; i++) hits.push(0.05 + i * 0.075);
       p.startAction('volley', 1.0, hits);
@@ -518,12 +710,14 @@ function castSkill(b: BattleScene, skill: SkillDef): void {
     }
     case 'gun_snipe':
       p.startAction('snipe', 0.8, [0.6]);
+      snipeSight(b);
       break;
     case 'gun_tactical':
       p.weapon.ammo = p.weapon.magazine;
       p.reloadTime = 0;
       p.addBuff({ id: 'tactical', name: '전술 재장전', damageMul: 0.3, time: 8 });
-      b.fx.ring(p.x, p.feet, 40, 0xffd890);
+      castCircle(b, 0xffd890, true);
+      b.fx.spark(p.muzzle().x, p.muzzle().y, 0xffd890, 2);
       sfx.play('reload');
       break;
     case 'gun_barrage': {

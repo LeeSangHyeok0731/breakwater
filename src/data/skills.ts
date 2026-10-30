@@ -21,7 +21,7 @@ export const SKILLS: SkillDef[] = [
     mana: 20,
     cooldown: 7,
     reqLevel: 1,
-    desc: '제자리에서 두 번 회전하며 주변을 벤다. 타격마다 힘의 150% 피해, 적을 1초 기절시킨다.',
+    desc: '[선풍] 몸을 돌리며 앞뒤로 네 번 벤다. 타격마다 힘의 75% 피해(총 300%), 적을 1초 기절시킨다.',
   },
   {
     id: 'sword_upper',
@@ -31,7 +31,7 @@ export const SKILLS: SkillDef[] = [
     mana: 15,
     cooldown: 5,
     reqLevel: 1,
-    desc: '전방을 크게 올려 벤다. 땅에 선 채로 공중의 적까지 닿는다. 힘의 300% 피해, 1.2초 기절.',
+    desc: '[승천] 두 번 빠르게 벤 뒤 하늘로 크게 올려 벤다. 힘의 60%·60%·180% 피해(총 300%). 마지막 일격은 공중의 적까지 닿고 1.2초 기절.',
   },
   {
     id: 'sword_cry',
@@ -51,7 +51,7 @@ export const SKILLS: SkillDef[] = [
     mana: 20,
     cooldown: 10,
     reqLevel: 3,
-    desc: '전방을 날카롭게 벤다. 힘의 200% 피해, 6초 동안 적이 받는 피해가 25% 증가한다.',
+    desc: '[십자] 엇갈려 두 번 베어 X자를 새기고 그 가운데를 찌른다. 힘의 60%·60%·80% 피해(총 200%), 6초 동안 적이 받는 피해가 25% 증가한다.',
   },
   {
     id: 'sword_waves',
@@ -141,7 +141,7 @@ export const SKILLS: SkillDef[] = [
     mana: 18,
     cooldown: 6,
     reqLevel: 1,
-    desc: '도를 크게 휘둘러 앞쪽 270도를 벤다. 힘의 220% 피해.',
+    desc: '[만월] 앞뒤로 크게 휘두른 뒤 둥근 달을 그리며 마무리한다. 힘의 70%·70%·80% 피해(총 220%).',
   },
   {
     id: 'dao_skyfall',
@@ -151,7 +151,7 @@ export const SKILLS: SkillDef[] = [
     mana: 15,
     cooldown: 5,
     reqLevel: 1,
-    desc: '하늘을 향해 도를 휘둘러 공중의 적까지 벤다. 힘의 280% 피해, 1초 기절.',
+    desc: '[낙월] 뛰어오르며 올려 베고, 달이 떨어지듯 내려찍는다. 힘의 80%+200% 피해(총 280%). 내려찍기는 1초 기절.',
   },
   {
     id: 'dao_hamstring',
@@ -161,7 +161,7 @@ export const SKILLS: SkillDef[] = [
     mana: 18,
     cooldown: 8,
     reqLevel: 2,
-    desc: '낮게 베어 힘의 200% 피해를 주고, 4초 동안 이동속도를 50% 낮춘다.',
+    desc: '[연환각] 바닥을 쓸 듯 낮게 세 번 벤다. 힘의 60%·60%·80% 피해(총 200%), 4초 동안 이동속도를 50% 낮춘다.',
   },
   {
     id: 'dao_rage',
@@ -181,7 +181,7 @@ export const SKILLS: SkillDef[] = [
     mana: 40,
     cooldown: 14,
     reqLevel: 4,
-    desc: '눈 깜짝할 사이에 앞으로 9m 돌진하며 경로의 모든 적에게 힘의 500% 피해. 돌진 중에는 무적.',
+    desc: '눈 깜짝할 사이에 앞으로 9m 돌진하며 경로의 적을 벤다(힘의 100%). 곧이어 지나간 길에 칼바람이 네 번 몰아친다(각 100%, 총 500%). 돌진 중에는 무적.',
   },
   {
     id: 'bow_fan',

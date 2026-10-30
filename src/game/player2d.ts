@@ -61,6 +61,19 @@ const RANGED_ACTIONS: ReadonlySet<ActionKind> = new Set(['shoot', 'volley', 'rap
 /** 평타: 쓰는 동안에도 이동 속도가 줄지 않는다. */
 const BASIC_ACTIONS: ReadonlySet<ActionKind> = new Set(['slash', 'airSlash', 'crouchSlash', 'shoot', 'manaball']);
 
+/** 초식: 수마다 재생할 동작. 수가 더 많으면 처음부터 돌아가며 쓴다. */
+const MOVES: Partial<Record<ActionKind, string[]>> = {
+  whirl: ['hero-attack'],
+  upper: ['hero-attack', 'hero-attack', 'hero-jump-attack'],
+  sunder: ['hero-attack', 'hero-jump-attack', 'hero-attack'],
+  waves: ['hero-attack', 'hero-jump-attack'],
+  crescent: ['hero-attack', 'hero-attack', 'hero-jump-attack'],
+  skyfall: ['hero-jump-attack'],
+  hamstring: ['hero-crouch-slash'],
+  // 발도: 돌진하며 베고, 칼바람이 몰아치는 동안 자세를 낮춘 채 버틴다.
+  iai: ['hero-attack', 'hero-crouch', 'hero-crouch', 'hero-crouch', 'hero-crouch'],
+};
+
 /** 1m를 몇 픽셀로 보는가 (데이터의 m/s 이동속도를 픽셀로 바꿀 때) */
 export const PX_PER_M = 24;
 const JUMP_V = -390;
@@ -113,13 +126,20 @@ export class Player {
   dead = false;
 
   private lastAnimAction: PlayerAction | null = null;
+  private lastAnimSeg = 0;
   /** 직업 교체 직후 몸이 하얗게 번쩍이는 시간 */
   private swapFlash = 0;
   /** 쏜 뒤 조준 자세를 유지하는 남은 시간 */
   private aimHold = 0;
   private afterimageTimer = 0;
   private guardFx: Phaser.GameObjects.Arc;
-  private shieldFx: Phaser.GameObjects.Arc;
+  /** 보호막: 육각 무늬 구 (마나 보호막은 청록, 마력 방어막은 금색) */
+  private shieldFx: Phaser.GameObjects.Image;
+  /** 착지 먼지를 내기 위해 직전 프레임에 공중이었는지 */
+  private wasAirborne = false;
+  private fallSpeed = 0;
+  /** 차징이 가득 찬 순간을 한 번만 알린다. */
+  private chargeFull = false;
   private chargeBg: Phaser.GameObjects.Rectangle;
   private chargeFill: Phaser.GameObjects.Rectangle;
   /** 손에 든 활·총·스태프 */
@@ -152,7 +172,7 @@ export class Player {
     this.sprite.play('hero-idle');
 
     this.guardFx = scene.add.circle(x, y, 16, 0x9fd8ff, 0).setStrokeStyle(2, 0x9fd8ff, 0.8).setDepth(DEPTH.fx).setVisible(false);
-    this.shieldFx = scene.add.circle(x, y, 22, 0x5fc8ff, 0.12).setStrokeStyle(1, 0xbff0ff, 0.6).setDepth(DEPTH.fx).setVisible(false);
+    this.shieldFx = scene.add.image(x, y, 'fx-hex').setDepth(DEPTH.fx).setVisible(false).setBlendMode(Phaser.BlendModes.ADD);
     createWeaponSprites(scene);
     this.held = scene.add.image(x, y, 'w-staff').setDepth(DEPTH.player + 1).setVisible(false);
     this.flash = scene.add.image(x, y, 'w-flash').setDepth(DEPTH.player + 2).setVisible(false).setBlendMode(Phaser.BlendModes.ADD);
@@ -399,27 +419,46 @@ export class Player {
     this.scene.tweens.add({ targets: ghost, alpha: 0, duration: 220, onComplete: () => ghost.destroy() });
   }
 
-  /** base는 직업 접두사 없는 기본 이름 ('hero-run' 등) */
-  private play(base: string, restartFor?: PlayerAction | null): void {
+  /**
+   * base는 직업 접두사 없는 기본 이름 ('hero-run' 등).
+   * restartFor를 주면 그 동작이 새로 시작되거나 초식의 다음 수(seg)로 넘어갈 때 처음부터 다시 재생한다.
+   */
+  private play(base: string, restartFor?: PlayerAction | null, seg = 0): void {
     const s = this.sprite;
     const key = classAnimKey(this.weapon.def.type, base);
     if (restartFor !== undefined) {
-      if (restartFor !== this.lastAnimAction || s.anims.currentAnim?.key !== key) {
-        s.play(key);
+      if (restartFor !== this.lastAnimAction || seg !== this.lastAnimSeg || s.anims.currentAnim?.key !== key) {
+        // 이어지는 수는 휘두르기 직전 칸부터 시작해 빠르게 몰아친다.
+        s.play({ key, startFrame: seg > 0 ? 1 : 0 });
         this.lastAnimAction = restartFor;
+        this.lastAnimSeg = seg;
       }
     } else if (s.anims.currentAnim?.key !== key) {
       s.play(key);
     }
   }
 
+  /** 초식(여러 번 베는 스킬)에서 지금 몇 번째 수인가. 타격 직전에 다음 수로 넘어간다. */
+  private moveIndex(a: PlayerAction): number {
+    let n = 0;
+    for (const h of a.hits) if (a.t >= h - 0.06) n++;
+    return Math.max(0, n - 1);
+  }
+
   animate(): void {
     const s = this.sprite;
     const a = this.action;
+    /** 회전베기처럼 잠깐 뒤를 돌아보며 베는 수 */
+    let reverse = false;
     if (this.dead) this.play('hero-hurt');
     else if (this.hurtTimer > 0.2) this.play('hero-hurt');
     else if (a && !RANGED_ACTIONS.has(a.kind)) {
-      if (a.kind === 'crouchSlash') this.play('hero-crouch-slash', a);
+      const moves = MOVES[a.kind];
+      if (moves) {
+        const i = this.moveIndex(a);
+        this.play(moves[i % moves.length], a, i);
+        reverse = (a.kind === 'whirl' && i % 2 === 1) || (a.kind === 'crescent' && i === 1);
+      } else if (a.kind === 'crouchSlash') this.play('hero-crouch-slash', a);
       else if (a.kind === 'airSlash' || !this.grounded) this.play('hero-jump-attack', a);
       else this.play('hero-attack', a);
     } else if (this.aiming) this.play(AIM_ANIM);
@@ -433,8 +472,9 @@ export class Player {
     // 프레임마다 몸통 위치가 다른 시트는 기준점을 맞춘다.
     const key = baseAnimKey(s.anims.currentAnim?.key ?? 'hero-idle');
     const ox = key === AIM_ANIM ? AIM_ORIGIN_X : (ORIGIN_X[key] ?? 0.5);
-    s.setFlipX(this.facing === -1);
-    s.setOrigin(this.facing === 1 ? ox : 1 - ox, 1);
+    const look = reverse ? -this.facing : this.facing;
+    s.setFlipX(look === -1);
+    s.setOrigin(look === 1 ? ox : 1 - ox, 1);
     s.setPosition(Math.round(this.x), Math.round(this.feet + 1));
 
     if (this.swapFlash > 0) s.setTintFill(0xfff6e0);
@@ -444,10 +484,17 @@ export class Player {
     s.setAlpha(this.invuln > 0 && this.dodgeTime <= 0 && Math.floor(this.invuln * 20) % 2 === 0 ? 0.4 : 1);
 
     this.guardFx.setVisible(this.guarding).setPosition(this.x + this.facing * 10, this.y);
-    this.shieldFx.setVisible(this.shield > 0 || this.wardHits > 0).setPosition(this.x, this.y);
-    this.shieldFx.setStrokeStyle(this.wardHits > 0 ? 2 : 1, this.wardHits > 0 ? 0xffd34a : 0xbff0ff, 0.7);
+    const t = this.scene.time.now;
+    this.shieldFx
+      .setVisible(this.shield > 0 || this.wardHits > 0)
+      .setPosition(Math.round(this.x), Math.round(this.y - 2))
+      .setTint(this.wardHits > 0 ? 0xffd34a : 0x5fc8ff)
+      .setAlpha(0.45 + Math.sin(t * 0.006) * 0.15)
+      .setScale(0.95 + Math.sin(t * 0.004) * 0.03);
 
     this.updateHeld();
+    this.chargeMotes();
+    this.landingDust();
 
     const charging = this.charge >= 0;
     this.chargeBg.setVisible(charging);
@@ -461,6 +508,49 @@ export class Player {
       this.chargeFill.width = 22 * r;
       this.chargeFill.fillColor = r >= 1 ? 0xffe08a : 0x9fd8ff;
     }
+  }
+
+  /** 차징 중에는 무기 끝(근접은 칼날)으로 빛이 빨려 들고, 가득 차면 번쩍인다. */
+  private chargeMotes(): void {
+    if (this.charge < 0) {
+      this.chargeFull = false;
+      return;
+    }
+    const type = this.weapon.def.type;
+    const color = type === 'staff' ? 0x7fe8ff : type === 'bow' ? 0xffe08a : 0xffb060;
+    const at = this.isMelee ? { x: this.x + this.facing * 12, y: this.y - 4 } : this.muzzle();
+    const full = this.charge >= (type === 'dao' ? 1 : 1.2);
+    if (full && !this.chargeFull) {
+      this.chargeFull = true;
+      const ring = this.scene.add.circle(at.x, at.y, 3, color, 0).setStrokeStyle(1, 0xffffff, 1).setDepth(DEPTH.fx).setBlendMode(Phaser.BlendModes.ADD);
+      this.scene.tweens.add({ targets: ring, scale: 5, alpha: 0, duration: 260, onComplete: () => ring.destroy() });
+    }
+    if (Math.random() > (full ? 0.8 : 0.55)) return;
+    const a = Math.random() * Math.PI * 2;
+    const r = 14 + Math.random() * 12;
+    const dot = this.scene.add
+      .image(at.x + Math.cos(a) * r, at.y + Math.sin(a) * r, 'fx-px')
+      .setTint(full ? 0xffffff : color)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setDepth(DEPTH.fx)
+      .setScale(Math.random() < 0.3 ? 2 : 1);
+    this.scene.tweens.add({ targets: dot, x: at.x, y: at.y, alpha: 0.3, duration: 200, ease: 'Quad.In', onComplete: () => dot.destroy() });
+  }
+
+  /** 높은 곳에서 떨어져 착지하면 발밑에 먼지가 인다. */
+  private landingDust(): void {
+    const airborne = !this.grounded;
+    if (airborne) this.fallSpeed = Math.max(this.fallSpeed, this.body.velocity.y);
+    else if (this.wasAirborne && this.fallSpeed > 260) {
+      for (const dir of [-1, 1]) {
+        const puff = this.scene.add.sprite(this.x + dir * 6, this.feet - 3, 'fx-smoke').setTint(0xb0a090).setDepth(DEPTH.fx - 1);
+        puff.play('fx-smoke');
+        this.scene.tweens.add({ targets: puff, x: puff.x + dir * 14, y: puff.y - 4, duration: 400 });
+        puff.once('animationcomplete', () => puff.destroy());
+      }
+    }
+    if (!airborne) this.fallSpeed = 0;
+    this.wasAirborne = airborne;
   }
 
   /**
