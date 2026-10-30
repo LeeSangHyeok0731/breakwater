@@ -541,6 +541,11 @@ function snipeSight(b: BattleScene): void {
 function tryCast(b: BattleScene, skill: SkillDef | null, slot: number): void {
   const p = b.player;
   if (!skill || p.dodgeTime > 0) return;
+  if (p.silenceTime > 0) {
+    b.hud.notify('침묵! 스킬을 쓸 수 없습니다');
+    b.hud.flashSlot(slot);
+    return;
+  }
   if ((p.cooldowns.get(skill.id) ?? 0) > 0) return;
   if (p.mp < skill.mana) {
     b.hud.notify('마나가 부족합니다');

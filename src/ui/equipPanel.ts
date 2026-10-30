@@ -1,4 +1,5 @@
 import type { SaveData } from '../core/save';
+import type { LegionRun } from '../data/legion';
 import { GEAR, GEAR_SLOT_NAME, gearBonus, gearStatsText, SET_LINE_NAME, SETS, setPieces, setProgress, type GearDef, type GearSlot, type GearStats } from '../data/gear';
 import { CLASS_NAME, GRADES, WEAPON_TYPE_NAME, WEAPONS, type Grade, type WeaponDef, type WeaponType } from '../data/weapons';
 import { combatPower } from '../game/power';
@@ -22,6 +23,8 @@ export interface PanelHost {
   section(title: string, note?: string): HTMLDivElement;
   /** 직업별 캐릭터 그림 (Phaser 텍스처에서 잘라 온다) */
   portrait(type: WeaponType): HTMLCanvasElement | null;
+  /** 군단장 출격 (전투 기지에서만) */
+  startLegion?(run: LegionRun): void;
 }
 
 type StatKey = keyof Stats;

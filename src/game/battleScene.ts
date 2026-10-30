@@ -6,6 +6,7 @@ import { gearBonus, POTION_LIMIT_PER_PHASE } from '../data/gear';
 import { MATERIALS } from '../data/items';
 import { ELITE_MOD, MONSTERS, type MonsterKind } from '../data/monsters';
 import type { PhaseDef } from '../data/phases';
+import { DIFFICULTY, LEGIONS, rewardMul, SILENCE_STACKS, SILENCE_TIME, type LegionRun } from '../data/legion';
 import { SKILL_BY_ID, type SkillDef } from '../data/skills';
 import { CLASS_NAME, GRADES, WEAPONS, type WeaponType } from '../data/weapons';
 import { Hud, type HudSlot, type HudState } from '../ui/hud';
@@ -166,6 +167,16 @@ export function buildSlots(save: SaveData, type: WeaponType): (SkillDef | null)[
   return slots;
 }
 
+/** 군단장 보상: 조각 (최소~최대 × 보상 배율), 하드는 희망의 조각을 낮은 확률로 */
+export function legionReward(run: LegionRun): Record<string, number> {
+  const diff = DIFFICULTY[run.difficulty];
+  const mul = rewardMul(run.mods);
+  const [lo, hi] = diff.shards;
+  const out: Record<string, number> = { [LEGIONS[run.id].shard]: Math.max(1, Math.round((lo + Math.random() * (hi - lo)) * mul)) };
+  if (diff.hopeChance > 0 && Math.random() < diff.hopeChance * mul) out.hope_shard = 1;
+  return out;
+}
+
 export class BattleScene extends Phaser.Scene {
   phase!: PhaseDef;
   save!: SaveData;
@@ -205,13 +216,21 @@ export class BattleScene extends Phaser.Scene {
   private spawnAcc = 0;
   private potionUsed = { hp: 0, mp: 0 };
   private potionCd = 0;
+  /** 군단장 전투면 출격 정보 */
+  legion: LegionRun | null = null;
+  /** 침묵 스택 (침묵의 기사단장) */
+  silenceStacks = 0;
+  private reviveLeft = 0;
 
   constructor() {
     super('battle');
   }
 
-  init(data: { phase: PhaseDef }): void {
+  init(data: { phase: PhaseDef; legion?: LegionRun }): void {
     this.phase = data.phase;
+    this.legion = data.legion ?? null;
+    this.silenceStacks = 0;
+    this.reviveLeft = this.legion?.mods.includes('revive') ? 1 : 0;
     this.monsters = [];
     this.bolts = [];
     this.enemyBolts = [];
@@ -243,12 +262,19 @@ export class BattleScene extends Phaser.Scene {
     this.physics.world.setBounds(0, -200, phase.width, VIEW_H + 400);
 
     this.stats = totalStats(this.save);
-    const weapons = this.save.equipped.map((uid) => {
+    // 군단장 전투는 기지에서 고른 무기 2개로 싸운다.
+    const uids = this.legion?.weapons ?? this.save.equipped;
+    const weapons = uids.map((uid) => {
       const owned = this.save.weapons.find((w) => w.uid === uid) ?? this.save.weapons[0];
       const def = WEAPONS[owned.defId];
       return { def, enhance: owned.enhance, slots: buildSlots(this.save, def.type) };
     });
-    this.player = new Player(this, 80, FLOOR_Y - 40, derive(this.stats, this.save.passives, gearBonus(this.save.gear.equipped, this.save.gear.enhance)), weapons);
+    const derived = derive(this.stats, this.save.passives, gearBonus(this.save.gear.equipped, this.save.gear.enhance));
+    const mods = this.legion?.mods ?? [];
+    if (mods.includes('atk')) derived.damageMul += 0.2;
+    if (mods.includes('guard')) derived.damageReduce = Math.min(0.6, derived.damageReduce + 0.2);
+    if (mods.includes('vigor')) derived.maxHp = Math.round(derived.maxHp * 1.3);
+    this.player = new Player(this, 80, FLOOR_Y - 40, derived, weapons);
 
     // 발판: 위에서 떨어질 때만 밟는다. ↓+점프 중에는 통과.
     const onTop = (body: Phaser.Physics.Arcade.Body, plat: Phaser.Physics.Arcade.StaticBody): boolean =>
@@ -278,7 +304,7 @@ export class BattleScene extends Phaser.Scene {
     this.hud = new Hud(ctx.uiRoot);
     ctx.townHud.hide();
     this.events.once('shutdown', () => this.cleanup());
-    this.announce(`${phase.id} ${phase.name}`, 1.6);
+    this.announce(this.legion ? phase.name : `${phase.id} ${phase.name}`, 1.6);
   }
 
   private cleanup(): void {
@@ -586,10 +612,68 @@ export class BattleScene extends Phaser.Scene {
     this.fx.shake(0.6, 120);
     sfx.play('hurt');
     if (p.hp <= 0) {
+      if (this.reviveLeft > 0) {
+        this.revivePlayer();
+        return;
+      }
       p.hp = 0;
       p.dead = true;
       this.fail();
     }
+  }
+
+  // ───────────────────────── 군단장 ─────────────────────────
+
+  /** 군단장 패턴 속도 배율 (대기 시간에 곱한다): 난이도 · 둔화 디버프 */
+  legionPace(_m?: Monster): number {
+    if (!this.legion) return 1;
+    return DIFFICULTY[this.legion.difficulty].pace * (this.legion.mods.includes('boss_slow') ? 1.15 : 1);
+  }
+
+  /** 기믹 완화 디버프: 즉사 예고를 늘린다 */
+  legionWarnBonus(): number {
+    return this.legion?.mods.includes('gimmick') ? 1 : 0;
+  }
+
+  get silenceMax(): number {
+    return SILENCE_STACKS + (this.legion?.mods.includes('gimmick') ? 2 : 0);
+  }
+
+  /** 보라색 공격에 맞았다: 침묵을 걸고 스택을 쌓는다. 스택이 가득 차면 즉사. */
+  silencePlayer(): void {
+    const p = this.player;
+    if (p.dead) return;
+    p.silenceTime = SILENCE_TIME;
+    this.silenceStacks++;
+    this.fx.text(p.x, p.body.top - 14, `침묵 ${this.silenceStacks}/${this.silenceMax}`, 'info');
+    this.fx.burst(p.x, p.y, 0xb04aff, 12, 120, 500);
+    sfx.play('magic', 0.5);
+    if (this.silenceStacks < this.silenceMax) return;
+    // 가득 찼다: HP 100% 피해 (무적·가드 무시)
+    this.announce('침묵의 심판', 1.2);
+    this.fx.flashScreen(0x6a1aa8, 0.6, 500);
+    this.fx.pillar(p.x, p.feet, 0xb04aff, 220, 800);
+    this.fx.shake(1.5, 300);
+    this.silenceStacks = 0;
+    p.invuln = 0;
+    p.guarding = false;
+    p.shield = 0;
+    p.wardHits = 0;
+    p.hp = Math.min(p.hp, 1);
+    this.damagePlayer(p.derived.maxHp, { x: p.x, melee: false, unblockable: true });
+  }
+
+  /** 불사조의 깃털: 한 번 HP 50%로 되살아난다. */
+  private revivePlayer(): void {
+    const p = this.player;
+    this.reviveLeft--;
+    p.hp = Math.round(p.derived.maxHp * 0.5);
+    p.invuln = 2;
+    this.silenceStacks = 0;
+    this.announce('불사조의 깃털: 부활!', 1.2);
+    this.fx.flashScreen(0xffa040, 0.4, 400);
+    this.fx.embers(p.x, p.feet, 0xffa040, 20, 20, 60, 900);
+    this.fx.pillar(p.x, p.feet, 0xffc060, 140, 700);
   }
 
   /** 적의 범위 공격 (불 뿜기 등) */
@@ -784,9 +868,15 @@ export class BattleScene extends Phaser.Scene {
       sweepTickets: cleared ? this.phase.clearReward.sweepTickets : 0,
       kills: this.pending.kills,
     };
+    if (this.legion) {
+      // 군단장 보상: 조각 (하드는 희망의 조각을 낮은 확률로). 버프·디버프를 고를수록 줄어든다.
+      outcome.legion = this.legion;
+      outcome.materials = cleared ? legionReward(this.legion) : {};
+    }
+    const area = this.legion ? 'base' : 'town';
     ctx.onBattleEnd(outcome, this.hud, () => {
       this.cameras.main.fadeOut(250);
-      this.time.delayedCall(260, () => this.scene.start('town'));
+      this.time.delayedCall(260, () => this.scene.start('town', { area }));
     });
   }
 
@@ -1213,9 +1303,9 @@ export class BattleScene extends Phaser.Scene {
     });
   }
 
-  addTelegraph(x: number, y: number, w: number, h: number, dur: number, owner: Monster | null, onFire: (() => void) | null): void {
-    const rect = this.add.rectangle(x, y, w, h, 0xff3a2a, 0).setOrigin(0, 0).setStrokeStyle(1, 0xff3a2a, 0.9).setDepth(DEPTH.fx);
-    const fill = this.add.rectangle(x, y + h, w, 0, 0xff3a2a, 0.3).setOrigin(0, 1).setDepth(DEPTH.fx);
+  addTelegraph(x: number, y: number, w: number, h: number, dur: number, owner: Monster | null, onFire: (() => void) | null, color = 0xff3a2a): void {
+    const rect = this.add.rectangle(x, y, w, h, color, 0).setOrigin(0, 0).setStrokeStyle(1, color, 0.9).setDepth(DEPTH.fx);
+    const fill = this.add.rectangle(x, y + h, w, 0, color, 0.3).setOrigin(0, 1).setDepth(DEPTH.fx);
     this.telegraphs.push({ rect, fill, time: 0, dur, owner, onFire });
   }
 
@@ -1386,11 +1476,12 @@ export class BattleScene extends Phaser.Scene {
         hpKey: keyLabel(keymap.item1),
         mpKey: keyLabel(keymap.item2),
       },
-      phaseName: `${this.phase.id} ${this.phase.name}`,
+      phaseName: this.legion ? this.phase.name : `${this.phase.id} ${this.phase.name}`,
       waveText,
       gold: this.pending.gold,
       kills: this.pending.kills,
       boss: barTarget ? { name: barTarget.def.name, hp: Math.max(0, barTarget.hp), maxHp: barTarget.maxHp, phase2: barTarget.phase2 } : null,
+      legion: this.legion ? { stacks: this.silenceStacks, max: this.silenceMax, silence: p.silenceTime, revive: this.reviveLeft } : null,
       dodgeReady: p.dodgeCd <= 0,
     };
   }

@@ -2,6 +2,8 @@ import { combatPower, powerVerdict, recommendedPower } from '../game/power';
 import { koNum } from './format';
 import { renderEquipPanel, type PanelHost } from './equipPanel';
 import { renderSkillPanel } from './skillPanel';
+import { renderArmoryPanel, renderLegionPanel, renderShardPanel } from './legionPanel';
+import type { LegionRun } from '../data/legion';
 import { exportSave, importSave, type SaveData } from '../core/save';
 import { DEFAULT_KEYMAP, keyLabel, type Action } from '../core/input';
 import { weaponIconUrl } from '../game/weaponArt';
@@ -23,11 +25,13 @@ export interface VillageCallbacks {
   onReset(): void;
   /** 창을 닫았다 (닫기 버튼, Esc, 상호작용 키) */
   onClose(): void;
+  /** 전투 기지에서 군단장에게 출격한다. */
+  onStartLegion(run: LegionRun): void;
   /** 장비창에 그릴 직업별 캐릭터 그림 */
   portrait(type: WeaponType): HTMLCanvasElement | null;
 }
 
-export type Tab = 'phase' | 'equip' | 'skill' | 'enhance' | 'exchange' | 'shop' | 'settings';
+export type Tab = 'phase' | 'equip' | 'skill' | 'enhance' | 'exchange' | 'shop' | 'settings' | 'legion' | 'armory' | 'shards';
 type ConfirmKey = 'statReset' | 'skillReset' | 'fullReset';
 
 const TABS: { id: Tab; label: string }[] = [
@@ -38,6 +42,9 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'exchange', label: '재료 교환' },
   { id: 'shop', label: '상점' },
   { id: 'settings', label: '설정' },
+  { id: 'legion', label: '군단장' },
+  { id: 'armory', label: '무기고' },
+  { id: 'shards', label: '조각 상인' },
 ];
 
 const ACTION_LABELS: Record<Action, string> = {
@@ -255,6 +262,15 @@ export class VillageUI {
       case 'settings':
         this.renderSettings(save);
         break;
+      case 'legion':
+        renderLegionPanel(this.host, save);
+        break;
+      case 'armory':
+        renderArmoryPanel(this.host, save);
+        break;
+      case 'shards':
+        renderShardPanel(this.host, save);
+        break;
     }
     this.body.scrollTop = scroll;
   }
@@ -272,6 +288,7 @@ export class VillageUI {
       isConfirming: (key) => this.confirming === key,
       section: (title, note) => this.section(title, note),
       portrait: (type) => this.cb.portrait(type),
+      startLegion: (run) => this.cb.onStartLegion(run),
     };
   }
 

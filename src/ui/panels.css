@@ -654,3 +654,379 @@
   font-size: 12px;
   color: #bff4ff;
 }
+
+/* 군단장 전투 HUD: 침묵 스택 */
+.hud-legion {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.hud-stacks {
+  display: flex;
+  gap: 6px;
+}
+
+.hud-stack {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid #5a2a8a;
+  background: rgba(20, 8, 30, 0.8);
+  box-shadow: inset 0 0 4px #000;
+}
+
+.hud-stack.on {
+  border-color: #e0a8ff;
+  background: radial-gradient(circle at 40% 35%, #f0d0ff, #b04aff 55%, #5a1a9a);
+  box-shadow: 0 0 10px rgba(176, 74, 255, 0.9);
+}
+
+.hud-stack.pop {
+  animation: stack-pop 0.5s ease-out;
+}
+
+.hud-stacks.danger .hud-stack.on {
+  animation: stack-danger 0.6s ease-in-out infinite;
+}
+
+@keyframes stack-pop {
+  0% {
+    transform: scale(1.9);
+    box-shadow: 0 0 24px #fff;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes stack-danger {
+  50% {
+    box-shadow: 0 0 18px #ff3aa0;
+    border-color: #ff6ad0;
+  }
+}
+
+.hud-silence {
+  min-width: 70px;
+  font-size: 13px;
+  font-weight: 900;
+  color: #e0a8ff;
+  text-shadow: 0 0 6px #b04aff, 0 1px 0 #000;
+}
+
+.hud-revive {
+  font-size: 12px;
+  font-weight: 800;
+  color: #ffc060;
+  text-shadow: 0 1px 0 #000;
+}
+
+.hud-result-row.hope .hud-result-label,
+.hud-result-row.hope .hud-result-val {
+  color: #fff4c0;
+  text-shadow: 0 0 8px #ffd060, 0 0 16px #ffb040;
+  animation: hope-glow 1.2s ease-in-out infinite;
+}
+
+@keyframes hope-glow {
+  50% {
+    text-shadow: 0 0 14px #fff0a0, 0 0 28px #ffc040;
+  }
+}
+
+/* 전투 기지: 작전 지휘관 */
+.lg-bosses {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.lg-boss {
+  font: inherit;
+  text-align: left;
+  padding: 12px;
+  color: var(--ink);
+  border: 2px solid #4a3a26;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #2a1e14, #140e08);
+  cursor: pointer;
+}
+
+.lg-boss.active {
+  border-color: #b070ff;
+  box-shadow: 0 0 14px rgba(176, 112, 255, 0.5);
+  background: linear-gradient(180deg, #2e1a40, #140a1e);
+}
+
+.lg-boss.locked {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.lg-boss-title {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--ink-mute);
+}
+
+.lg-boss-name {
+  font-family: var(--title-font);
+  font-size: 18px;
+  color: #e0c8ff;
+}
+
+.lg-boss-weapons,
+.lg-boss-sub {
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+
+.lg-gimmick {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #e0c8ff;
+}
+
+.lg-diff {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.lg-diff-btn {
+  font: inherit;
+  padding: 10px;
+  text-align: left;
+  color: var(--ink);
+  border: 2px solid #4a3a26;
+  border-radius: 6px;
+  background: #1b140e;
+  cursor: pointer;
+}
+
+.lg-diff-btn.active.normal {
+  border-color: #6fd26a;
+  box-shadow: 0 0 10px rgba(111, 210, 106, 0.4);
+}
+
+.lg-diff-btn.active.hard {
+  border-color: #ff5a4a;
+  box-shadow: 0 0 12px rgba(255, 90, 74, 0.5);
+  background: #2a1010;
+}
+
+.lg-diff-name {
+  font-family: var(--title-font);
+  font-size: 16px;
+}
+
+.lg-diff-sub {
+  font-size: 11px;
+  color: var(--ink-dim);
+}
+
+.lg-mods {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.lg-mod-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lg-mod-head {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--gold);
+}
+
+.lg-mod-col.debuff .lg-mod-head {
+  color: #c090ff;
+}
+
+.lg-mod {
+  font: inherit;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  text-align: left;
+  color: var(--ink-dim);
+  border: 1px solid #4a3a26;
+  border-radius: 6px;
+  background: #140e08;
+  cursor: pointer;
+}
+
+.lg-mod.on {
+  color: var(--ink);
+  border-color: var(--gold);
+  background: #2a1e10;
+}
+
+.lg-mod-col.debuff .lg-mod.on {
+  border-color: #b070ff;
+  background: #22142e;
+}
+
+.lg-mod-check {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  color: #1b140e;
+  border: 1px solid #6a5a40;
+  border-radius: 3px;
+  background: #0c0804;
+}
+
+.lg-mod.on .lg-mod-check {
+  background: var(--gold-hi);
+}
+
+.lg-mod-text {
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+}
+
+.lg-mod-text b {
+  font-size: 13px;
+}
+
+.lg-reward {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 10px;
+  font-size: 14px;
+}
+
+.lg-reward-mul {
+  font-family: var(--title-font);
+  font-size: 18px;
+  color: #6fd26a;
+}
+
+.lg-reward-mul.cut {
+  color: #f0a040;
+}
+
+.lg-hope {
+  color: #fff0b0;
+  text-shadow: 0 0 6px #ffc040;
+}
+
+.lg-loadout {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.ui-btn.lg-go {
+  min-width: 160px;
+  font-size: 16px;
+}
+
+.lg-tabs {
+  margin-bottom: 10px;
+}
+
+.lg-slots {
+  margin: 6px 0 12px;
+}
+
+.lg-armory {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 52px);
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #4a3a26;
+  border-radius: 6px;
+  background: rgba(10, 7, 4, 0.55);
+}
+
+/* 조각 상인 */
+.lg-wallet {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 10px;
+}
+
+.lg-shard {
+  font-family: var(--title-font);
+  font-size: 16px;
+  color: #e0c8ff;
+}
+
+.lg-shard.hope {
+  color: #fff0b0;
+  text-shadow: 0 0 6px #ffc040;
+}
+
+.lg-setbonus {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: #bff4ff;
+}
+
+.lg-pieces {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.lg-piece {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 6px;
+  text-align: center;
+  font-size: 11px;
+  border: 1px solid #4a3a26;
+  border-radius: 6px;
+  background: rgba(10, 7, 4, 0.55);
+}
+
+.lg-piece.owned {
+  border-color: #3a6a7a;
+}
+
+.lg-piece-name {
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.eq-slot.unowned .px-icon {
+  filter: grayscale(0.7) brightness(0.55);
+}
+
+@media (max-width: 760px) {
+  .lg-bosses,
+  .lg-pieces {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .lg-mods,
+  .lg-diff {
+    grid-template-columns: 1fr;
+  }
+}
