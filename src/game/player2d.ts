@@ -711,6 +711,16 @@ export class Player {
     return { x: this.x + this.facing * 16, y: this.y - 4 };
   }
 
+  /**
+   * 투사체와 총알이 실제로 날아가는 위치. 손에 든 무기 끝은 바닥에서 30~50px 위라 거기서 쏘면
+   * 키 작은 지상 적(20~24px)의 머리 위로 지나간다. 그래서 판정은 몸 가운데 높이로 하고,
+   * 총구 불꽃 같은 연출만 muzzle()의 무기 끝에 그린다. 지팡이는 휘두르는 중이라 끝이 앞뒤로 움직여 몸 앞에서 쏜다.
+   */
+  shotPoint(): { x: number; y: number } {
+    const x = this.tipValid && this.weapon.def.type !== 'staff' ? this.tip.x : this.x + this.facing * 16;
+    return { x, y: this.y };
+  }
+
   destroy(): void {
     this.sprite.destroy();
     this.zone.destroy();
