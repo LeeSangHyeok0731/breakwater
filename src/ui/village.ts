@@ -3,7 +3,7 @@ import { DEFAULT_KEYMAP, keyLabel, SLOT_ACTIONS, type Action } from '../core/inp
 import { addExp, derive, DEX_SPEED_CAP, enhanceMultiplier, expToNext, resetCost, totalStats, type Stats } from '../game/stats';
 import { PHASES, SWEEP_RATE, SWEEP_TICKET_PRICE, type PhaseDef } from '../data/phases';
 import { skillsFor, STARTER_SKILLS } from '../data/skills';
-import { enhanceCost, GRADES, MAX_ENHANCE, WEAPON_TYPE_NAME, WEAPONS, type WeaponDef } from '../data/weapons';
+import { CLASS_NAME, enhanceCost, GRADES, MAX_ENHANCE, WEAPON_TYPE_NAME, WEAPONS, type WeaponDef } from '../data/weapons';
 import { MATERIALS } from '../data/items';
 import { sfx } from '../core/audio';
 import { PASSIVES, type PassiveDef } from '../data/passives';
@@ -53,7 +53,7 @@ const ACTION_LABELS: Record<Action, string> = {
   special: '강화 공격 (누르고 있기)',
   dodge: '구르기',
   guard: '가드 (근접)',
-  swap: '무기 교체',
+  swap: '직업 교체',
   slot1: '스킬 슬롯 1',
   slot2: '스킬 슬롯 2',
   slot3: '스킬 슬롯 3',
@@ -460,16 +460,16 @@ export class VillageUI {
   // ---- 장비 ----
 
   private renderEquip(save: SaveData): void {
-    const s = this.section('장착 무기', '전투 중 무기 교체 키로 두 무기를 바꿔 씁니다');
+    const s = this.section('장착 직업', '무기 종류가 곧 직업입니다. 전투 중 직업 교체 키로 두 직업을 오갑니다');
     const slots = el('div', 'v-equip-slots', s);
     save.equipped.forEach((uid, i) => {
       const w = save.weapons.find((x) => x.uid === uid);
       const def = w ? WEAPONS[w.defId] : undefined;
       const box = el('div', 'v-equip-slot', slots);
-      el('span', 'v-muted', box, `무기 ${i + 1}`);
+      el('span', 'v-muted', box, `직업 ${i + 1}`);
       const name = el('span', 'v-card-title', box, def ? `${def.name}${w && w.enhance > 0 ? ` +${w.enhance}` : ''}` : '없음');
       if (def) name.style.color = GRADES[def.grade].color;
-      if (def) el('span', 'v-muted', box, WEAPON_TYPE_NAME[def.type]);
+      if (def) el('span', 'v-muted', box, `${CLASS_NAME[def.type]} · ${WEAPON_TYPE_NAME[def.type]}`);
     });
 
     const list = this.section('보유 무기', `${save.weapons.length}개`);
@@ -483,12 +483,12 @@ export class VillageUI {
       if (w.enhance > 0) el('span', 'v-enh', head, `+${w.enhance}`);
       el('span', 'v-muted', head, `${GRADES[def.grade].name} ${WEAPON_TYPE_NAME[def.type]}`);
       const slot = save.equipped.indexOf(w.uid);
-      if (slot >= 0) el('span', 'v-badge clear', head, `무기 ${slot + 1}`);
+      if (slot >= 0) el('span', 'v-badge clear', head, `직업 ${slot + 1}`);
       el('p', 'v-desc', card, def.desc);
       this.weaponMeta(card, def);
       const actions = el('div', 'v-actions', card);
       for (const i of [0, 1]) {
-        button(actions, `무기 ${i + 1}에 장착`, i === 0 ? 'primary' : '', save.equipped[i] !== w.uid, () => this.equip(w.uid, i));
+        button(actions, `직업 ${i + 1}에 장착`, i === 0 ? 'primary' : '', save.equipped[i] !== w.uid, () => this.equip(w.uid, i));
       }
     }
     el('p', 'v-muted v-note', list, '새 무기는 상점에서 사거나 재료로 교환해 얻습니다.');

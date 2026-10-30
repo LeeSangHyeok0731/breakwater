@@ -25,6 +25,15 @@ export const WEAPON_TYPE_NAME: Record<WeaponType, string> = {
   gun: '총',
 };
 
+/** 무기 종류가 곧 직업이다. 장착한 두 무기를 오가는 것이 직업 교체다. */
+export const CLASS_NAME: Record<WeaponType, string> = {
+  sword: '검사',
+  dao: '도객',
+  bow: '궁수',
+  staff: '마법사',
+  gun: '총잡이',
+};
+
 export const GRADES: Record<Grade, { name: string; color: string }> = {
   common: { name: '일반', color: '#c8ccd2' },
   rare: { name: '희귀', color: '#4aa3ff' },

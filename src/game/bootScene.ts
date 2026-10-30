@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { createAnimations, preloadAssets } from './assets2d';
+import { createClassSprites } from './classSprites';
 
 /** 에셋을 불러오고 애니메이션을 만든 뒤 마을로 간다. 진행률은 HTML 로딩 화면에 표시한다. */
 export class BootScene extends Phaser.Scene {
@@ -14,6 +15,7 @@ export class BootScene extends Phaser.Scene {
 
   create(): void {
     createAnimations(this);
+    createClassSprites(this);
     this.onDone();
     this.scene.start('town');
   }

@@ -3,6 +3,7 @@ import type { Input } from '../core/input';
 import type { SkillDef } from '../data/skills';
 import { MELEE_TYPES, type WeaponDef } from '../data/weapons';
 import { ORIGIN_X } from './assets2d';
+import { AIM_ANIM, AIM_HAND, AIM_ORIGIN_X, baseAnimKey, classAnimKey } from './classSprites';
 import { createWeaponSprites, WEAPON_ORIGIN } from './weaponSprites';
 import { DEPTH } from './fx';
 import type { Derived } from './stats';
@@ -109,6 +110,10 @@ export class Player {
   dead = false;
 
   private lastAnimAction: PlayerAction | null = null;
+  /** 직업 교체 직후 몸이 하얗게 번쩍이는 시간 */
+  private swapFlash = 0;
+  /** 쏜 뒤 조준 자세를 유지하는 남은 시간 */
+  private aimHold = 0;
   private afterimageTimer = 0;
   private guardFx: Phaser.GameObjects.Arc;
   private shieldFx: Phaser.GameObjects.Arc;
@@ -198,6 +203,7 @@ export class Player {
     this.action = { kind, t: 0, dur, hits, done: 0 };
   }
 
+  /** 직업 교체: 장착한 두 무기(직업)를 오간다. */
   swapWeapon(): void {
     this.active = 1 - this.active;
     this.action = null;
@@ -206,6 +212,21 @@ export class Player {
     this.reloadTime = 0;
     this.ads = false;
     this.swapCd = 0.3;
+    this.swapFlash = 0.12;
+    this.aimHold = 0;
+    this.swapPuff();
+  }
+
+  /** 활·총·스태프를 겨누는 중 (조준 자세로 무기를 손에 든다) */
+  get aiming(): boolean {
+    if (this.isMelee || this.dead || this.dodgeTime > 0) return false;
+    // 연달아 쏠 때 자세가 깜빡이지 않게 쏜 뒤에도 잠깐 겨눈 채로 있는다.
+    return this.aimHold > 0 || this.wantsAim;
+  }
+
+  private get wantsAim(): boolean {
+    const a = this.action;
+    return (a !== null && RANGED_ACTIONS.has(a.kind)) || this.charge >= 0 || this.ads || this.reloadTime > 0;
   }
 
   moveSpeed(): number {
@@ -219,6 +240,8 @@ export class Player {
     this.invuln = Math.max(0, this.invuln - dt);
     this.parryTimer = Math.max(0, this.parryTimer - dt);
     this.swapCd = Math.max(0, this.swapCd - dt);
+    this.swapFlash = Math.max(0, this.swapFlash - dt);
+    this.aimHold = this.wantsAim ? 0.35 : Math.max(0, this.aimHold - dt);
     this.hurtTimer = Math.max(0, this.hurtTimer - dt);
     this.dropTimer = Math.max(0, this.dropTimer - dt);
     this.fireCd = Math.max(0, this.fireCd - dt);
@@ -312,7 +335,7 @@ export class Player {
         body.setVelocityY(JUMP_V * 0.9);
         this.jumpPuff();
         // 점프 동작을 처음부터 다시 보여 준다.
-        if (this.sprite.anims.currentAnim?.key === 'hero-jump') this.sprite.anims.restart();
+        if (this.sprite.anims.currentAnim?.key === classAnimKey(this.weapon.def.type, 'hero-jump')) this.sprite.anims.restart();
       }
     }
   }
@@ -329,6 +352,12 @@ export class Player {
     this.scene.tweens.add({ targets: ring, width: 34, height: 9, alpha: 0, duration: 260, ease: 'Quad.Out', onComplete: () => ring.destroy() });
   }
 
+  /** 직업 교체 때 몸을 감싸는 빛 고리 */
+  private swapPuff(): void {
+    const ring = this.scene.add.circle(this.x, this.y, 6, 0xffffff, 0).setStrokeStyle(2, 0xfff0c0, 0.9).setDepth(DEPTH.fx);
+    this.scene.tweens.add({ targets: ring, scale: 4, alpha: 0, duration: 240, ease: 'Quad.Out', onComplete: () => ring.destroy() });
+  }
+
   private afterimage(): void {
     const s = this.sprite;
     const ghost = this.scene.add
@@ -342,8 +371,10 @@ export class Player {
     this.scene.tweens.add({ targets: ghost, alpha: 0, duration: 220, onComplete: () => ghost.destroy() });
   }
 
-  private play(key: string, restartFor?: PlayerAction | null): void {
+  /** base는 직업 접두사 없는 기본 이름 ('hero-run' 등) */
+  private play(base: string, restartFor?: PlayerAction | null): void {
     const s = this.sprite;
+    const key = classAnimKey(this.weapon.def.type, base);
     if (restartFor !== undefined) {
       if (restartFor !== this.lastAnimAction || s.anims.currentAnim?.key !== key) {
         s.play(key);
@@ -363,7 +394,8 @@ export class Player {
       if (a.kind === 'crouchSlash') this.play('hero-crouch-slash', a);
       else if (a.kind === 'airSlash' || !this.grounded) this.play('hero-jump-attack', a);
       else this.play('hero-attack', a);
-    } else if (this.dodgeTime > 0) this.play('hero-run');
+    } else if (this.aiming) this.play(AIM_ANIM);
+    else if (this.dodgeTime > 0) this.play('hero-run');
     else if (!this.grounded) this.play('hero-jump');
     else if (this.crouching) this.play('hero-crouch');
     else if (Math.abs(this.body.velocity.x) > 20) this.play('hero-run');
@@ -371,11 +403,14 @@ export class Player {
     if (!a || RANGED_ACTIONS.has(a.kind)) this.lastAnimAction = null;
 
     // 프레임마다 몸통 위치가 다른 시트는 기준점을 맞춘다.
-    const key = s.anims.currentAnim?.key ?? 'hero-idle';
-    const ox = ORIGIN_X[key] ?? 0.5;
+    const key = baseAnimKey(s.anims.currentAnim?.key ?? 'hero-idle');
+    const ox = key === AIM_ANIM ? AIM_ORIGIN_X : (ORIGIN_X[key] ?? 0.5);
     s.setFlipX(this.facing === -1);
     s.setOrigin(this.facing === 1 ? ox : 1 - ox, 1);
     s.setPosition(Math.round(this.x), Math.round(this.feet + 1));
+
+    if (this.swapFlash > 0) s.setTintFill(0xfff6e0);
+    else if (s.isTinted) s.clearTint();
 
     // 피격 무적 중 깜빡임
     s.setAlpha(this.invuln > 0 && this.dodgeTime <= 0 && Math.floor(this.invuln * 20) % 2 === 0 ? 0.4 : 1);
@@ -401,24 +436,24 @@ export class Player {
   }
 
   /**
-   * 손에 든 원거리 무기의 자세. 오른쪽을 볼 때 기준으로
-   * forward: 몸 가운데에서 앞쪽 거리, up: 위로 올림, rot: 시계 방향 회전(라디안).
+   * 원거리 직업이 손에 든 무기. 겨누는 동안에만 조준 자세의 손에 붙이고, 평소에는 등에 멘다(그림에 포함).
+   * 오른쪽을 볼 때 기준으로 forward: 손에서 앞쪽, down: 아래쪽, rot: 시계 방향 회전(라디안).
    */
   private updateHeld(): void {
     const type = this.weapon.def.type;
-    const showWeapon = !this.dead && this.dodgeTime <= 0 && (type === 'bow' || type === 'gun' || type === 'staff');
+    const showWeapon = this.aiming;
     this.held.setVisible(showWeapon);
     this.flash.setVisible(false);
     this.orb.setVisible(false);
     this.tipValid = false;
-    if (!showWeapon) return;
+    if (this.isMelee) return;
 
     const a = this.action;
     const ranged = a && RANGED_ACTIONS.has(a.kind) ? a : null;
     const t = ranged ? ranged.t : 0;
     let key = 'w-staff';
-    let forward = 7;
-    let down = 2;
+    let forward = 0;
+    let down = 0;
     let rot = 0;
     let tipLocal = { x: 0, y: -22 };
     let flash = false;
@@ -427,21 +462,13 @@ export class Player {
     if (type === 'bow') {
       tipLocal = { x: 12, y: 0 };
       key = 'w-bow-0';
-      forward = 10;
-      down = 2;
-      rot = 0.3;
       if (this.charge >= 0) {
-        // 차징: 앞으로 겨누고 당긴 만큼 시위가 뒤로
+        // 차징: 당긴 만큼 시위가 뒤로
         const c = Math.min(1, this.charge / 1.2);
         key = c < 0.45 ? 'w-bow-1' : 'w-bow-2';
-        forward = 12 - c * 2;
-        down = -1;
-        rot = 0;
+        forward = -c * 2;
       } else if (ranged) {
         // 쏘기: 짧게 당겼다가 놓으면서 살짝 밀려난다
-        forward = 12;
-        down = -1;
-        rot = 0;
         const cycle = ranged.kind === 'volley' ? (t % 0.075) / 0.075 : Math.min(1, t / 0.2);
         key = cycle < 0.35 ? 'w-bow-2' : 'w-bow-0';
         if (cycle >= 0.35) forward -= 2 * (1 - cycle);
@@ -449,46 +476,29 @@ export class Player {
     } else if (type === 'gun') {
       key = 'w-gun';
       tipLocal = { x: 14, y: -4 };
-      forward = 9;
-      down = 1;
-      rot = 0.2;
       if (this.reloadTime > 0) {
         // 재장전: 총을 아래로 돌려 탄을 채운다
         rot = 1.1 + Math.sin(this.reloadTime * 10) * 0.15;
-        down = 4;
-        forward = 7;
-      } else if (ranged || this.ads) {
-        forward = this.ads ? 14 : 12;
-        down = -1;
-        rot = 0;
-        if (ranged) {
-          // 반동: 쏠 때마다 총구가 위로 튀었다 돌아온다
-          const period = ranged.kind === 'rapid' ? 0.1 : ranged.kind === 'barrage' ? 0.065 : ranged.kind === 'snipe' ? 99 : 0.14;
-          const since = ranged.kind === 'snipe' ? t - 0.6 : t % period;
-          if (since >= 0 && since < 0.1) {
-            rot = -0.55 * (1 - since / 0.1);
-            forward -= 2 * (1 - since / 0.1);
-            flash = since < 0.05;
-          }
+        down = 3;
+        forward = -3;
+      } else if (ranged) {
+        // 반동: 쏠 때마다 총구가 위로 튀었다 돌아온다
+        const period = ranged.kind === 'rapid' ? 0.1 : ranged.kind === 'barrage' ? 0.065 : ranged.kind === 'snipe' ? 99 : 0.14;
+        const since = ranged.kind === 'snipe' ? t - 0.6 : t % period;
+        if (since >= 0 && since < 0.1) {
+          rot = -0.55 * (1 - since / 0.1);
+          forward = -2 * (1 - since / 0.1);
+          flash = since < 0.05;
         }
       }
     } else {
       key = 'w-staff';
       tipLocal = { x: 0, y: -22 };
-      // 평소에는 몸 앞에 비스듬히 세워 든다 (몸에 가리지 않게).
-      forward = 12;
-      down = 4;
-      rot = 0.28;
       if (this.charge >= 0) {
-        // 차징: 머리 위로 들어 끝에 마력을 모은다
+        // 차징: 곧게 세워 끝에 마력을 모은다
         const c = Math.min(1, this.charge / 1.2);
-        forward = 4;
-        down = -8;
-        rot = -0.25;
         orbScale = 0.6 + c * 1.4;
       } else if (ranged?.kind === 'laser') {
-        forward = 8;
-        down = -2;
         rot = Math.PI / 2;
         orbScale = 1.2 + Math.sin(t * 40) * 0.2;
       } else if (ranged) {
@@ -496,25 +506,24 @@ export class Player {
         const p = Math.min(1, t / Math.max(0.12, ranged.dur * 0.6));
         const e = 1 - Math.pow(1 - p, 3);
         rot = -0.5 + e * 1.5;
-        forward = 6 + e * 4;
-        down = 0;
         orbScale = 1.4 * (1 - p) + 0.4;
       }
     }
 
+    // 손 위치: 조준 자세 그림의 손 (발끝 기준점에서)
     const f = this.facing;
     const [gx, gy] = WEAPON_ORIGIN[key];
-    const hx = this.x + f * forward;
-    const hy = this.y + down;
+    const hx = Math.round(this.x) + f * (AIM_HAND.x + forward);
+    const hy = Math.round(this.feet + 1) + AIM_HAND.y + down;
     this.held
       .setTexture(key)
       .setFlipX(f === -1)
       .setOrigin(f === 1 ? gx : 1 - gx, gy)
       .setRotation(rot * f)
-      .setPosition(Math.round(hx), Math.round(hy))
+      .setPosition(hx, hy)
       .setAlpha(this.sprite.alpha);
 
-    // 무기 끝 위치 (회전 반영)
+    // 무기 끝 위치 (회전 반영). 겨누기 전에도 첫 발이 나갈 곳으로 쓴다.
     const cos = Math.cos(rot);
     const sin = Math.sin(rot);
     this.tip = {
@@ -522,6 +531,7 @@ export class Player {
       y: hy + tipLocal.x * sin + tipLocal.y * cos,
     };
     this.tipValid = true;
+    if (!showWeapon) return;
     if (flash) this.flash.setVisible(true).setPosition(this.tip.x + f * 3, this.tip.y).setRotation(Math.random());
     if (orbScale > 0) this.orb.setVisible(true).setPosition(this.tip.x, this.tip.y).setScale(orbScale);
   }

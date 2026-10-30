@@ -7,7 +7,7 @@ import { MATERIALS } from '../data/items';
 import { ELITE_MOD, type MonsterKind } from '../data/monsters';
 import type { PhaseDef } from '../data/phases';
 import { SKILLS, type SkillDef } from '../data/skills';
-import { GRADES, WEAPONS, type WeaponType } from '../data/weapons';
+import { CLASS_NAME, GRADES, WEAPONS, type WeaponType } from '../data/weapons';
 import { Hud, type HudSlot, type HudState } from '../ui/hud';
 import { updatePlayerCombat } from './combat2d';
 import { ctx, type BattleOutcome } from './context';
@@ -1035,9 +1035,9 @@ export class BattleScene extends Phaser.Scene {
       wardHits: p.wardHits,
       level: this.save.level,
       expRatio: this.save.exp / expToNext(this.save.level),
-      weaponName: `${w.def.name}${w.enhance > 0 ? ` +${w.enhance}` : ''}`,
+      weaponName: `${CLASS_NAME[w.def.type]} · ${w.def.name}${w.enhance > 0 ? ` +${w.enhance}` : ''}`,
       weaponGradeColor: GRADES[w.def.grade].color,
-      otherWeaponName: `${other.def.name}${other.enhance > 0 ? ` +${other.enhance}` : ''}`,
+      otherWeaponName: `${CLASS_NAME[other.def.type]} · ${other.def.name}${other.enhance > 0 ? ` +${other.enhance}` : ''}`,
       swapKey: keyLabel(keymap.swap),
       slots,
       buffs: p.buffs.map((b) => ({ name: b.name, time: b.time })),
