@@ -4,7 +4,7 @@ import { sfx } from '../core/audio';
 import type { SaveData } from '../core/save';
 import { gearBonus, POTION_LIMIT_PER_PHASE } from '../data/gear';
 import { MATERIALS } from '../data/items';
-import { ELITE_MOD, type MonsterKind } from '../data/monsters';
+import { ELITE_MOD, MONSTERS, type MonsterKind } from '../data/monsters';
 import type { PhaseDef } from '../data/phases';
 import { SKILLS, type SkillDef } from '../data/skills';
 import { CLASS_NAME, GRADES, WEAPONS, type WeaponType } from '../data/weapons';
@@ -62,6 +62,17 @@ interface Bolt extends BoltSpec {
   life: number;
 }
 
+/** 적 탄의 생김새·성질 */
+export interface EnemyBoltOpts {
+  /** 생김새: 마력탄(기본), 서리, 도깨비불, 깃털 */
+  kind?: 'orb' | 'frost' | 'wisp' | 'feather';
+  /** 맞으면 플레이어가 잠깐 느려진다 */
+  slow?: boolean;
+  /** 플레이어 쪽으로 꺾는 정도 (rad/s) */
+  homing?: number;
+  life?: number;
+}
+
 interface EnemyBolt {
   obj: Phaser.GameObjects.Sprite | Phaser.GameObjects.Image;
   x: number;
@@ -72,7 +83,16 @@ interface EnemyBolt {
   aoe: number;
   owner: Monster;
   life: number;
+  opts: EnemyBoltOpts;
 }
+
+/** 적 탄 생김새별 꼬리 색 */
+const ENEMY_BOLT_COLOR: Record<NonNullable<EnemyBoltOpts['kind']>, number> = {
+  orb: 0xff4fd0,
+  frost: 0x8fe0ff,
+  wisp: 0x9fffb0,
+  feather: 0xfff4e0,
+};
 
 export interface FieldSpec {
   x: number;
@@ -336,6 +356,7 @@ export class BattleScene extends Phaser.Scene {
       const c = BUFF_COLOR[b.id];
       if (c !== undefined) this.fx.embers(p.x, p.feet - 4, c, 1, 8, 34, 650);
     }
+    if (p.slowTime > 0) this.fx.burst(p.x, p.y, 0x8fe0ff, 1, 20, 400);
   }
 
   private togglePause(): void {
@@ -398,7 +419,9 @@ export class BattleScene extends Phaser.Scene {
       crit = Math.random() < critChance;
       critMul = crit ? 1 + CRIT_DAMAGE : 1;
     }
-    let dmg = Math.max(1, Math.round(base * p.damageMul * (1 + m.vuln) * critMul * dev.damageMul));
+    // 후광 망령의 보호막을 두른 적은 피해를 절반만 받는다.
+    const ward = m.ward > 0 ? 0.5 : 1;
+    let dmg = Math.max(1, Math.round(base * p.damageMul * (1 + m.vuln) * critMul * dev.damageMul * ward));
     if (dev.oneHit) dmg = Math.max(dmg, Math.ceil(m.hp));
     m.hp -= dmg;
     m.onHit(p.x, opts.knock ?? 0);
@@ -608,20 +631,20 @@ export class BattleScene extends Phaser.Scene {
         if (Math.abs(x - p.x) > 170) break;
       }
       // 일부는 발판 위에 나온다.
-      const flying = kind === 'minion';
-      if (!flying && kind !== 'golem_lord' && this.level.surfaces.length && Math.random() < 0.3) {
+      const def = MONSTERS[kind];
+      if (!def.flying && !def.boss && this.level.surfaces.length && Math.random() < 0.3) {
         const s = this.level.surfaces[Math.floor(Math.random() * this.level.surfaces.length)];
         x = s.x + 16 + Math.random() * (s.w - 32);
         y = s.y - 30;
       }
     }
-    if (kind === 'minion') y = 140 + Math.random() * 60;
-    if (kind === 'golem_lord') {
+    if (MONSTERS[kind].flying) y = 140 + Math.random() * 60;
+    if (MONSTERS[kind].boss) {
       x = atX ?? W - 180;
       y = 160;
     }
     x = Phaser.Math.Clamp(x, 30, W - 30);
-    const m = new Monster(this, kind, elite, this.phase.hpMul * dev.monsterHpMul, x, y);
+    const m = new Monster(this, kind, elite, this.phase.hpMul * dev.monsterHpMul, x, y, this.phase.dmgMul ?? 1);
     m.facing = p.x < x ? -1 : 1;
     this.monsters.push(m);
     this.monsterGroup.add(m.zone);
@@ -676,7 +699,7 @@ export class BattleScene extends Phaser.Scene {
     this.spawnQueue = [...normal, ...queue.filter((q) => q.elite)];
     this.spawnTimer = 0.3;
     sfx.play('wave');
-    if (this.phase.type === 'boss') this.announce('악마 군주', 2.5);
+    if (this.phase.type === 'boss') this.announce(MONSTERS[this.phase.waves[index][0].kind].name, 2.5);
     else this.announce(index === this.phase.waves.length - 1 ? '마지막 웨이브' : `웨이브 ${index + 1}`);
   }
 
@@ -927,16 +950,22 @@ export class BattleScene extends Phaser.Scene {
     this.hitArea(x - radius, y - radius, radius * 2, radius * 2, damage, { stun, knock: 90 });
   }
 
-  spawnEnemyBolt(x: number, y: number, vx: number, vy: number, damage: number, owner: Monster, aoe = 0): void {
+  spawnEnemyBolt(x: number, y: number, vx: number, vy: number, damage: number, owner: Monster, aoe = 0, opts: EnemyBoltOpts = {}): void {
     let obj: EnemyBolt['obj'];
     if (aoe > 0) {
       obj = this.add.sprite(x, y, 'fireball').play('fireball');
       obj.setFlipX(vx < 0);
+    } else if (opts.kind === 'frost') {
+      obj = this.add.sprite(x, y, 'fx-orb').play('fx-orb').setBlendMode(Phaser.BlendModes.ADD);
+    } else if (opts.kind === 'wisp') {
+      obj = this.add.sprite(x, y, 'fx-flame').play('fx-flame').setTint(0x9fffb0).setScale(0.8).setBlendMode(Phaser.BlendModes.ADD);
+    } else if (opts.kind === 'feather') {
+      obj = this.add.image(x, y, 'fx-feather').setRotation(Math.atan2(vy, vx));
     } else {
       obj = this.add.sprite(x, y, 'fx-orb-enemy').play('fx-orb-enemy').setBlendMode(Phaser.BlendModes.ADD);
     }
     obj.setDepth(DEPTH.projectile);
-    this.enemyBolts.push({ obj, x, y, vx, vy, damage, aoe, owner, life: 4 });
+    this.enemyBolts.push({ obj, x, y, vx, vy, damage, aoe, owner, life: opts.life ?? 4, opts });
   }
 
   private updateEnemyBolts(dt: number): void {
@@ -944,14 +973,29 @@ export class BattleScene extends Phaser.Scene {
     const pb = p.body;
     this.enemyBolts = this.enemyBolts.filter((b) => {
       b.life -= dt;
+      if (b.opts.homing) {
+        // 플레이어 쪽으로 조금씩 꺾는다 (속도는 그대로).
+        const speed = Math.hypot(b.vx, b.vy);
+        const cur = Math.atan2(b.vy, b.vx);
+        const want = Math.atan2(p.y - b.y, p.x - b.x);
+        const diff = Phaser.Math.Angle.Wrap(want - cur);
+        const ang = cur + Phaser.Math.Clamp(diff, -b.opts.homing * dt, b.opts.homing * dt);
+        b.vx = Math.cos(ang) * speed;
+        b.vy = Math.sin(ang) * speed;
+      }
       b.x += b.vx * dt;
       b.y += b.vy * dt;
       b.obj.setPosition(b.x, b.y);
-      if (Math.random() < 0.4) this.fx.burst(b.x, b.y, b.aoe > 0 ? 0xff8a3a : 0xff4fd0, 1, 15, 220);
+      if (b.opts.kind === 'feather') b.obj.setRotation(Math.atan2(b.vy, b.vx));
+      if (Math.random() < 0.4) this.fx.burst(b.x, b.y, b.aoe > 0 ? 0xff8a3a : ENEMY_BOLT_COLOR[b.opts.kind ?? 'orb'], 1, 15, 220);
       let alive = b.life > 0;
       const hit = b.x > pb.x - 4 && b.x < pb.right + 4 && b.y > pb.y - 4 && b.y < pb.bottom + 4;
       if (alive && hit && p.invuln <= 0) {
         this.damagePlayer(b.damage, { x: b.x, monster: b.owner, melee: false });
+        if (b.opts.slow && !p.dead) {
+          p.slowTime = 2;
+          this.fx.text(p.x, p.body.top - 4, '둔화', 'info');
+        }
         this.enemyBurst(b);
         alive = false;
       }
@@ -973,9 +1017,75 @@ export class BattleScene extends Phaser.Scene {
       this.fx.boom(b.x, Math.min(b.y, FLOOR_Y - 8), b.aoe * 0.5, 'fire');
       this.fx.ring(b.x, Math.min(b.y + 6, FLOOR_Y), b.aoe, 0xff6a1a, 250);
     } else {
-      this.fx.spark(b.x, b.y, 0xff4fd0);
-      this.fx.burst(b.x, b.y, 0xff4fd0, 5, 70, 250);
+      const c = ENEMY_BOLT_COLOR[b.opts.kind ?? 'orb'];
+      this.fx.spark(b.x, b.y, c);
+      this.fx.burst(b.x, b.y, c, 5, 70, 250);
     }
+  }
+
+  // ───────────────────────── 적의 큰 공격 (챕터 2·3) ─────────────────────────
+
+  /** 바닥에서 솟는 불기둥: 경고 뒤 폭 w, 높이 150의 기둥이 선다. */
+  firePillar(x: number, damage: number, owner: Monster, delay = 0.9, w = 40): void {
+    const top = FLOOR_Y - 150;
+    this.addTelegraph(x - w / 2, top, w, 150, delay, owner, () => {
+      const s = this.add.sprite(x, FLOOR_Y + 4, 'beast-burn').setOrigin(0.5, 1).setDepth(DEPTH.fx).setScale(w / 40, 1);
+      s.play('fire-pillar');
+      this.tweens.add({ targets: s, alpha: 0, delay: 420, duration: 200, onComplete: () => s.destroy() });
+      this.fx.burst(x, FLOOR_Y - 10, 0xffa040, 10, 120, 400);
+      this.fx.shake(0.4, 100);
+      this.areaHit(x - w / 2, top, w, 150, damage, owner, false);
+    });
+  }
+
+  /** 하늘에서 내리꽂히는 빛기둥 (타락천사) */
+  lightBeam(x: number, damage: number, owner: Monster, delay = 0.9, w = 36): void {
+    const top = 0;
+    this.addTelegraph(x - w / 2, top, w, FLOOR_Y, delay, owner, () => {
+      this.fx.pillar(x, FLOOR_Y, 0xfff0c0, FLOOR_Y + 20, 420);
+      this.fx.tracer(x, 0, x, FLOOR_Y, 0xfff0c0, 6, 260);
+      this.fx.spark(x, FLOOR_Y - 6, 0xffffff, 2);
+      this.fx.ring(x, FLOOR_Y, 40, 0xfff0c0);
+      this.areaHit(x - w / 2, top, w, FLOOR_Y, damage, owner, false);
+    });
+  }
+
+  /** 적이 부르는 운석: 경고 원 → 낙하 → 폭발 (플레이어만 맞는다) */
+  enemyMeteor(x: number, damage: number, owner: Monster, delay = 0): void {
+    this.time.delayedCall(delay * 1000, () => {
+      if (this.ended) return;
+      this.fx.circle(x, FLOOR_Y - 1, 0xff3a2a, 110, 1000, false, DEPTH.fx - 2);
+      const sx = x - 90;
+      const rock = this.add.sprite(sx, -20, 'fx-meteor').play('fx-meteor').setScale(1.5).setDepth(DEPTH.projectile).setTint(0xd8a0ff);
+      rock.setOrigin(26 / 40, 26 / 40);
+      this.tweens.add({
+        targets: rock,
+        x,
+        y: FLOOR_Y - 14,
+        delay: 200,
+        duration: 750,
+        ease: 'Quad.In',
+        onUpdate: () => this.fx.burst(rock.x - 4, rock.y - 4, 0xc080ff, 1, 30, 260),
+        onComplete: () => {
+          rock.destroy();
+          sfx.play('boom', 0.8);
+          this.fx.boom(x, FLOOR_Y - 20, 40, 'dark');
+          this.fx.ring(x, FLOOR_Y, 70, 0xc060ff, 380);
+          this.fx.shake(0.9, 180);
+          this.areaHit(x - 50, FLOOR_Y - 110, 100, 110, damage, owner, false);
+        },
+      });
+    });
+  }
+
+  /** 불타는 해골의 자폭: 주변을 태우고 스스로 사라진다 (처치로 치지 않는다). */
+  selfDestruct(m: Monster, radius: number): void {
+    if (!m.alive) return;
+    sfx.play('boom', 0.6);
+    this.fx.boom(m.x, m.y, radius * 0.6, 'fire');
+    this.fx.ring(m.x, Math.min(m.y + 10, FLOOR_Y), radius, 0xff7a1a);
+    this.areaHit(m.x - radius, m.y - radius, radius * 2, radius * 2, m.damage, m, false);
+    m.kill();
   }
 
   // ───────────────────────── 장판·경고·충격파·메테오 ─────────────────────────

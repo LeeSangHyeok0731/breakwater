@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { recolorTexture, type HueShift } from './recolor';
 
 // GothicVania (CC0, ansimuz) 픽셀 아트. public/assets2d 아래에 있다.
 
@@ -32,6 +33,18 @@ const SHEETS: SheetDef[] = [
   { key: 'demon-idle', file: 'mobs/demon-idle.png', w: 160, h: 144 },
   { key: 'demon-attack', file: 'mobs/demon-attack.png', w: 240, h: 192 },
   { key: 'fireball', file: 'fx/fireball.png', w: 26, h: 26 },
+  // 챕터 2·3 몬스터
+  { key: 'ghost-lantern', file: 'mobs/ghost-lantern.png', w: 37, h: 65 },
+  { key: 'ghost-halo', file: 'mobs/ghost-halo.png', w: 37, h: 65 },
+  { key: 'fire-skull', file: 'mobs/fire-skull.png', w: 96, h: 112 },
+  { key: 'hell-cat', file: 'mobs/hell-cat.png', w: 96, h: 53 },
+  { key: 'angel-idle', file: 'mobs/angel-idle.png', w: 122, h: 117 },
+  { key: 'angel-attack', file: 'mobs/angel-attack.png', w: 122, h: 117 },
+  { key: 'hound-idle', file: 'mobs/hound-idle.png', w: 64, h: 32 },
+  { key: 'hound-run', file: 'mobs/hound-run.png', w: 67, h: 32 },
+  { key: 'hound-jump', file: 'mobs/hound-jump.png', w: 65, h: 48 },
+  { key: 'wolf-run', file: 'mobs/wolf-run.png', w: 56, h: 32 },
+  { key: 'beast-burn', file: 'mobs/beast-burn.png', w: 111, h: 160 },
   { key: 'enemy-death', file: 'fx/enemy-death.png', w: 81, h: 66 },
   { key: 'npc-bearded', file: 'npc/bearded-idle.png', w: 40, h: 47 },
   { key: 'npc-hatman', file: 'npc/hat-man-idle.png', w: 39, h: 52 },
@@ -46,6 +59,10 @@ const IMAGES: [string, string][] = [
   ['cem-mountains', 'cemetery/mountains.png'],
   ['cem-graveyard', 'cemetery/graveyard.png'],
   ['castle-bg', 'castle/background.png'],
+  ['castle-tiles', 'castle/tileset.png'],
+  ['church-bg', 'church/backgrounds.png'],
+  ['church-tiles', 'church/tileset.png'],
+  ['church-column', 'church/column.png'],
   ['night-sky', 'night/sky.png'],
   ['night-mountains', 'night/mountains.png'],
   ['night-clouds', 'night/clouds.png'],
@@ -104,6 +121,31 @@ function sheetAnim(scene: Phaser.Scene, key: string, sheet: string, start: numbe
   scene.anims.create({ key, frames: scene.anims.generateFrameNumbers(sheet, { start, end }), frameRate: rate, repeat });
 }
 
+/** 기존 몬스터를 다시 칠한 색 변종 (핏빛 해골, 서리 마법사, 망령 기사, 심연의 군주) */
+function createVariants(scene: Phaser.Scene): void {
+  const blood: HueShift = { hue: 2, minSat: 0.55, light: 0.95 };
+  for (let i = 1; i <= 8; i++) recolorTexture(scene, `skeleton-${i}`, `skeleton-blood-${i}`, blood);
+  for (let i = 1; i <= 6; i++) recolorTexture(scene, `skeleton-rise-${i}`, `skeleton-rise-blood-${i}`, blood);
+  framesAnim(scene, 'skeleton-blood-walk', 'skeleton-blood', 8, 13);
+  framesAnim(scene, 'skeleton-blood-rise', 'skeleton-rise-blood', 6, 9, 0);
+
+  recolorTexture(scene, 'wizard', 'wizard-frost', { hue: 200, minSat: 0.45, light: 1.1 });
+  sheetAnim(scene, 'wizard-frost-idle', 'wizard-frost', 0, 4, 7);
+  sheetAnim(scene, 'wizard-frost-cast', 'wizard-frost', 5, 14, 14, 0);
+
+  const wraith: HueShift = { hue: 172, sat: 0.8, light: 1.25 };
+  recolorTexture(scene, 'nightmare-idle', 'nightmare-wraith-idle', wraith);
+  recolorTexture(scene, 'nightmare-gallop', 'nightmare-wraith-gallop', wraith);
+  sheetAnim(scene, 'wraith-idle', 'nightmare-wraith-idle', 0, 3, 6);
+  sheetAnim(scene, 'wraith-gallop', 'nightmare-wraith-gallop', 0, 3, 12);
+
+  const abyss: HueShift = { rotate: 270, sat: 1.1, light: 0.9 };
+  recolorTexture(scene, 'demon-idle', 'demon-abyss-idle', abyss);
+  recolorTexture(scene, 'demon-attack', 'demon-abyss-attack', abyss);
+  sheetAnim(scene, 'abyss-idle', 'demon-abyss-idle', 0, 5, 8);
+  sheetAnim(scene, 'abyss-attack', 'demon-abyss-attack', 0, 10, 12, 0);
+}
+
 function framesAnim(scene: Phaser.Scene, key: string, prefix: string, n: number, rate: number, repeat = -1): void {
   const frames = [];
   for (let i = 1; i <= n; i++) frames.push({ key: `${prefix}-${i}` });
@@ -144,6 +186,22 @@ export function createAnimations(scene: Phaser.Scene): void {
   sheetAnim(scene, 'npc-oldman', 'npc-oldman', 0, 7, 6);
   sheetAnim(scene, 'npc-woman', 'npc-woman', 0, 6, 6);
 
+  // 챕터 2·3 몬스터
+  sheetAnim(scene, 'lantern-idle', 'ghost-lantern', 0, 3, 6);
+  sheetAnim(scene, 'halo-idle', 'ghost-halo', 0, 3, 6);
+  sheetAnim(scene, 'fire-skull', 'fire-skull', 0, 7, 12);
+  sheetAnim(scene, 'cat-walk', 'hell-cat', 0, 3, 9);
+  sheetAnim(scene, 'angel-idle', 'angel-idle', 0, 7, 10);
+  sheetAnim(scene, 'angel-attack', 'angel-attack', 0, 2, 12, 0);
+  sheetAnim(scene, 'hound-idle', 'hound-idle', 0, 5, 8);
+  sheetAnim(scene, 'hound-run', 'hound-run', 0, 4, 14);
+  sheetAnim(scene, 'hound-jump', 'hound-jump', 0, 5, 12, 0);
+  sheetAnim(scene, 'wolf-run', 'wolf-run', 0, 3, 12);
+  sheetAnim(scene, 'beast-burn', 'beast-burn', 0, 3, 10, 0);
+  // 화염 헬비스트의 불기둥 (불타는 그림의 뒤쪽 두 칸)
+  sheetAnim(scene, 'fire-pillar', 'beast-burn', 2, 3, 12);
+  createVariants(scene);
+
   // 타일셋에서 쓸 조각을 잘라 프레임으로 등록한다.
   const cem = scene.textures.get('cem-tiles');
   cem.add('ground', 0, 64, 48, 64, 48);
@@ -152,4 +210,16 @@ export function createAnimations(scene: Phaser.Scene): void {
   cem.add('plat-r', 0, 192, 64, 16, 32);
   const town = scene.textures.get('town-tiles');
   town.add('ground', 0, 48, 144, 48, 32);
+  // 대성당: 보라색 석재 블록
+  const church = scene.textures.get('church-tiles');
+  church.add('ground', 0, 64, 168, 48, 40);
+  church.add('plat-l', 0, 64, 168, 16, 32);
+  church.add('plat-m', 0, 64, 168, 48, 32);
+  church.add('plat-r', 0, 96, 168, 16, 32);
+  // 마왕성: 위가 이끼로 덮인 녹색 벽돌
+  const castle = scene.textures.get('castle-tiles');
+  castle.add('ground', 0, 512, 154, 32, 48);
+  castle.add('plat-l', 0, 464, 154, 16, 22);
+  castle.add('plat-m', 0, 464, 154, 32, 22);
+  castle.add('plat-r', 0, 480, 154, 16, 22);
 }

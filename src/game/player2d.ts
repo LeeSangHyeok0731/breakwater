@@ -113,6 +113,8 @@ export class Player {
   wardTime = 0;
 
   swapCd = 0;
+  /** 서리 마법에 맞아 느려진 남은 시간 */
+  slowTime = 0;
   reloadTime = 0;
   fireCd = 0;
   drawCd = 0;
@@ -261,7 +263,7 @@ export class Player {
   moveSpeed(): number {
     let bonus = this.derived.passive.speedMul;
     for (const b of this.buffs) bonus += b.speedMul ?? 0;
-    return (this.derived.moveSpeed + 5 * bonus) * PX_PER_M;
+    return (this.derived.moveSpeed + 5 * bonus) * PX_PER_M * (this.slowTime > 0 ? 0.6 : 1);
   }
 
   updateTimers(dt: number): void {
@@ -269,6 +271,7 @@ export class Player {
     this.invuln = Math.max(0, this.invuln - dt);
     this.parryTimer = Math.max(0, this.parryTimer - dt);
     this.swapCd = Math.max(0, this.swapCd - dt);
+    this.slowTime = Math.max(0, this.slowTime - dt);
     this.swapFlash = Math.max(0, this.swapFlash - dt);
     this.aimHold = this.wantsAim ? 0.35 : Math.max(0, this.aimHold - dt);
     this.hurtTimer = Math.max(0, this.hurtTimer - dt);
