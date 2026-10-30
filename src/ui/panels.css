@@ -270,16 +270,63 @@
 }
 
 .eq-bag {
-  display: grid;
-  grid-template-columns: repeat(6, 52px);
-  justify-content: space-between;
-  gap: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   padding: 10px;
   border: 1px solid #4a3a26;
   border-radius: 6px;
   background: rgba(10, 7, 4, 0.55);
-  max-height: 248px;
+  max-height: 340px;
   overflow-y: auto;
+}
+
+/* 가방 표: 가로는 종류(부위), 세로는 등급 */
+.eq-table {
+  display: grid;
+  gap: 4px;
+  align-items: center;
+}
+
+.eq-th {
+  font-size: 11px;
+  font-weight: 800;
+  text-align: center;
+  color: var(--ink-dim);
+}
+
+.eq-th.row {
+  padding-right: 4px;
+  text-align: right;
+}
+
+.eq-td {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-height: 48px;
+  padding: 3px 0;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.eq-table .eq-cell {
+  width: 46px;
+  height: 46px;
+  padding: 3px;
+}
+
+.eq-cell.ghost {
+  cursor: help;
+  border-style: dashed;
+  border-color: #3a2e20;
+  background: rgba(0, 0, 0, 0.35);
+  box-shadow: none;
+}
+
+.eq-cell.ghost .px-icon {
+  filter: brightness(0) opacity(0.35);
 }
 
 .eq-detail,

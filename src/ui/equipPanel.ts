@@ -36,8 +36,6 @@ const STAT_INFO: { key: StatKey; name: string; desc: string }[] = [
 
 const ARMOR_SLOTS: GearSlot[] = ['head', 'body', 'legs', 'feet'];
 const ACC_SLOTS: GearSlot[] = ['necklace', 'ring'];
-const BAG_COLS = 6;
-const BAG_MIN_ROWS = 4;
 
 const FILTERS: { id: BagFilter; label: string }[] = [
   { id: 'all', label: '전체' },
@@ -208,30 +206,58 @@ function renderDoll(host: PanelHost, parent: HTMLElement, save: SaveData): void 
 
 const GRADE_ORDER = Object.keys(GRADES) as Grade[];
 const TYPE_ORDER: WeaponType[] = ['sword', 'dao', 'bow', 'gun', 'staff'];
-const SLOT_ORDER: GearSlot[] = [...ARMOR_SLOTS, ...ACC_SLOTS];
 
-/** 가방 정렬: 무기 먼저, 그다음 방어구·장신구. 각각 등급 높은 순 → 종류(부위) 순 → 강화 높은 순. */
-function bagItems(save: SaveData): DragItem[] {
-  const grade = (g: Grade): number => -GRADE_ORDER.indexOf(g);
-  const weapons = save.weapons
-    .filter((w) => WEAPONS[w.defId])
-    .sort((a, b) => {
-      const da = WEAPONS[a.defId];
-      const db = WEAPONS[b.defId];
-      return grade(da.grade) - grade(db.grade) || TYPE_ORDER.indexOf(da.type) - TYPE_ORDER.indexOf(db.type) || b.enhance - a.enhance || da.name.localeCompare(db.name);
-    });
-  const gear = save.gear.owned
-    .map((id) => GEAR[id])
-    .filter((def): def is GearDef => !!def)
-    .sort((a, b) => grade(a.grade) - grade(b.grade) || SLOT_ORDER.indexOf(a.slot) - SLOT_ORDER.indexOf(b.slot) || a.name.localeCompare(b.name));
+/** 표의 한 칸에 들어가는 것: 가진 아이템, 또는 아직 없는 아이템의 그림자 */
+type BagEntry = { item: DragItem } | { ghost: string; name: string };
 
-  const items: DragItem[] = [];
-  if (filter === 'all' || filter === 'weapon') for (const w of weapons) items.push({ kind: 'weapon', uid: w.uid });
-  for (const def of gear) {
-    const acc = ACC_SLOTS.includes(def.slot);
-    if (filter === 'all' || (filter === 'armor' && !acc) || (filter === 'acc' && acc)) items.push({ kind: 'gear', id: def.id });
+interface BagTable {
+  columns: string[];
+  /** 위에서부터 등급 높은 순 */
+  rows: { grade: Grade; cells: BagEntry[][] }[];
+}
+
+/** 가로는 종류(부위), 세로는 등급. 등급은 실제로 있는 것만 줄로 만든다. */
+function makeTable<D extends { grade: Grade }>(columns: string[], defsFor: (col: number) => D[], entry: (def: D) => BagEntry): BagTable {
+  const rows: BagTable['rows'] = [];
+  for (const grade of [...GRADE_ORDER].reverse()) {
+    const cells = columns.map((_, i) => defsFor(i).filter((d) => d.grade === grade).map(entry));
+    if (cells.some((c) => c.length)) rows.push({ grade, cells });
   }
-  return items;
+  return { columns, rows };
+}
+
+function weaponTable(save: SaveData): BagTable {
+  const all = Object.values(WEAPONS);
+  return makeTable(
+    TYPE_ORDER.map((t) => WEAPON_TYPE_NAME[t]),
+    (i) => all.filter((d) => d.type === TYPE_ORDER[i]),
+    (def) => {
+      const w = save.weapons.filter((o) => o.defId === def.id).sort((x, y) => y.enhance - x.enhance)[0];
+      return w ? { item: { kind: 'weapon', uid: w.uid } } : { ghost: weaponIconUrl(def), name: def.name };
+    },
+  );
+}
+
+function gearTable(save: SaveData, slots: GearSlot[]): BagTable {
+  const all = Object.values(GEAR);
+  return makeTable(
+    slots.map((sl) => GEAR_SLOT_NAME[sl]),
+    (i) => all.filter((d) => d.slot === slots[i]),
+    (def) => (save.gear.owned.includes(def.id) ? { item: { kind: 'gear', id: def.id } } : { ghost: gearIconUrl(def), name: def.name }),
+  );
+}
+
+function bagTables(save: SaveData): BagTable[] {
+  switch (filter) {
+    case 'weapon':
+      return [weaponTable(save)];
+    case 'armor':
+      return [gearTable(save, ARMOR_SLOTS)];
+    case 'acc':
+      return [gearTable(save, ACC_SLOTS)];
+    default:
+      return [weaponTable(save), gearTable(save, [...ARMOR_SLOTS, ...ACC_SLOTS])];
+  }
 }
 
 function isEquipped(save: SaveData, item: DragItem): boolean {
@@ -262,24 +288,41 @@ function renderBag(host: PanelHost, parent: HTMLElement, save: SaveData, detail:
       host.changed();
     },
   );
-  const items = bagItems(save);
-  const cells = Math.max(BAG_MIN_ROWS * BAG_COLS, Math.ceil(items.length / BAG_COLS) * BAG_COLS);
-  for (let i = 0; i < cells; i++) {
-    const item = items[i];
-    const cell = el('div', `eq-cell${item ? '' : ' empty'}`, bag);
-    if (!item) continue;
-    const url = iconOf(save, item);
-    iconImg(cell, url);
-    gradeFrame(cell, save, item);
-    const on = isEquipped(save, item);
-    if (on) el('span', 'eq-on', cell, 'E');
-    if (sameItem(item, selected)) cell.classList.add('selected');
-    draggable(cell, () => (item.kind === 'gear' && on ? { ...item, equipped: true } : item), url);
-    cell.addEventListener('click', () => select(host, item, cell));
-    cell.addEventListener('mouseenter', () => hover(host, detail, item));
-    cell.addEventListener('mouseleave', () => hover(host, detail, null));
-    cell.addEventListener('dblclick', () => quickEquip(host, item));
+  for (const table of bagTables(save)) {
+    const grid = el('div', 'eq-table', bag);
+    grid.style.gridTemplateColumns = `auto repeat(${table.columns.length}, minmax(0, 1fr))`;
+    el('span', 'eq-th corner', grid);
+    for (const c of table.columns) el('span', 'eq-th', grid, c);
+    for (const row of table.rows) {
+      const label = el('span', 'eq-th row', grid, GRADES[row.grade].name);
+      label.style.color = GRADES[row.grade].color;
+      for (const entries of row.cells) {
+        const td = el('div', 'eq-td', grid);
+        for (const e of entries) {
+          if ('ghost' in e) {
+            const cell = el('div', 'eq-cell ghost', td);
+            iconImg(cell, e.ghost);
+            cell.title = `미보유: ${e.name}`;
+          } else bagCell(host, td, save, e.item, detail);
+        }
+      }
+    }
   }
+}
+
+function bagCell(host: PanelHost, parent: HTMLElement, save: SaveData, item: DragItem, detail: HTMLElement): void {
+  const cell = el('div', 'eq-cell', parent);
+  const url = iconOf(save, item);
+  iconImg(cell, url);
+  gradeFrame(cell, save, item);
+  const on = isEquipped(save, item);
+  if (on) el('span', 'eq-on', cell, 'E');
+  if (sameItem(item, selected)) cell.classList.add('selected');
+  draggable(cell, () => (item.kind === 'gear' && on ? { ...item, equipped: true } : item), url);
+  cell.addEventListener('click', () => select(host, item, cell));
+  cell.addEventListener('mouseenter', () => hover(host, detail, item));
+  cell.addEventListener('mouseleave', () => hover(host, detail, null));
+  cell.addEventListener('dblclick', () => quickEquip(host, item));
 }
 
 function sameItem(a: DragItem | null, b: DragItem | null): boolean {
