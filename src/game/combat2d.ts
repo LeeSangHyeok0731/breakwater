@@ -299,7 +299,7 @@ function performHit(b: BattleScene, kind: ActionKind, index: number): void {
       break;
     case 'manaball': {
       sfx.play('magic');
-      const m = p.castPoint();
+      const m = p.shotPoint();
       b.spawnPlayerBolt({ x: m.x, y: m.y, vx: f * 300, vy: 0, damage: base, kind: 'orb', size: 1, basic: true });
       break;
     }
@@ -308,9 +308,10 @@ function performHit(b: BattleScene, kind: ActionKind, index: number): void {
       const m = p.muzzle();
       b.fx.spark(m.x, m.y, 0x9fdcff);
       const ang = (Math.random() - 0.5) * 0.12;
+      const s = p.shotPoint();
       b.spawnPlayerBolt({
-        x: m.x,
-        y: m.y,
+        x: s.x,
+        y: s.y,
         vx: f * Math.cos(ang) * 420,
         vy: Math.sin(ang) * 420,
         damage: b.skillBase({ dex: 1.0, str: 1.0 }),
@@ -328,7 +329,8 @@ function performHit(b: BattleScene, kind: ActionKind, index: number): void {
       break;
     case 'snipe': {
       const m = p.muzzle();
-      b.hitscan(m.x, m.y, p.facing === 1 ? 0 : Math.PI, 600, base * 6, { pierce: true, color: 0xfff0a0, width: 4 });
+      const s = p.shotPoint();
+      b.hitscan(s.x, s.y, p.facing === 1 ? 0 : Math.PI, 600, base * 6, { pierce: true, color: 0xfff0a0, width: 4 });
       b.fx.muzzle(m.x, m.y, p.facing, 2);
       b.fx.casing(p.x + p.facing * 8, p.y - 8, p.facing, p.feet);
       b.fx.shake(1);
@@ -376,7 +378,7 @@ function releaseOrb(b: BattleScene): void {
   const c = Math.min(p.charge, 1.2) / 1.2;
   p.charge = -1;
   sfx.play('magic', 1 + c);
-  const m = p.castPoint();
+  const m = p.shotPoint();
   if (c > 0.95) {
     b.fx.spark(m.x, m.y, 0x7fe8ff, 2);
     b.fx.burst(m.x, m.y, 0xbff6ff, 10, 120, 300);
@@ -403,9 +405,10 @@ function fireArrow(b: BattleScene, c: number): void {
     b.fx.circle(m.x + p.facing * 6, m.y, 0xffe08a, 30, 260, true, DEPTH.fx);
     b.fx.spark(m.x, m.y, 0xffe08a, 2);
   }
+  const s = p.shotPoint();
   b.spawnPlayerBolt({
-    x: m.x,
-    y: m.y,
+    x: s.x,
+    y: s.y,
     vx: p.facing * (360 + 160 * c),
     vy: 0,
     damage: b.weaponBase() * (1 + 2.5 * c),
@@ -434,7 +437,8 @@ function gunShot(b: BattleScene, mul: number, spread: number): void {
   const m = p.muzzle();
   const base = p.facing === 1 ? 0 : Math.PI;
   const ang = base + (Math.random() - 0.5) * 2 * (spread + (p.ads ? 0 : 0.03));
-  b.hitscan(m.x, m.y, ang, p.ads ? 520 : 420, b.weaponBase() * mul * (p.ads ? 1.25 : 1), { pierce: false, color: shotColor(p.weapon.def), width: 2 });
+  const s = p.shotPoint();
+  b.hitscan(s.x, s.y, ang, p.ads ? 520 : 420, b.weaponBase() * mul * (p.ads ? 1.25 : 1), { pierce: false, color: shotColor(p.weapon.def), width: 2 });
   b.fx.muzzle(m.x, m.y, p.facing, 1, ang - (p.facing === 1 ? 0 : Math.PI));
   b.fx.casing(p.x + p.facing * 8, p.y - 8, p.facing, p.feet);
 }
@@ -522,7 +526,9 @@ function snipeSight(b: BattleScene): void {
         return;
       }
       const m = p.muzzle();
-      g.lineStyle(1, 0xff3a2a, 0.35 + 0.35 * Math.sin(t * 0.04)).lineBetween(m.x, m.y, m.x + p.facing * 600, m.y);
+      // 조준선은 총알이 실제로 날아갈 높이에 긋는다.
+      const s = p.shotPoint();
+      g.lineStyle(1, 0xff3a2a, 0.35 + 0.35 * Math.sin(t * 0.04)).lineBetween(s.x, s.y, s.x + p.facing * 600, s.y);
       if (Math.random() < 0.5) {
         const a = Math.random() * Math.PI * 2;
         const dot = b.add.image(m.x + Math.cos(a) * 14, m.y + Math.sin(a) * 14, 'fx-px').setTint(0xfff0a0).setBlendMode(Phaser.BlendModes.ADD).setDepth(DEPTH.fx);
@@ -670,11 +676,12 @@ function castSkill(b: BattleScene, skill: SkillDef): void {
       break;
     case 'bow_fan': {
       const m = p.muzzle();
+      const s = p.shotPoint();
       for (let k = -2; k <= 2; k++) {
         const ang = k * 0.13;
         b.spawnPlayerBolt({
-          x: m.x,
-          y: m.y,
+          x: s.x,
+          y: s.y,
           vx: f * Math.cos(ang) * 380,
           vy: Math.sin(ang) * 380,
           damage: b.skillBase({ dex: 0.9, str: 0.4 }),
@@ -700,7 +707,8 @@ function castSkill(b: BattleScene, skill: SkillDef): void {
     }
     case 'bow_pierce': {
       const m = p.muzzle();
-      b.spawnPlayerBolt({ x: m.x, y: m.y, vx: f * 520, vy: 0, damage: b.skillBase({ dex: 2.5, str: 1.0 }), kind: 'arrow', color: 0xffe08a, size: 2, pierce: true });
+      const s = p.shotPoint();
+      b.spawnPlayerBolt({ x: s.x, y: s.y, vx: f * 520, vy: 0, damage: b.skillBase({ dex: 2.5, str: 1.0 }), kind: 'arrow', color: 0xffe08a, size: 2, pierce: true });
       // 관통: 활 앞에 금빛 마법진이 서고 공기가 갈라진다.
       b.fx.circle(m.x + f * 8, m.y, 0xffe08a, 46, 420, true, DEPTH.fx);
       b.fx.spark(m.x + f * 8, m.y, 0xffffff, 2);
