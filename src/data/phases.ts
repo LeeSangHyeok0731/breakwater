@@ -212,7 +212,7 @@ export const PHASES: PhaseDef[] = [
         { kind: 'hell_cat', count: 1, elite: true },
       ],
     ],
-    clearReward: { gold: 550, exp: 450, materials: { bone_shard: 6, mana_crystal: 3 }, sweepTickets: 1 },
+    clearReward: { gold: 550, exp: 450, materials: { bone_shard: 6, mana_crystal: 3, angel_feather: 1 }, sweepTickets: 1 },
   },
   {
     id: '2-2',
@@ -247,7 +247,7 @@ export const PHASES: PhaseDef[] = [
         { kind: 'grave_knight', count: 1 },
       ],
     ],
-    clearReward: { gold: 800, exp: 680, materials: { bone_shard: 6, mana_crystal: 3, golem_core: 2 }, sweepTickets: 1 },
+    clearReward: { gold: 800, exp: 680, materials: { bone_shard: 6, mana_crystal: 3, golem_core: 2, angel_feather: 1 }, sweepTickets: 1 },
   },
   {
     id: '2-3',
@@ -272,7 +272,7 @@ export const PHASES: PhaseDef[] = [
       { kind: 'halo_wraith', weight: 0.6 },
       { kind: 'golem', weight: 0.3 },
     ],
-    clearReward: { gold: 900, exp: 800, materials: { wing_membrane: 4, mana_crystal: 3 }, sweepTickets: 1 },
+    clearReward: { gold: 900, exp: 800, materials: { wing_membrane: 4, mana_crystal: 3, angel_feather: 2 }, sweepTickets: 1 },
   },
   {
     id: '2-4',
@@ -297,7 +297,7 @@ export const PHASES: PhaseDef[] = [
       { kind: 'halo_wraith', weight: 1 },
       { kind: 'blood_skeleton', weight: 0.3, elite: true },
     ],
-    clearReward: { gold: 1050, exp: 900, materials: { golem_core: 3, elite_sigil: 1 }, sweepTickets: 1 },
+    clearReward: { gold: 1050, exp: 900, materials: { golem_core: 3, elite_sigil: 1, angel_feather: 2 }, sweepTickets: 1 },
   },
   {
     id: '2-5',
@@ -312,7 +312,7 @@ export const PHASES: PhaseDef[] = [
     platforms: [[120, 240, 160], [744, 240, 160], [432, 176, 160]],
     theme: 'church',
     waves: [[{ kind: 'fallen_angel', count: 1 }]],
-    clearReward: { gold: 1400, exp: 1100, materials: { elite_sigil: 3, golem_core: 4 }, sweepTickets: 2 },
+    clearReward: { gold: 1400, exp: 1100, materials: { elite_sigil: 3, golem_core: 4, angel_feather: 3 }, sweepTickets: 2 },
   },
   // ───────────────────────── 챕터 3: 마왕성 ─────────────────────────
   {
@@ -354,7 +354,7 @@ export const PHASES: PhaseDef[] = [
         { kind: 'silver_wolf', count: 1, elite: true },
       ],
     ],
-    clearReward: { gold: 950, exp: 800, materials: { golem_core: 3, bone_shard: 6 }, sweepTickets: 1 },
+    clearReward: { gold: 950, exp: 800, materials: { golem_core: 3, bone_shard: 6, abyss_shard: 1 }, sweepTickets: 1 },
   },
   {
     id: '3-2',
@@ -389,7 +389,7 @@ export const PHASES: PhaseDef[] = [
         { kind: 'wraith_knight', count: 1 },
       ],
     ],
-    clearReward: { gold: 1300, exp: 1100, materials: { golem_core: 3, elite_sigil: 1 }, sweepTickets: 1 },
+    clearReward: { gold: 1300, exp: 1100, materials: { golem_core: 3, elite_sigil: 1, abyss_shard: 1 }, sweepTickets: 1 },
   },
   {
     id: '3-3',
@@ -412,7 +412,7 @@ export const PHASES: PhaseDef[] = [
       { kind: 'hell_cat', weight: 1 },
       { kind: 'flame_beast', weight: 0.4 },
     ],
-    clearReward: { gold: 1500, exp: 1250, materials: { wing_membrane: 4, golem_core: 3 }, sweepTickets: 1 },
+    clearReward: { gold: 1500, exp: 1250, materials: { wing_membrane: 4, golem_core: 3, abyss_shard: 2 }, sweepTickets: 1 },
   },
   {
     id: '3-4',
@@ -437,7 +437,7 @@ export const PHASES: PhaseDef[] = [
       { kind: 'flame_beast', weight: 0.6 },
       { kind: 'hell_hound', weight: 0.3, elite: true },
     ],
-    clearReward: { gold: 1700, exp: 1450, materials: { golem_core: 4, elite_sigil: 2 }, sweepTickets: 1 },
+    clearReward: { gold: 1700, exp: 1450, materials: { golem_core: 4, elite_sigil: 2, abyss_shard: 2 }, sweepTickets: 1 },
   },
   {
     id: '3-5',
@@ -452,7 +452,7 @@ export const PHASES: PhaseDef[] = [
     platforms: [[120, 240, 160], [744, 240, 160], [432, 176, 160]],
     theme: 'castle',
     waves: [[{ kind: 'abyss_lord', count: 1 }]],
-    clearReward: { gold: 2400, exp: 2000, materials: { elite_sigil: 4, golem_core: 6 }, sweepTickets: 2 },
+    clearReward: { gold: 2400, exp: 2000, materials: { elite_sigil: 4, golem_core: 6, abyss_shard: 3 }, sweepTickets: 2 },
   },
 ];
 

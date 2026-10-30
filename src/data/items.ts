@@ -9,5 +9,7 @@ export const MATERIALS: Record<string, MaterialDef> = {
   wing_membrane: { name: '박쥐 날개막', desc: '미니언의 날개 조각. 무기 교환에 쓰인다.' },
   golem_core: { name: '골렘 핵 조각', desc: '골렘의 동력원 파편. 근접 무기 강화에 쓰인다.' },
   elite_sigil: { name: '정예의 증표', desc: '정예 몬스터만 떨어뜨리는 증표. +5 이상 강화에 필요하다.' },
-  lord_heart: { name: '군주의 심장석', desc: '골렘 군주의 심장. 강력한 무기 교환에 쓰인다.' },
+  lord_heart: { name: '군주의 심장석', desc: '보스가 남기는 심장석. 강력한 무기 교환에 쓰인다.' },
+  angel_feather: { name: '타락천사의 깃털', desc: '대성당의 망령과 타락천사가 떨어뜨린다. 영웅 무기 교환에 쓰인다.' },
+  abyss_shard: { name: '심연의 파편', desc: '마왕성의 몬스터와 심연의 군주가 떨어뜨린다. 전설 무기 교환에 쓰인다.' },
 };

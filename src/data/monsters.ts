@@ -197,7 +197,10 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
     gold: 12,
     exp: 18,
     mana: 4,
-    drops: [{ id: 'mana_crystal', chance: 0.35 }],
+    drops: [
+      { id: 'mana_crystal', chance: 0.35 },
+      { id: 'angel_feather', chance: 0.1 },
+    ],
   },
   halo_wraith: {
     kind: 'halo_wraith',
@@ -213,7 +216,10 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
     gold: 16,
     exp: 24,
     mana: 5,
-    drops: [{ id: 'wing_membrane', chance: 0.4 }],
+    drops: [
+      { id: 'wing_membrane', chance: 0.4 },
+      { id: 'angel_feather', chance: 0.25 },
+    ],
   },
   fire_skull: {
     kind: 'fire_skull',
@@ -299,6 +305,7 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
       { id: 'lord_heart', chance: 1 },
       { id: 'elite_sigil', chance: 1 },
       { id: 'wing_membrane', chance: 1 },
+      { id: 'angel_feather', chance: 1 },
     ],
   },
   // ───────── 챕터 3: 마왕성 ─────────
@@ -316,7 +323,10 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
     gold: 15,
     exp: 24,
     mana: 4,
-    drops: [{ id: 'golem_core', chance: 0.25 }],
+    drops: [
+      { id: 'golem_core', chance: 0.25 },
+      { id: 'abyss_shard', chance: 0.06 },
+    ],
   },
   silver_wolf: {
     kind: 'silver_wolf',
@@ -348,7 +358,10 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
     gold: 30,
     exp: 50,
     mana: 10,
-    drops: [{ id: 'golem_core', chance: 0.6 }],
+    drops: [
+      { id: 'golem_core', chance: 0.6 },
+      { id: 'abyss_shard', chance: 0.2 },
+    ],
   },
   wraith_knight: {
     kind: 'wraith_knight',
@@ -368,6 +381,7 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
     drops: [
       { id: 'elite_sigil', chance: 1 },
       { id: 'golem_core', chance: 0.8 },
+      { id: 'abyss_shard', chance: 1 },
     ],
   },
   abyss_lord: {
