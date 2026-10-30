@@ -40,6 +40,8 @@ const THEME_TINT: Record<Theme, { bg: number; far: number; near: number; ground:
   lava: { bg: 0xff7060, far: 0xc04838, near: 0xb05040, ground: 0xe08070 },
   church: { bg: 0xffffff, far: 0xc8c0e0, near: 0xffffff, ground: 0xffffff },
   castle: { bg: 0xd0e0d8, far: 0xffffff, near: 0xffffff, ground: 0xffffff },
+  horror: { bg: 0xffffff, far: 0xd8e0c8, near: 0xffffff, ground: 0xffffff },
+  void: { bg: 0x7a6aff, far: 0xffffff, near: 0xffffff, ground: 0xb8a0ff },
 };
 
 /** 테마별 바닥·발판 타일 */
@@ -56,10 +58,11 @@ interface TileSet {
   under: number;
 }
 
-const TILES: Record<'cemetery' | 'church' | 'castle', TileSet> = {
+const TILES: Record<'cemetery' | 'church' | 'castle' | 'horror', TileSet> = {
   cemetery: { key: 'cem-tiles', groundH: 48, groundDrop: 0, platH: 32, platTop: 7, under: 0x140c18 },
   church: { key: 'church-tiles', groundH: 40, groundDrop: 7, platH: 32, platTop: 1, under: 0x1a1426 },
   castle: { key: 'castle-tiles', groundH: 48, groundDrop: 7, platH: 22, platTop: 1, under: 0x0c1814 },
+  horror: { key: 'horror-tiles', groundH: 32, groundDrop: 7, platH: 16, platTop: 1, under: 0x1a120e },
 };
 
 function seeded(seed: number): () => number {
@@ -116,15 +119,21 @@ function churchWall(scene: Phaser.Scene): string {
 export function buildLevel(scene: Phaser.Scene, width: number, platforms: [number, number, number][], theme: Theme, seed: number): Level {
   const tint = THEME_TINT[theme];
   const layers: ParallaxLayer[] = [];
-  const tiles = theme === 'church' ? TILES.church : theme === 'castle' ? TILES.castle : TILES.cemetery;
-  const bgColor: Partial<Record<Theme, string>> = { lava: '#1a0606', church: '#100c1c', castle: '#08100e' };
+  const tiles =
+    theme === 'church' ? TILES.church : theme === 'castle' || theme === 'void' ? TILES.castle : theme === 'horror' ? TILES.horror : TILES.cemetery;
+  const bgColor: Partial<Record<Theme, string>> = { lava: '#1a0606', church: '#100c1c', castle: '#08100e', horror: '#1a2418', void: '#06040e' };
   scene.cameras.main.setBackgroundColor(bgColor[theme] ?? '#120a1e');
 
   if (theme === 'church') {
     // 패널 벽이 화면 위부터 바닥까지 채운다.
     layers.push(layer(scene, churchWall(scene), -12, GROUND_Y + 24, 0.4, tint.far, DEPTH.bg));
-  } else if (theme === 'castle') {
+  } else if (theme === 'castle' || theme === 'void') {
+    // 공허의 문: 같은 성을 보랏빛으로 물들인다.
     layers.push(layer(scene, 'castle-bg', 0, VIEW_H, 0.3, tint.bg, DEPTH.bg));
+  } else if (theme === 'horror') {
+    // 저주받은 마을: 구름 낀 하늘과 먼 마을 실루엣
+    layers.push(layer(scene, 'horror-clouds', 0, GROUND_Y + 10, 0.05, tint.bg, DEPTH.bg));
+    layers.push(layer(scene, 'horror-town', 0, GROUND_Y + 10, 0.25, tint.far, DEPTH.bg + 1));
   } else if (theme === 'lava') {
     const bg = scene.add.image(VIEW_W_MAX / 2, VIEW_H / 2, 'castle-bg').setScrollFactor(0).setDepth(DEPTH.bg).setTint(0xff9080);
     bg.setScale(Math.max(VIEW_W_MAX / bg.width, VIEW_H / bg.height) * 1.05);
@@ -182,12 +191,22 @@ export function buildLevel(scene: Phaser.Scene, width: number, platforms: [numbe
   }
 
   const rand = seeded(seed);
-  if (theme === 'church') {
+  if (theme === 'horror') {
+    // 장식: 담쟁이 덮인 집과 쓰러진 집이 멀찍이 서 있고, 길가에 사당·해골 아치·해골 더미가 놓인다.
+    for (let x = 180 + rand() * 120; x < width - 120; x += 520 + rand() * 260) {
+      const key = rand() < 0.5 ? 'house' : 'ruin';
+      scene.add.image(x, groundTop + 2, 'horror-tiles', key).setOrigin(0.5, 1).setDepth(DEPTH.deco - 3).setTint(0xa8a8a0);
+    }
+    for (let x = 60 + rand() * 60; x < width - 40; x += 140 + rand() * 160) {
+      const key = ['shrine', 'arch', 'skulls', 'ivy'][Math.floor(rand() * 4)];
+      scene.add.image(x, groundTop + 1, 'horror-tiles', key).setOrigin(0.5, 1).setDepth(DEPTH.deco);
+    }
+  } else if (theme === 'church') {
     // 장식: 해골이 새겨진 돌기둥이 일정하게 늘어선다.
     for (let x = 120 + rand() * 80; x < width - 60; x += 260 + rand() * 120) {
       scene.add.image(x, groundTop + 2, 'church-column').setOrigin(0.5, 1).setDepth(DEPTH.deco - 2).setTint(0xb8b0d0);
     }
-  } else if (theme !== 'castle') {
+  } else if (theme !== 'castle' && theme !== 'void') {
     // 장식: 비석·덤불·나무·석상
     const decoKeys = ['stone-1', 'stone-2', 'stone-3', 'stone-4', 'bush-small', 'bush-large', 'tree-1', 'tree-2', 'tree-3', 'statue'];
     for (let x = 40; x < width - 40; x += 70 + rand() * 120) {

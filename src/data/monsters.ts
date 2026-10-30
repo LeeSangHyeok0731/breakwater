@@ -20,7 +20,21 @@ export type MonsterKind =
   | 'silver_wolf'
   | 'flame_beast'
   | 'wraith_knight'
-  | 'abyss_lord';
+  | 'abyss_lord'
+  // 챕터 4: 저주받은 마을
+  | 'cursed_skull'
+  | 'shade'
+  | 'plague_wolf'
+  | 'iron_beast'
+  | 'cursed_knight'
+  | 'night_queen'
+  // 챕터 5: 공허의 문
+  | 'void_hound'
+  | 'void_mage'
+  | 'lesser_demon'
+  | 'void_angel'
+  | 'void_knight'
+  | 'void_king';
 
 export interface MonsterDef {
   kind: MonsterKind;
@@ -404,6 +418,243 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
       { id: 'lord_heart', chance: 1 },
       { id: 'elite_sigil', chance: 1 },
       { id: 'golem_core', chance: 1 },
+    ],
+  },
+  // ───────── 챕터 4: 저주받은 마을 ─────────
+  cursed_skull: {
+    kind: 'cursed_skull',
+    name: '저주 해골',
+    hp: 60,
+    speed: 2.4,
+    damage: 12,
+    range: 20,
+    attackCd: 2.8,
+    radius: 0.4,
+    height: 1.2,
+    flying: true,
+    gold: 14,
+    exp: 22,
+    mana: 4,
+    drops: [
+      { id: 'mana_crystal', chance: 0.3 },
+      { id: 'abyss_shard', chance: 0.04 },
+    ],
+  },
+  shade: {
+    kind: 'shade',
+    name: '그림자 망령',
+    hp: 70,
+    speed: 3,
+    damage: 16,
+    range: 1.2,
+    attackCd: 3,
+    radius: 0.45,
+    height: 2,
+    flying: false,
+    gold: 16,
+    exp: 24,
+    mana: 4,
+    drops: [
+      { id: 'wing_membrane', chance: 0.3 },
+      { id: 'abyss_shard', chance: 0.05 },
+    ],
+  },
+  plague_wolf: {
+    kind: 'plague_wolf',
+    name: '역병 늑대',
+    hp: 75,
+    speed: 7,
+    damage: 11,
+    range: 1.1,
+    attackCd: 1.2,
+    radius: 0.7,
+    height: 1.1,
+    flying: false,
+    gold: 12,
+    exp: 18,
+    mana: 3,
+    drops: [
+      { id: 'bone_shard', chance: 0.3 },
+    ],
+  },
+  iron_beast: {
+    kind: 'iron_beast',
+    name: '강철 헬비스트',
+    hp: 600,
+    speed: 1.3,
+    damage: 34,
+    range: 3,
+    attackCd: 4,
+    radius: 1,
+    height: 3.1,
+    flying: false,
+    gold: 40,
+    exp: 70,
+    mana: 10,
+    drops: [
+      { id: 'golem_core', chance: 0.7 },
+      { id: 'abyss_shard', chance: 0.1 },
+    ],
+  },
+  cursed_knight: {
+    kind: 'cursed_knight',
+    name: '저주받은 기사',
+    miniboss: true,
+    hp: 2600,
+    speed: 3.6,
+    damage: 30,
+    range: 2.6,
+    attackCd: 1.4,
+    radius: 0.8,
+    height: 3,
+    flying: false,
+    gold: 300,
+    exp: 480,
+    mana: 25,
+    drops: [
+      { id: 'elite_sigil', chance: 1 },
+      { id: 'abyss_shard', chance: 0.5 },
+    ],
+  },
+  night_queen: {
+    kind: 'night_queen',
+    name: '밤의 여왕',
+    // 보스 페이즈 배율(체력 3.6, 공격 2.4)을 곱하면 체력 약 12000, 공격 60
+    boss: true,
+    hp: 3330,
+    speed: 3.2,
+    damage: 25,
+    range: 6,
+    attackCd: 1.9,
+    radius: 1.5,
+    height: 4,
+    flying: true,
+    gold: 2000,
+    exp: 2600,
+    mana: 40,
+    drops: [
+      { id: 'lord_heart', chance: 1 },
+      { id: 'elite_sigil', chance: 1 },
+      { id: 'abyss_shard', chance: 1 },
+    ],
+  },
+  // ───────── 챕터 5: 공허의 문 ─────────
+  void_hound: {
+    kind: 'void_hound',
+    name: '공허 지옥견',
+    hp: 120,
+    speed: 6.5,
+    damage: 17,
+    range: 1.3,
+    attackCd: 1.5,
+    radius: 0.8,
+    height: 1.2,
+    flying: false,
+    gold: 18,
+    exp: 28,
+    mana: 4,
+    drops: [
+      { id: 'golem_core', chance: 0.25 },
+      { id: 'abyss_shard', chance: 0.06 },
+    ],
+  },
+  void_mage: {
+    kind: 'void_mage',
+    name: '공허 마법사',
+    hp: 75,
+    speed: 2.4,
+    damage: 14,
+    range: 20,
+    attackCd: 2.4,
+    radius: 0.45,
+    height: 2.4,
+    flying: false,
+    gold: 16,
+    exp: 26,
+    mana: 4,
+    drops: [
+      { id: 'mana_crystal', chance: 0.4 },
+      { id: 'abyss_shard', chance: 0.05 },
+    ],
+  },
+  lesser_demon: {
+    kind: 'lesser_demon',
+    name: '하급 악마',
+    hp: 160,
+    speed: 1.8,
+    damage: 22,
+    range: 3,
+    attackCd: 3.2,
+    radius: 0.9,
+    height: 2.4,
+    flying: false,
+    gold: 24,
+    exp: 40,
+    mana: 6,
+    drops: [
+      { id: 'golem_core', chance: 0.4 },
+      { id: 'abyss_shard', chance: 0.08 },
+    ],
+  },
+  void_angel: {
+    kind: 'void_angel',
+    name: '공허 천사',
+    hp: 90,
+    speed: 2.6,
+    damage: 12,
+    range: 20,
+    attackCd: 3.2,
+    radius: 0.8,
+    height: 2.4,
+    flying: true,
+    gold: 20,
+    exp: 32,
+    mana: 5,
+    drops: [
+      { id: 'wing_membrane', chance: 0.4 },
+      { id: 'angel_feather', chance: 0.15 },
+    ],
+  },
+  void_knight: {
+    kind: 'void_knight',
+    name: '공허 기사',
+    miniboss: true,
+    hp: 2800,
+    speed: 3.8,
+    damage: 32,
+    range: 2.6,
+    attackCd: 1.3,
+    radius: 0.8,
+    height: 3,
+    flying: false,
+    gold: 360,
+    exp: 560,
+    mana: 25,
+    drops: [
+      { id: 'elite_sigil', chance: 1 },
+      { id: 'abyss_shard', chance: 0.6 },
+    ],
+  },
+  void_king: {
+    kind: 'void_king',
+    name: '공허의 왕',
+    // 보스 페이즈 배율(체력 5, 공격 3)을 곱하면 체력 20000, 공격 81
+    boss: true,
+    hp: 4000,
+    speed: 2.6,
+    damage: 27,
+    range: 5,
+    attackCd: 1.8,
+    radius: 2.2,
+    height: 6.8,
+    flying: false,
+    gold: 3000,
+    exp: 4000,
+    mana: 50,
+    drops: [
+      { id: 'lord_heart', chance: 1 },
+      { id: 'elite_sigil', chance: 1 },
+      { id: 'abyss_shard', chance: 1 },
     ],
   },
 };

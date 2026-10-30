@@ -39,7 +39,7 @@ const hellHound: Behavior = (m, dt) => {
   switch (m.state) {
     case 'move':
       if (dist < 34 && Math.abs(dy) < 40) {
-        m.play('hound-idle');
+        m.play(m.look.idle ?? 'hound-idle');
         m.body.setVelocityX(0);
         if (m.attackTimer <= 0) {
           m.attackTimer = m.def.attackCd;
@@ -54,7 +54,7 @@ const hellHound: Behavior = (m, dt) => {
         m.stateTime = 0.3;
         m.face(dx);
         m.body.setVelocityX(0);
-        m.play('hound-idle');
+        m.play(m.look.idle ?? 'hound-idle');
         m.sprite.setTint(0xff7050);
       }
       break;
@@ -81,7 +81,7 @@ const hellHound: Behavior = (m, dt) => {
       }
       break;
     default:
-      m.play('hound-idle');
+      m.play(m.look.idle ?? 'hound-idle');
       m.body.setVelocityX(m.body.velocity.x * 0.8);
       if (m.stateTime <= 0) m.state = 'move';
   }
@@ -104,7 +104,7 @@ const silverWolf: Behavior = (m, dt) => {
   if (m.aux > 0) return;
   m.aux = 7 + Math.random() * 3;
   // 울음: 주변 늑대가 함께 빨라진다 (혼자면 울지 않는다).
-  const pack = b.monsters.filter((o) => o.alive && o.def.kind === 'silver_wolf' && Math.abs(o.x - m.x) < 200);
+  const pack = b.monsters.filter((o) => o.alive && o.def.kind === m.def.kind && Math.abs(o.x - m.x) < 200);
   if (pack.length < 2) return;
   for (const o of pack) {
     o.boostTime = 5;
@@ -170,6 +170,36 @@ export const ABYSS_PATTERNS: Partial<Record<Pattern, Behavior>> = {
       m.step++;
     }
     if (m.stateTime <= -0.16 * n - 0.9) m.endPattern();
+  },
+  // 공허 광선 (공허의 왕): 플레이어 주변에 청록 기둥이 차례로 내리꽂힌다.
+  beams: (m) => {
+    const b = m.scene;
+    m.body.setVelocity(0, 0);
+    if (m.step === 0 && m.stateTime <= 0) {
+      m.step = 1;
+      m.play(m.look.attack);
+      const offs = m.phase3 ? [-200, -120, -40, 40, 120, 200] : m.phase2 ? [-150, -50, 50, 150] : [-90, 0, 90];
+      offs.forEach((o, i) => b.lightBeam(b.player.x + o, m.damage * 0.8, m, 0.8 + i * 0.12, 34, 0x7ff0ff));
+    }
+    if (m.step === 1 && m.stateTime <= -1.6) m.endPattern();
+  },
+  // 깃털 탄막 (공허의 왕): 몸 주위로 청록 깃털이 부채꼴로 퍼진다.
+  feathers: (m) => {
+    const b = m.scene;
+    const p = b.player;
+    m.body.setVelocity(0, 0);
+    const volleys = m.phase2 ? 3 : 2;
+    if (m.step < volleys && m.stateTime <= -0.4 * m.step) {
+      m.step++;
+      m.play(m.look.attack);
+      const n = m.phase3 ? 13 : 9;
+      const base = Math.atan2(p.y - m.y, p.x - m.x);
+      for (let i = 0; i < n; i++) {
+        const a = base + (i / (n - 1) - 0.5) * 1.4;
+        b.spawnEnemyBolt(m.x, m.y + 20, Math.cos(a) * 220, Math.sin(a) * 220, m.damage * 0.5, m, 0, { kind: 'feather', tint: 0x7ff0ff });
+      }
+    }
+    if (m.step >= volleys && m.stateTime <= -0.4 * volleys - 0.4) m.endPattern();
   },
   // 운석 비: 플레이어 주변에 경고 원이 생기고 보랏빛 운석이 떨어진다.
   meteors: (m) => {
