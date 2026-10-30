@@ -134,7 +134,7 @@ export class Fx {
 
   /** 적이 쓰러질 때의 연기 */
   death(x: number, y: number, scale = 1): void {
-    const s = this.scene.add.sprite(x, y, 'enemy-death').setDepth(DEPTH.fx).setScale(scale).setOrigin(0.5, 0.8);
+    const s = this.scene.add.sprite(x, y, 'enemy-death', 1).setDepth(DEPTH.fx).setScale(scale).setOrigin(0.5, 0.8);
     s.play('enemy-death');
     s.once('animationcomplete', () => s.destroy());
   }
