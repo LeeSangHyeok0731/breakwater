@@ -67,6 +67,13 @@ export function updatePlayerCombat(b: BattleScene, dt: number): void {
     sfx.play('dodge');
   }
 
+  // 타락한 엘프전에서는 원거리 무기도 가드키로 짧게 패링 자세를 잡는다 (막지는 못하고 파란 화살만 튕긴다).
+  if (!p.isMelee && b.legion?.id === 'elf' && input.pressed('guard') && p.parryCd <= 0 && p.dodgeTime <= 0) {
+    p.parryTimer = 0.3 + p.derived.passive.parryWindow;
+    p.parryCd = 0.8;
+    b.fx.ring(p.x + p.facing * 10, p.y, 18, 0x9fdcff, 220);
+    b.fx.spark(p.x + p.facing * 12, p.y - 4, 0xffffff, 1);
+  }
   const wantGuard = p.isMelee && input.isDown('guard') && !p.action && p.dodgeTime <= 0 && p.grounded;
   if (wantGuard && !p.guarding) p.parryTimer = 0.22 + p.derived.passive.parryWindow;
   p.guarding = wantGuard;

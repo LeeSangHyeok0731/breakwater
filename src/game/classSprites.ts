@@ -28,6 +28,8 @@ const TRIM = [0xffcc61, 0xbc6c17, 0x983e1d];
 interface ClassLook {
   cape?: [number, number, number];
   trim?: [number, number, number];
+  /** 그 밖의 색 바꾸기 (피부·머리 등) [원본, 바꿀 색] */
+  extra?: [number, number][];
   hat?: (d: Painter, cx: number, top: number) => void;
   back?: (d: Painter, cx: number, top: number) => void;
 }
@@ -200,6 +202,7 @@ function buildSheet(scene: Phaser.Scene, srcKey: string, dstKey: string, opts: S
   const map = new Map<number, number>();
   opts.look.cape?.forEach((c, i) => map.set(CAPE[i], c));
   opts.look.trim?.forEach((c, i) => map.set(TRIM[i], c));
+  opts.look.extra?.forEach(([from, to]) => map.set(from, to));
 
   frames.forEach((f, i) => {
     const fx = i * fw;
@@ -281,7 +284,31 @@ const KNIGHT_LOOK: ClassLook = {
   },
 };
 
-const LEGION_LOOKS: Record<string, ClassLook> = { knight: KNIGHT_LOOK };
+/** 타락한 엘프: 창백한 라벤더빛 피부, 은발, 뾰족한 귀, 타락한 청록 망토, 초록으로 빛나는 눈 */
+const ELF_LOOK: ClassLook = {
+  cape: [0x2a8a72, 0x123a36, 0x113834],
+  trim: [0xc8c0e0, 0x6a608a, 0x3a3456],
+  extra: [
+    [0xffd9b9, 0xd8d0ec],
+    [0xffc98b, 0xb8b0d8],
+    [0xe1924d, 0x8a80b0],
+    [0xaf9785, 0xf0f0ff],
+    [0x966495, 0xb0b0d0],
+    [0x671915, 0x2a1a3a],
+    [0x691a17, 0x2a1a3a],
+  ],
+  hat: (d, cx, top) => {
+    // 뒤로 길게 뻗은 뾰족한 귀
+    line(d, cx - 3, top + 5, cx - 8, top + 1, (i) => (i < 2 ? 0xb8b0d8 : 0xd8d0ec), false);
+    d.px(cx - 9, top, OUTLINE);
+    // 이마의 은빛 서클릿과 독기 서린 초록 눈빛
+    rect(d, cx - 4, top + 2, cx + 3, top + 2, 0x8a88a8);
+    d.px(cx, top + 2, 0x7aff9a);
+    d.px(cx + 2, top + 4, 0x7aff9a);
+  },
+};
+
+const LEGION_LOOKS: Record<string, ClassLook> = { knight: KNIGHT_LOOK, elf: ELF_LOOK };
 
 /** 군단장 그림: knight:hero-run 처럼 '군단장:원본' 키로 텍스처와 애니메이션을 만든다. */
 export function createLegionSprites(scene: Phaser.Scene): void {

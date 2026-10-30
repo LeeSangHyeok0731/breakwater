@@ -49,7 +49,7 @@ export interface HudState {
   boss: { name: string; hp: number; maxHp: number; phase2: boolean } | null;
   dodgeReady: boolean;
   /** 군단장 전투: 침묵 스택, 남은 침묵 시간, 남은 부활 */
-  legion?: { stacks: number; max: number; silence: number; revive: number } | null;
+  legion?: { stacks: number; max: number; silence: number; revive: number; status?: string } | null;
 }
 
 export interface BattleResultView {
@@ -141,6 +141,7 @@ export class Hud {
   private stackWrap: HTMLDivElement;
   private silenceText: HTMLSpanElement;
   private reviveText: HTMLSpanElement;
+  private statusText: HTMLSpanElement;
   private lastStacks = -1;
 
   private goldText: HTMLSpanElement;
@@ -210,6 +211,7 @@ export class Hud {
     this.stackWrap = el('div', 'hud-stacks', this.legionWrap);
     this.silenceText = el('span', 'hud-silence', this.legionWrap);
     this.reviveText = el('span', 'hud-revive', this.legionWrap, '부활 1');
+    this.statusText = el('span', 'hud-legion-status', this.legionWrap);
     this.legionWrap.style.display = 'none';
 
     // 우상단: 골드 / 처치
@@ -339,6 +341,8 @@ export class Hud {
       }
       setText(this.silenceText, lg.silence > 0 ? `침묵 ${lg.silence.toFixed(1)}초` : '');
       setStyle(this.reviveText, 'display', lg.revive > 0 ? '' : 'none');
+      setStyle(this.stackWrap, 'display', lg.max > 0 ? '' : 'none');
+      setText(this.statusText, lg.status ?? '');
     }
 
     setText(this.goldText, String(Math.floor(s.gold)));
