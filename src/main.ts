@@ -12,7 +12,8 @@ import { classAnimKey } from './game/classSprites';
 import { MATERIALS } from './data/items';
 import { BattleScene } from './game/battleScene';
 import { BootScene } from './game/bootScene';
-import { ctx, type BattleOutcome, type StationId } from './game/context';
+import { ctx, type Area, type BattleOutcome, type StationId } from './game/context';
+import { legionPhase, type LegionRun } from './data/legion';
 import { addExp } from './game/stats';
 import { TownScene } from './game/townScene';
 import { fitWidth, VIEW_H } from './game/world';
@@ -36,6 +37,10 @@ const STATION_TABS: Record<StationId, Tab[]> = {
   shop: ['shop'],
   trainer: ['skill'],
   chest: ['equip'],
+  portal: [],
+  legion: ['legion'],
+  armory: ['armory'],
+  shards: ['shards'],
 };
 
 function replaceSave(next: SaveData): void {
@@ -59,6 +64,7 @@ townHud.hide();
 
 const village = new VillageUI(uiRoot, () => save, {
   onStartPhase: startPhase,
+  onStartLegion: startLegion,
   onSaveChanged: () => {
     writeSave(save);
     input.setKeymap(save.keymap);
@@ -108,6 +114,9 @@ const devPanel = new DevPanel(uiRoot, {
     input.enabled = !village.isOpen;
     input.endFrame();
   },
+  travel: (area) => {
+    if (game.scene.isActive('town')) travel(area);
+  },
 });
 window.addEventListener('keydown', (e) => {
   if (e.code !== 'Backquote' || e.repeat) return;
@@ -134,7 +143,8 @@ function onBattleEnd(o: BattleOutcome, hud: Hud, backToTown: () => void): void {
     levelsGained = addExp(save, o.exp);
     for (const [id, n] of Object.entries(o.materials)) save.materials[id] = (save.materials[id] ?? 0) + n;
     save.sweepTickets += o.sweepTickets;
-    if (!save.cleared.includes(o.phase.id)) save.cleared.push(o.phase.id);
+    if (!o.legion && !save.cleared.includes(o.phase.id)) save.cleared.push(o.phase.id);
+    if (o.legion) save.legion.clears[o.legion.id] = (save.legion.clears[o.legion.id] ?? 0) + 1;
   }
   // 실패해도 전투 중 사용한 포션은 반영해야 하므로 항상 저장한다.
   writeSave(save);
@@ -153,7 +163,8 @@ function onBattleEnd(o: BattleOutcome, hud: Hud, backToTown: () => void): void {
   hud.showResult(
     {
       cleared: o.cleared,
-      phaseName: `${o.phase.id} ${o.phase.name}`,
+      phaseName: o.legion ? o.phase.name : `${o.phase.id} ${o.phase.name}`,
+      legion: !!o.legion,
       gold: o.gold,
       exp: o.exp,
       materials: Object.entries(o.materials).map(([id, count]) => ({ name: MATERIALS[id]?.name ?? id, count })),
@@ -172,6 +183,12 @@ Object.assign(ctx, {
   writeSave: () => writeSave(save),
   windowOpen: () => village.isOpen,
   openStation: (id: StationId, name: string) => {
+    // 포탈: 마을 ↔ 전투 기지
+    if (id === 'portal') {
+      const town = game.scene.getScene('town') as TownScene;
+      travel(town.area === 'base' ? 'town' : 'base');
+      return;
+    }
     input.enabled = false;
     village.open(STATION_TABS[id], name);
   },
@@ -185,6 +202,24 @@ Object.assign(ctx, {
   },
   onBattleEnd,
 });
+
+/** 마을과 전투 기지를 오간다. */
+function travel(area: Area): void {
+  const town = game.scene.getScene('town') as TownScene;
+  town.cameras.main.fadeOut(250, 20, 8, 40);
+  town.time.delayedCall(260, () => {
+    input.endFrame();
+    town.scene.restart({ area });
+  });
+}
+
+function startLegion(run: LegionRun): void {
+  village.hide();
+  input.enabled = true;
+  input.endFrame();
+  game.scene.stop('town');
+  game.scene.start('battle', { phase: legionPhase(run), legion: run });
+}
 
 function startPhase(id: string): void {
   const phase = PHASE_BY_ID[id];
@@ -208,6 +243,10 @@ if (import.meta.env.DEV) {
     },
     start(phaseId: string): string {
       startPhase(phaseId);
+      return 'started';
+    },
+    legion(run: LegionRun): string {
+      startLegion(run);
       return 'started';
     },
     step(frames = 60): string {

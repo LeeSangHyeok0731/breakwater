@@ -48,6 +48,8 @@ export interface HudState {
   kills: number;
   boss: { name: string; hp: number; maxHp: number; phase2: boolean } | null;
   dodgeReady: boolean;
+  /** 군단장 전투: 침묵 스택, 남은 침묵 시간, 남은 부활 */
+  legion?: { stacks: number; max: number; silence: number; revive: number } | null;
 }
 
 export interface BattleResultView {
@@ -58,6 +60,8 @@ export interface BattleResultView {
   materials: { name: string; count: number }[];
   kills: number;
   levelsGained: number;
+  /** 군단장 전투: 조각만 보여 주고 기지로 돌아간다 */
+  legion?: boolean;
 }
 
 const SLOT_COUNT = 8;
@@ -133,6 +137,11 @@ export class Hud {
   private bossLag: HTMLDivElement;
   private bossText: HTMLSpanElement;
   private bossLagRatio = 1;
+  private legionWrap: HTMLDivElement;
+  private stackWrap: HTMLDivElement;
+  private silenceText: HTMLSpanElement;
+  private reviveText: HTMLSpanElement;
+  private lastStacks = -1;
 
   private goldText: HTMLSpanElement;
   private killText: HTMLSpanElement;
@@ -196,6 +205,12 @@ export class Hud {
     this.bossLag = el('div', 'hud-bar-lag', bossBar);
     this.bossFill = el('div', 'hud-bar-fill', bossBar);
     this.bossWrap.style.display = 'none';
+    // 군단장 기믹: 침묵 스택 원, 침묵 남은 시간, 부활
+    this.legionWrap = el('div', 'hud-legion', top);
+    this.stackWrap = el('div', 'hud-stacks', this.legionWrap);
+    this.silenceText = el('span', 'hud-silence', this.legionWrap);
+    this.reviveText = el('span', 'hud-revive', this.legionWrap, '부활 1');
+    this.legionWrap.style.display = 'none';
 
     // 우상단: 골드 / 처치
     const tr = el('div', 'hud-topright hud-panel', w);
@@ -304,6 +319,26 @@ export class Hud {
     } else {
       setStyle(this.bossWrap, 'display', 'none');
       this.bossLagRatio = 1;
+    }
+
+    const lg = s.legion;
+    setStyle(this.legionWrap, 'display', lg ? '' : 'none');
+    if (lg) {
+      if (this.stackWrap.childElementCount !== lg.max) {
+        this.stackWrap.replaceChildren();
+        for (let i = 0; i < lg.max; i++) el('span', 'hud-stack', this.stackWrap);
+      }
+      if (lg.stacks !== this.lastStacks) {
+        Array.from(this.stackWrap.children).forEach((c, i) => {
+          c.classList.toggle('on', i < lg.stacks);
+          // 방금 쌓인 칸은 번쩍인다.
+          c.classList.toggle('pop', i === lg.stacks - 1 && lg.stacks > this.lastStacks);
+        });
+        setClass(this.stackWrap, 'danger', lg.stacks >= lg.max - 1);
+        this.lastStacks = lg.stacks;
+      }
+      setText(this.silenceText, lg.silence > 0 ? `침묵 ${lg.silence.toFixed(1)}초` : '');
+      setStyle(this.reviveText, 'display', lg.revive > 0 ? '' : 'none');
     }
 
     setText(this.goldText, String(Math.floor(s.gold)));
@@ -459,7 +494,7 @@ export class Hud {
     const box = this.openModal('result');
     box.classList.add(r.cleared ? 'cleared' : 'failed');
     el('div', 'hud-modal-sub', box, r.phaseName);
-    el('h2', 'hud-modal-title', box, r.cleared ? '페이즈 클리어' : '페이즈 실패');
+    el('h2', 'hud-modal-title', box, r.legion ? (r.cleared ? '군단장 토벌 성공' : '토벌 실패') : r.cleared ? '페이즈 클리어' : '페이즈 실패');
 
     const list = el('div', 'hud-result-list' + (r.cleared ? '' : ' lost'), box);
     const row = (label: string, value: string, cls = ''): void => {
@@ -467,21 +502,26 @@ export class Hud {
       el('span', 'hud-result-label', e, label);
       el('span', 'hud-result-val', e, value);
     };
-    row('골드', `+${Math.floor(r.gold)}`, 'gold');
-    row('경험치', `+${Math.floor(r.exp)}`);
-    for (const m of r.materials) row(m.name, `x${m.count}`);
-    const kills = el('div', 'hud-result-row', box);
-    el('span', 'hud-result-label', kills, '처치한 몬스터');
-    el('span', 'hud-result-val', kills, String(r.kills));
+    if (!r.legion) {
+      row('골드', `+${Math.floor(r.gold)}`, 'gold');
+      row('경험치', `+${Math.floor(r.exp)}`);
+    }
+    // 희망의 조각은 눈에 띄게 반짝인다.
+    for (const m of r.materials) row(m.name, `x${m.count}`, m.name === '희망의 조각' ? 'hope' : '');
+    if (!r.legion) {
+      const kills = el('div', 'hud-result-row', box);
+      el('span', 'hud-result-label', kills, '처치한 몬스터');
+      el('span', 'hud-result-val', kills, String(r.kills));
+    }
 
     if (r.cleared && r.levelsGained > 0) {
       el('div', 'hud-result-levelup', box, `레벨 업! (+${r.levelsGained})  스탯·스킬 포인트를 마을에서 분배하세요.`);
     }
     if (!r.cleared) {
-      el('p', 'hud-modal-text warn', box, '페이즈에 실패하여 이번 전투의 보상을 모두 잃었습니다.');
+      el('p', 'hud-modal-text warn', box, r.legion ? '토벌에 실패하여 조각을 얻지 못했습니다.' : '페이즈에 실패하여 이번 전투의 보상을 모두 잃었습니다.');
     }
     const btns = el('div', 'hud-modal-buttons', box);
-    const cont = el('button', 'ui-btn primary', btns, '마을로 돌아가기');
+    const cont = el('button', 'ui-btn primary', btns, r.legion ? '기지로 돌아가기' : '마을로 돌아가기');
     cont.addEventListener('click', () => {
       this.closeModal();
       onContinue();

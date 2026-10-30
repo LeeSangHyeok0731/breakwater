@@ -34,7 +34,9 @@ export type MonsterKind =
   | 'lesser_demon'
   | 'void_angel'
   | 'void_knight'
-  | 'void_king';
+  | 'void_king'
+  // 군단장
+  | 'silent_knight';
 
 export interface MonsterDef {
   kind: MonsterKind;
@@ -656,6 +658,25 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
       { id: 'elite_sigil', chance: 1 },
       { id: 'abyss_shard', chance: 1 },
     ],
+  },
+  // ───────── 군단장 ─────────
+  silent_knight: {
+    kind: 'silent_knight',
+    name: '침묵의 기사단장',
+    // [초안] 노멀 기준. 5-5 보스(체력 약 2만)보다 훨씬 단단하다.
+    boss: true,
+    hp: 60000,
+    speed: 4.2,
+    damage: 70,
+    range: 2.2,
+    attackCd: 1.4,
+    radius: 0.9,
+    height: 3.6,
+    flying: false,
+    gold: 0,
+    exp: 0,
+    mana: 30,
+    drops: [],
   },
 };
 

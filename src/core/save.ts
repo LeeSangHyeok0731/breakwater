@@ -34,6 +34,8 @@ export interface SaveData {
   keymap: Keymap;
   /** 효과음 음량 0..1 */
   sfxVolume: number;
+  /** 군단장: 군단장마다 고른 무기 2개(uid)와 클리어 횟수 */
+  legion: { loadout: Partial<Record<string, [string, string]>>; clears: Record<string, number> };
 }
 
 export const SAVE_VERSION = 3;
@@ -63,6 +65,7 @@ export function newSave(): SaveData {
     sweepTickets: 0,
     keymap: { ...DEFAULT_KEYMAP },
     sfxVolume: 0.6,
+    legion: { loadout: {}, clears: {} },
   };
 }
 
@@ -83,6 +86,7 @@ function normalize(data: Partial<SaveData>): SaveData {
     skillSets: { ...data.skillSets },
     gear: { owned: [...(data.gear?.owned ?? [])], equipped: { ...data.gear?.equipped }, enhance: { ...data.gear?.enhance } },
     potions: { ...base.potions, ...data.potions },
+    legion: { loadout: { ...data.legion?.loadout }, clears: { ...data.legion?.clears } },
     // v3에서 2D 키보드 조작으로 바뀌어 예전(마우스·WASD) 키 설정은 버린다.
     keymap: (data.version ?? 1) < 3 ? { ...DEFAULT_KEYMAP } : { ...DEFAULT_KEYMAP, ...data.keymap },
     // 새 무기 종류가 추가되면 그 기본 스킬도 배운 상태로 맞춘다.

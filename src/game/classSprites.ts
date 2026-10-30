@@ -258,6 +258,43 @@ function copyAnim(scene: Phaser.Scene, base: string, texKey: string, animKey: st
   });
 }
 
+// ───────── 군단장: 주인공 그림을 바탕으로 만든 보스 ─────────
+
+/** 침묵의 기사단장: 보라 망토, 검은 강철 갑옷, 보랏빛이 새어 나오는 닫힌 투구와 보라 깃털 */
+const KNIGHT_LOOK: ClassLook = {
+  cape: [0x8a3ad8, 0x4a1a7a, 0x481978],
+  trim: [0x6a6878, 0x3a3846, 0x24222c],
+  hat: (d, cx, top) => {
+    // 투구 뒤로 흩날리는 보라 깃털
+    line(d, cx - 1, top - 2, cx - 9, top + 1, (i) => (i % 3 === 0 ? 0xc070ff : 0x8a3ad8));
+    line(d, cx - 1, top - 1, cx - 8, top + 3, () => 0x5a2090);
+    rect(d, cx - 4, top - 1, cx + 3, top - 1, OUTLINE);
+    rect(d, cx - 5, top, cx + 4, top + 8, 0x2a2834);
+    rect(d, cx - 4, top, cx + 2, top, 0x5a5868);
+    rect(d, cx - 5, top + 1, cx - 5, top + 7, 0x3a3846);
+    // 눈구멍: 보랏빛
+    rect(d, cx - 2, top + 4, cx + 4, top + 4, 0x120a1a);
+    d.px(cx + 1, top + 4, 0xd090ff);
+    d.px(cx + 3, top + 4, 0xd090ff);
+    rect(d, cx + 4, top + 1, cx + 4, top + 8, 0x1a1822);
+    rect(d, cx - 5, top + 9, cx + 4, top + 9, OUTLINE);
+  },
+};
+
+const LEGION_LOOKS: Record<string, ClassLook> = { knight: KNIGHT_LOOK };
+
+/** 군단장 그림: knight:hero-run 처럼 '군단장:원본' 키로 텍스처와 애니메이션을 만든다. */
+export function createLegionSprites(scene: Phaser.Scene): void {
+  for (const [id, look] of Object.entries(LEGION_LOOKS)) {
+    for (const base of HERO_ANIMS) {
+      const tex = `${id}:${base}`;
+      if (scene.textures.exists(tex)) continue;
+      buildSheet(scene, base, tex, { look, back: false });
+      copyAnim(scene, base, tex, tex);
+    }
+  }
+}
+
 export function createClassSprites(scene: Phaser.Scene): void {
   if (scene.anims.exists(classAnimKey('sword', AIM_ANIM))) return;
   const ranged: WeaponType[] = ['bow', 'gun', 'staff'];

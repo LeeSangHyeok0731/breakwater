@@ -23,6 +23,8 @@ export interface DevActions {
   saveChanged(): void;
   battle(): DevBattle | null;
   onClose(): void;
+  /** 마을 ↔ 전투 기지 */
+  travel(area: 'town' | 'base'): void;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, parent?: HTMLElement, text?: string): HTMLElementTagNameMap[K] {
@@ -252,6 +254,20 @@ export class DevPanel {
     this.saveButton(srow, '방어구 강화 초기화', (s) => {
       s.gear.enhance = {};
       return '방어구 강화 수치를 0으로';
+    });
+    // 군단장: 조각과 기지 이동
+    const lrow2 = el('div', 'dev-row', it);
+    this.saveButton(lrow2, '군단장 조각 각 +100', (s) => {
+      for (const id of ['silence_shard', 'corrupt_shard', 'dark_shard']) s.materials[id] = (s.materials[id] ?? 0) + 100;
+      return '침묵·타락·암흑의 조각 +100';
+    });
+    this.saveButton(lrow2, '희망의 조각 +5', (s) => {
+      s.materials.hope_shard = (s.materials.hope_shard ?? 0) + 5;
+      return '희망의 조각 +5';
+    });
+    this.button(lrow2, '전투 기지로', () => {
+      this.actions.travel('base');
+      return '전투 기지로 이동';
     });
     const mrow = el('div', 'dev-row', it);
     this.saveButton(mrow, '재료 각 +20', (s) => {

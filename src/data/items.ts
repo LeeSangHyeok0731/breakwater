@@ -12,4 +12,9 @@ export const MATERIALS: Record<string, MaterialDef> = {
   lord_heart: { name: '군주의 심장석', desc: '보스가 남기는 심장석. 강력한 무기 교환에 쓰인다.' },
   angel_feather: { name: '타락천사의 깃털', desc: '대성당의 망령과 타락천사가 떨어뜨린다. 영웅 무기 교환에 쓰인다.' },
   abyss_shard: { name: '심연의 파편', desc: '마왕성의 몬스터와 심연의 군주가 떨어뜨린다. 전설 무기 교환에 쓰인다.' },
+  // 군단장 조각: 전투 기지의 조각 상인에게서 세트 방어구를 사고 강화한다.
+  silence_shard: { name: '침묵의 조각', desc: '침묵의 기사단장이 남긴 조각. 근접 세트 방어구를 사고 강화한다.' },
+  corrupt_shard: { name: '타락의 조각', desc: '타락한 엘프가 남긴 조각. 사격 세트 방어구를 사고 강화한다.' },
+  dark_shard: { name: '암흑의 조각', desc: '암흑의 군주가 남긴 조각. 마법 세트 방어구를 사고 강화한다.' },
+  hope_shard: { name: '희망의 조각', desc: '하드 군단장에게서 드물게 나오는 빛나는 조각. 전설 세트 방어구에 필요하다.' },
 };
