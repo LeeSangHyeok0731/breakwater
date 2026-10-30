@@ -905,3 +905,181 @@ body::after {
 .dev-toast.show {
   opacity: 1;
 }
+
+/* ───────── 전투력 ───────── */
+
+.th-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.th-power {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.th-power-label {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--gold);
+  letter-spacing: 0.06em;
+}
+
+.th-power-num {
+  font-family: var(--title-font);
+  font-size: 15px;
+  color: var(--gold-hi);
+  text-shadow: 0 0 6px rgba(246, 214, 142, 0.45);
+}
+
+.v-power {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 13px;
+}
+
+.v-power-label {
+  color: var(--ink-dim);
+  font-weight: 700;
+}
+
+.v-power-num {
+  font-family: var(--title-font);
+  font-size: 15px;
+  color: var(--gold-hi);
+}
+
+.v-power-verdict {
+  align-self: center;
+  padding: 1px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #10120c;
+}
+
+.v-power-verdict.easy {
+  background: #6fd26a;
+}
+
+.v-power-verdict.fair {
+  background: #f0d050;
+}
+
+.v-power-verdict.risky {
+  background: #f08a3a;
+}
+
+.v-power-verdict.deadly {
+  color: #fff;
+  background: #d83a3a;
+  box-shadow: 0 0 8px rgba(216, 58, 58, 0.6);
+}
+
+/* 전투력 변화 팝업: 화면 위쪽 가운데에서 튀어 올라 숫자가 굴러간다. */
+.power-pop {
+  position: absolute;
+  top: 18%;
+  left: 50%;
+  z-index: 60;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 10px 26px;
+  border: 2px solid var(--gold);
+  border-radius: 6px;
+  background: radial-gradient(ellipse at center, rgba(70, 50, 20, 0.95), rgba(20, 14, 8, 0.92));
+  box-shadow: 0 0 0 2px #1b140e, 0 0 26px rgba(246, 214, 142, 0.55), inset 0 0 18px rgba(246, 214, 142, 0.25);
+  opacity: 0;
+  transform: translate(-50%, 10px) scale(0.85);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.power-pop::after {
+  /* 패널을 가로지르는 빛줄기 */
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(105deg, transparent 35%, rgba(255, 244, 200, 0.55) 50%, transparent 65%);
+  background-size: 250% 100%;
+  background-position: 120% 0;
+  pointer-events: none;
+}
+
+.power-pop.show {
+  animation: power-pop-in 2.2s ease-out forwards;
+}
+
+.power-pop.show::after {
+  animation: power-pop-shine 0.9s ease-out 0.15s;
+}
+
+.power-pop-label {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--gold);
+  letter-spacing: 0.1em;
+}
+
+.power-pop-num {
+  font-family: var(--title-font);
+  font-size: 30px;
+  color: #fff4d0;
+  text-shadow: 0 0 10px rgba(246, 214, 142, 0.9), 0 2px 0 #5a3a10;
+  font-variant-numeric: tabular-nums;
+}
+
+.power-pop-delta {
+  font-family: var(--title-font);
+  font-size: 20px;
+  color: #ffd84a;
+  text-shadow: 0 0 8px rgba(255, 216, 74, 0.8);
+}
+
+.power-pop.down {
+  border-color: #b83a3a;
+  box-shadow: 0 0 0 2px #1b140e, 0 0 22px rgba(216, 58, 58, 0.5), inset 0 0 18px rgba(216, 58, 58, 0.2);
+}
+
+.power-pop.down .power-pop-delta {
+  color: #ff6a5a;
+  text-shadow: 0 0 8px rgba(255, 90, 70, 0.8);
+}
+
+@keyframes power-pop-in {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 10px) scale(0.85);
+  }
+  10% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1.08);
+  }
+  18% {
+    transform: translate(-50%, 0) scale(1);
+  }
+  80% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -12px) scale(1);
+  }
+}
+
+@keyframes power-pop-shine {
+  from {
+    background-position: 120% 0;
+  }
+  to {
+    background-position: -40% 0;
+  }
+}
