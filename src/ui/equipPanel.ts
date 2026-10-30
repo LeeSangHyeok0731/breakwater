@@ -1,6 +1,6 @@
 import type { SaveData } from '../core/save';
 import { GEAR, GEAR_SLOT_NAME, gearBonus, gearStatsText, type GearDef, type GearSlot } from '../data/gear';
-import { CLASS_NAME, GRADES, WEAPON_TYPE_NAME, WEAPONS, type WeaponDef, type WeaponType } from '../data/weapons';
+import { CLASS_NAME, GRADES, WEAPON_TYPE_NAME, WEAPONS, type Grade, type WeaponDef, type WeaponType } from '../data/weapons';
 import { combatPower } from '../game/power';
 import { derive, DEX_SPEED_CAP, resetCost, totalStats, type Stats } from '../game/stats';
 import { weaponIconUrl } from '../game/weaponArt';
@@ -206,14 +206,30 @@ function renderDoll(host: PanelHost, parent: HTMLElement, save: SaveData): void 
   el('span', 'eq-power-num', power, koNum(combatPower(save)));
 }
 
+const GRADE_ORDER = Object.keys(GRADES) as Grade[];
+const TYPE_ORDER: WeaponType[] = ['sword', 'dao', 'bow', 'gun', 'staff'];
+const SLOT_ORDER: GearSlot[] = [...ARMOR_SLOTS, ...ACC_SLOTS];
+
+/** 가방 정렬: 무기 먼저, 그다음 방어구·장신구. 각각 등급 높은 순 → 종류(부위) 순 → 강화 높은 순. */
 function bagItems(save: SaveData): DragItem[] {
+  const grade = (g: Grade): number => -GRADE_ORDER.indexOf(g);
+  const weapons = save.weapons
+    .filter((w) => WEAPONS[w.defId])
+    .sort((a, b) => {
+      const da = WEAPONS[a.defId];
+      const db = WEAPONS[b.defId];
+      return grade(da.grade) - grade(db.grade) || TYPE_ORDER.indexOf(da.type) - TYPE_ORDER.indexOf(db.type) || b.enhance - a.enhance || da.name.localeCompare(db.name);
+    });
+  const gear = save.gear.owned
+    .map((id) => GEAR[id])
+    .filter((def): def is GearDef => !!def)
+    .sort((a, b) => grade(a.grade) - grade(b.grade) || SLOT_ORDER.indexOf(a.slot) - SLOT_ORDER.indexOf(b.slot) || a.name.localeCompare(b.name));
+
   const items: DragItem[] = [];
-  if (filter === 'all' || filter === 'weapon') for (const w of save.weapons) if (WEAPONS[w.defId]) items.push({ kind: 'weapon', uid: w.uid });
-  for (const id of save.gear.owned) {
-    const def = GEAR[id];
-    if (!def) continue;
+  if (filter === 'all' || filter === 'weapon') for (const w of weapons) items.push({ kind: 'weapon', uid: w.uid });
+  for (const def of gear) {
     const acc = ACC_SLOTS.includes(def.slot);
-    if (filter === 'all' || (filter === 'armor' && !acc) || (filter === 'acc' && acc)) items.push({ kind: 'gear', id });
+    if (filter === 'all' || (filter === 'armor' && !acc) || (filter === 'acc' && acc)) items.push({ kind: 'gear', id: def.id });
   }
   return items;
 }
