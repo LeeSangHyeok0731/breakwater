@@ -112,8 +112,16 @@ window.addEventListener('keydown', (e) => {
   if (devPanel.isOpen) input.enabled = false;
 });
 
-// 창 비율이 바뀌면 가로 해상도를 다시 맞춘다 (세로 360 고정).
-window.addEventListener('resize', () => game.scale.setGameSize(fitWidth(appEl), VIEW_H));
+// 화면 비율이 바뀌면 가로 해상도를 다시 맞춘다 (세로 360 고정).
+// window resize는 F11 전환 중 레이아웃이 끝나기 전에 와서 중간 크기를 읽을 수 있으므로,
+// 레이아웃이 끝난 뒤 알려주는 ResizeObserver로 #app 크기를 직접 본다.
+new ResizeObserver(() => {
+  const w = fitWidth(appEl);
+  // FIT 계산이 이전 부모 크기를 쓰지 않게 먼저 갱신한다.
+  game.scale.getParentBounds();
+  if (w !== game.scale.width) game.scale.setGameSize(w, VIEW_H);
+  else game.scale.refresh();
+}).observe(appEl);
 
 function onBattleEnd(o: BattleOutcome, hud: Hud, backToTown: () => void): void {
   let levelsGained = 0;
