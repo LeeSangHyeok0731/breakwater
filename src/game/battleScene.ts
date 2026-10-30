@@ -14,7 +14,7 @@ import { ctx, type BattleOutcome } from './context';
 import { DEPTH, Fx } from './fx';
 import type { Palette } from './fxArt';
 import { meleeLook, weaponIconUrl } from './weaponArt';
-import { Monster } from './monster2d';
+import { Monster, monsterBodyHeight } from './monster2d';
 import { dev } from './dev';
 import { Player } from './player2d';
 import { CRIT_DAMAGE, basicDamage, derive, enhanceMultiplier, expToNext, totalStats, type Stats } from './stats';
@@ -66,7 +66,9 @@ interface Bolt extends BoltSpec {
 /** 적 탄의 생김새·성질 */
 export interface EnemyBoltOpts {
   /** 생김새: 마력탄(기본), 서리, 도깨비불, 깃털 */
-  kind?: 'orb' | 'frost' | 'wisp' | 'feather';
+  kind?: 'orb' | 'frost' | 'wisp' | 'feather' | 'void';
+  /** 깃털 탄의 색 (밤의 여왕·공허 천사) */
+  tint?: number;
   /** 맞으면 플레이어가 잠깐 느려진다 */
   slow?: boolean;
   /** 플레이어 쪽으로 꺾는 정도 (rad/s) */
@@ -93,6 +95,7 @@ const ENEMY_BOLT_COLOR: Record<NonNullable<EnemyBoltOpts['kind']>, number> = {
   frost: 0x8fe0ff,
   wisp: 0x9fffb0,
   feather: 0xfff4e0,
+  void: 0x7ff0ff,
 };
 
 export interface FieldSpec {
@@ -507,7 +510,7 @@ export class BattleScene extends Phaser.Scene {
       if (Math.random() < (m.elite ? Math.min(1, d.chance * 2) : d.chance)) this.addMaterial(d.id, m.elite ? 2 : 1, m.x, m.body.top);
     }
     if (m.elite) this.addMaterial('elite_sigil', 1, m.x, m.body.top);
-    if (m.def.kind === 'poison_zombie') this.addField({ x: m.x - 34, w: 68, life: 4, tickEvery: 0.5, damage: 0, color: 0x8acc2a, poison: true } as FieldSpec & { poison: boolean });
+    if (m.def.kind === 'poison_zombie' || m.def.kind === 'plague_wolf') this.addField({ x: m.x - 34, w: 68, life: 4, tickEvery: 0.5, damage: 0, color: 0x8acc2a, poison: true } as FieldSpec & { poison: boolean });
     if (m.showsBossBar) this.fx.shake(2, 300);
     if (m === this.boss) {
       for (const other of this.monsters) if (other.alive && other !== m) other.kill();
@@ -624,18 +627,20 @@ export class BattleScene extends Phaser.Scene {
     const W = this.level.width;
     const p = this.player;
     let x = atX ?? 0;
-    let y = FLOOR_Y - 30;
+    // 몸이 큰 몬스터(강철 헬비스트 등)도 땅에 박히지 않도록 키의 절반 + 여유만큼 위에서 떨어뜨린다.
+    const def = MONSTERS[kind];
+    const halfH = monsterBodyHeight(kind, elite) / 2;
+    let y = FLOOR_Y - halfH - 6;
     if (atX === undefined) {
       for (let tries = 0; tries < 12; tries++) {
         x = 40 + Math.random() * (W - 80);
         if (Math.abs(x - p.x) > 170) break;
       }
       // 일부는 발판 위에 나온다.
-      const def = MONSTERS[kind];
       if (!def.flying && !def.boss && this.level.surfaces.length && Math.random() < 0.3) {
         const s = this.level.surfaces[Math.floor(Math.random() * this.level.surfaces.length)];
         x = s.x + 16 + Math.random() * (s.w - 32);
-        y = s.y - 30;
+        y = s.y - halfH - 6;
       }
     }
     if (MONSTERS[kind].flying) y = 140 + Math.random() * 60;
@@ -964,6 +969,9 @@ export class BattleScene extends Phaser.Scene {
       obj = this.add.sprite(x, y, 'fx-flame').play('fx-flame').setTint(0x9fffb0).setScale(0.8).setBlendMode(Phaser.BlendModes.ADD);
     } else if (opts.kind === 'feather') {
       obj = this.add.image(x, y, 'fx-feather').setRotation(Math.atan2(vy, vx));
+      if (opts.tint !== undefined) obj.setTint(opts.tint);
+    } else if (opts.kind === 'void') {
+      obj = this.add.sprite(x, y, 'fx-orb-enemy').play('fx-orb-enemy').setTint(0x80d0ff).setBlendMode(Phaser.BlendModes.ADD);
     } else {
       obj = this.add.sprite(x, y, 'fx-orb-enemy').play('fx-orb-enemy').setBlendMode(Phaser.BlendModes.ADD);
     }
@@ -1042,13 +1050,13 @@ export class BattleScene extends Phaser.Scene {
   }
 
   /** 하늘에서 내리꽂히는 빛기둥 (타락천사) */
-  lightBeam(x: number, damage: number, owner: Monster, delay = 0.9, w = 36): void {
+  lightBeam(x: number, damage: number, owner: Monster, delay = 0.9, w = 36, color = 0xfff0c0): void {
     const top = 0;
     this.addTelegraph(x - w / 2, top, w, FLOOR_Y, delay, owner, () => {
-      this.fx.pillar(x, FLOOR_Y, 0xfff0c0, FLOOR_Y + 20, 420);
-      this.fx.tracer(x, 0, x, FLOOR_Y, 0xfff0c0, 6, 260);
+      this.fx.pillar(x, FLOOR_Y, color, FLOOR_Y + 20, 420);
+      this.fx.tracer(x, 0, x, FLOOR_Y, color, 6, 260);
       this.fx.spark(x, FLOOR_Y - 6, 0xffffff, 2);
-      this.fx.ring(x, FLOOR_Y, 40, 0xfff0c0);
+      this.fx.ring(x, FLOOR_Y, 40, color);
       this.areaHit(x - w / 2, top, w, FLOOR_Y, damage, owner, false);
     });
   }
