@@ -1,4 +1,5 @@
-import { SETS, type GearDef, type SetLine } from '../data/gear';
+import type { GearDef } from '../data/gear';
+import { setGearIconUrl } from './setArt';
 import type { PassiveDef } from '../data/passives';
 import type { SkillDef } from '../data/skills';
 
@@ -109,45 +110,10 @@ function cached(key: string, draw: (g: Canvas) => void): string {
 // ───────────────────────── 방어구·장신구 ─────────────────────────
 
 interface GearLook {
-  shape:
-    | 'hood'
-    | 'helm'
-    | 'hat'
-    | 'crest'
-    | 'crown'
-    | 'padded'
-    | 'chain'
-    | 'coat'
-    | 'plate'
-    | 'cloak'
-    | 'robe'
-    | 'pants'
-    | 'greaves'
-    | 'skirt'
-    | 'boots'
-    | 'sabaton'
-    | 'ring'
-    | 'necklace';
+  shape: 'hood' | 'helm' | 'hat' | 'padded' | 'chain' | 'coat' | 'pants' | 'greaves' | 'boots' | 'ring' | 'necklace';
   base: number;
   accent: number;
-  /** 전설: 금빛 반짝임을 더한다 */
-  shine?: boolean;
 }
-
-/** 세트 방어구: 계열마다 부위 모양, 세트마다 색 */
-const SET_SHAPES: Record<SetLine, GearLook['shape'][]> = {
-  melee: ['crest', 'plate', 'greaves', 'sabaton'],
-  ranged: ['hood', 'cloak', 'pants', 'boots'],
-  magic: ['hat', 'robe', 'skirt', 'boots'],
-};
-const SET_COLORS: Record<string, [number, number]> = {
-  champion: [0x8a96b0, 0xc8303a],
-  dragonslayer: [0x9a2a2a, 0xffc040],
-  falconer: [0x6a8a4a, 0xd8b070],
-  starhunter: [0x2a3a7a, 0xffe08a],
-  arcanist: [0x3a5aa8, 0x9fe8ff],
-  archmage: [0xe8e0d0, 0xc040ff],
-};
 
 const GEAR_LOOK: Record<string, GearLook> = {
   leather_hood: { shape: 'hood', base: 0x9a6a3a, accent: 0x6a4424 },
@@ -166,36 +132,9 @@ const GEAR_LOOK: Record<string, GearLook> = {
   elite_pendant: { shape: 'necklace', base: 0xffd34a, accent: 0xff3a6a },
 };
 
-for (const set of Object.values(SETS)) {
-  const [base, accent] = SET_COLORS[set.id] ?? [0xa8a8b8, 0xffd34a];
-  const shapes = [...SET_SHAPES[set.line]];
-  // 대마도사는 모자 대신 관을 쓴다.
-  if (set.id === 'archmage') shapes[0] = 'crown';
-  (['head', 'body', 'legs', 'feet'] as const).forEach((slot, i) => {
-    GEAR_LOOK[`${set.id}_${slot}`] = { shape: shapes[i], base, accent, shine: set.grade === 'legendary' };
-  });
-}
-
 const SLOT_SHAPE: Record<string, GearLook['shape']> = { head: 'helm', body: 'padded', legs: 'pants', feet: 'boots', ring: 'ring', necklace: 'necklace' };
 
 function drawGear(g: Canvas, look: GearLook): void {
-  drawGearShape(g, look);
-  if (look.shine) {
-    // 전설: 금빛 별 반짝임
-    for (const [x, y] of [
-      [27, 4],
-      [4, 27],
-    ]) {
-      g.px(x, y, 0xfff4c0);
-      g.px(x - 1, y, 0xffc040);
-      g.px(x + 1, y, 0xffc040);
-      g.px(x, y - 1, 0xffc040);
-      g.px(x, y + 1, 0xffc040);
-    }
-  }
-}
-
-function drawGearShape(g: Canvas, look: GearLook): void {
   const b = look.base;
   const a = look.accent;
   const hi = light(b);
@@ -229,87 +168,6 @@ function drawGearShape(g: Canvas, look: GearLook): void {
       g.px(17, 11, a);
       g.px(16, 12, a);
       g.line(14, 6, 11, 16, hi);
-      break;
-    case 'crest':
-      // 볏 달린 투구: 둥근 투구 위로 깃털 장식
-      g.disc(16, 17, 9, b);
-      g.rect(7, 17, 18, 8, b);
-      g.rect(9, 18, 14, 2, 0x1a1a22);
-      g.rect(15, 18, 2, 6, lo);
-      g.arc(16, 17, 8, Math.PI * 1.1, Math.PI * 1.55, hi, 2);
-      g.rect(6, 24, 20, 2, lo);
-      for (let i = 0; i < 6; i++) g.rect(13 + i, 2 + Math.abs(i - 2), 2, 7 - Math.abs(i - 2), a);
-      g.rect(15, 7, 2, 2, light(a));
-      break;
-    case 'crown':
-      g.rect(6, 14, 20, 8, b);
-      for (const x of [6, 13, 20]) {
-        g.rect(x, 9, 6, 5, b);
-        g.disc(x + 3, 8, 2, b);
-      }
-      g.rect(6, 14, 20, 2, hi);
-      g.rect(6, 20, 20, 2, lo);
-      g.disc(16, 17, 2.5, a);
-      g.disc(9, 17, 1.5, a);
-      g.disc(23, 17, 1.5, a);
-      g.px(15, 16, 0xffffff);
-      break;
-    case 'plate':
-      // 판금 흉갑: 어깨 보호대가 둥글게 솟는다
-      g.rect(9, 7, 14, 21, b);
-      g.disc(7, 10, 5, b);
-      g.disc(25, 10, 5, b);
-      g.arc(7, 10, 4, Math.PI, Math.PI * 1.6, hi, 1);
-      g.arc(25, 10, 4, Math.PI * 1.4, Math.PI * 2, hi, 1);
-      g.rect(14, 6, 4, 3, 0x2a1a14);
-      g.rect(15, 10, 2, 16, hi);
-      g.rect(10, 16, 12, 2, lo);
-      g.rect(10, 22, 12, 2, lo);
-      g.disc(16, 12, 2, a);
-      break;
-    case 'cloak':
-      // 망토: 어깨에서 아래로 퍼지는 천과 앞 여밈
-      for (let y = 6; y < 29; y++) {
-        const w = 12 + (y - 6) * 0.75;
-        g.rect(16 - w / 2, y, w, 1, b);
-      }
-      g.rect(13, 5, 6, 3, a);
-      g.disc(16, 8, 2, light(a));
-      g.line(16, 9, 16, 28, lo, 1);
-      g.line(11, 9, 6, 27, hi);
-      break;
-    case 'robe':
-      for (let y = 6; y < 30; y++) {
-        const w = y < 12 ? 18 : 14 + (y - 12) * 0.6;
-        g.rect(16 - w / 2, y, w, 1, b);
-      }
-      g.rect(3, 7, 5, 12, b);
-      g.rect(24, 7, 5, 12, b);
-      g.rect(14, 5, 4, 3, 0x2a1a14);
-      g.rect(15, 8, 2, 21, a);
-      g.rect(10, 15, 12, 2, a);
-      g.rect(9, 7, 2, 21, hi);
-      break;
-    case 'skirt':
-      g.rect(9, 4, 14, 5, b);
-      for (let y = 9; y < 28; y++) {
-        const w = 14 + (y - 9) * 0.55;
-        g.rect(16 - w / 2, y, w, 1, b);
-      }
-      g.rect(9, 4, 14, 2, a);
-      g.rect(15, 9, 2, 19, lo);
-      g.rect(7, 26, 18, 2, a);
-      g.line(10, 9, 7, 26, hi);
-      break;
-    case 'sabaton':
-      for (const ox of [0, 12]) {
-        g.rect(5 + ox, 6, 8, 15, b);
-        g.rect(5 + ox, 20, 12, 6, b);
-        g.rect(5 + ox, 26, 12, 2, lo);
-        for (let y = 9; y < 20; y += 4) g.rect(5 + ox, y, 8, 1, lo);
-        g.rect(5 + ox, 6, 2, 15, hi);
-        g.rect(14 + ox, 21, 3, 2, a);
-      }
       break;
     case 'padded':
     case 'chain':
@@ -388,6 +246,9 @@ function drawGearShape(g: Canvas, look: GearLook): void {
 }
 
 export function gearIconUrl(def: GearDef): string {
+  // 세트 방어구는 세트마다 따로 디자인한 그림을 쓴다.
+  const set = setGearIconUrl(def.id);
+  if (set) return set;
   return cached(`gear:${def.id}`, (g) => drawGear(g, GEAR_LOOK[def.id] ?? { shape: SLOT_SHAPE[def.slot] ?? 'ring', base: 0xa8a8b8, accent: 0xffd34a }));
 }
 
