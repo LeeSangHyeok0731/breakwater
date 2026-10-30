@@ -90,6 +90,8 @@ export class Monster {
   boostTime = 0;
   /** 행동 함수가 자유롭게 쓰는 타이머 */
   aux = 0;
+  /** 지금까지 맞은 횟수 (맞을 때 반응하는 행동이 쓴다) */
+  hitCount = 0;
   private dashCd = 3;
   private bob = Math.random() * 10;
   private wardFx: Phaser.GameObjects.Image | null = null;
@@ -172,6 +174,7 @@ export class Monster {
 
   /** 맞았을 때: 번쩍임과 체력바 표시 */
   onHit(fromX: number, knock: number): void {
+    this.hitCount++;
     this.scene.fx.flash(this.sprite, 0xffffff, 70);
     this.bar?.setVisible(true);
     this.barBg?.setVisible(true);
