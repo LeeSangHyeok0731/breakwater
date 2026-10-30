@@ -137,7 +137,8 @@ export function createAnimations(scene: Phaser.Scene): void {
   sheetAnim(scene, 'demon-idle', 'demon-idle', 0, 5, 8);
   sheetAnim(scene, 'demon-attack', 'demon-attack', 0, 10, 12, 0);
   sheetAnim(scene, 'fireball', 'fireball', 0, 2, 14);
-  sheetAnim(scene, 'enemy-death', 'enemy-death', 0, 8, 20, 0);
+  // 시트 첫 칸에 마법사 그림이 섞여 있어 1번 칸부터 쓴다.
+  sheetAnim(scene, 'enemy-death', 'enemy-death', 1, 8, 20, 0);
   sheetAnim(scene, 'npc-bearded', 'npc-bearded', 0, 4, 6);
   sheetAnim(scene, 'npc-hatman', 'npc-hatman', 0, 3, 6);
   sheetAnim(scene, 'npc-oldman', 'npc-oldman', 0, 7, 6);

@@ -227,6 +227,8 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private cleanup(): void {
+    // this.anims는 게임 전체가 함께 쓰므로, 일시정지 중에 나가면 마을까지 멈춘 채로 남는다.
+    this.anims.resumeAll();
     this.hud.destroy();
     for (const m of this.monsters) m.destroy();
     this.player.destroy();
