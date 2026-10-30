@@ -228,6 +228,54 @@ export class Fx {
     this.scene.tweens.add({ targets: r, alpha: 0, duration: ms, onComplete: () => r.destroy() });
   }
 
+  /** 배경을 어둡게 가라앉힌다 (몬스터·플레이어·이펙트는 그 위에 그대로). 궁극기 연출용 */
+  dim(color: number, alpha: number, ms: number): void {
+    const cam = this.scene.cameras.main;
+    const r = this.scene.add
+      .rectangle(0, 0, cam.width, cam.height, color, 0)
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setDepth(DEPTH.monster - 1);
+    this.scene.tweens.add({ targets: r, fillAlpha: alpha, duration: 160 });
+    this.scene.tweens.add({ targets: r, fillAlpha: 0, delay: Math.max(160, ms - 260), duration: 260, onComplete: () => r.destroy() });
+  }
+
+  /** 화면을 가로지르는 거대한 참격선: 넓은 빛 + 색 + 하얀 심이 펼쳐졌다 사라진다. */
+  bigSlash(x1: number, y1: number, x2: number, y2: number, color: number, width = 10, ms = 380): void {
+    const g = this.scene.add.graphics().setDepth(DEPTH.fx + 1).setBlendMode(Phaser.BlendModes.ADD);
+    let t = 0;
+    const draw = (): void => {
+      // 처음 80ms 동안 한쪽 끝에서 반대쪽으로 그어 나간다.
+      const k = Math.min(1, t / 80);
+      const ex = x1 + (x2 - x1) * k;
+      const ey = y1 + (y2 - y1) * k;
+      g.clear();
+      g.lineStyle(width * 2.6, color, 0.25).lineBetween(x1, y1, ex, ey);
+      g.lineStyle(width, color, 0.9).lineBetween(x1, y1, ex, ey);
+      g.lineStyle(Math.max(2, width / 3), 0xffffff, 1).lineBetween(x1, y1, ex, ey);
+    };
+    draw();
+    const ev = this.scene.time.addEvent({
+      delay: 16,
+      repeat: 6,
+      callback: () => {
+        t += 16;
+        draw();
+      },
+    });
+    this.scene.tweens.add({
+      targets: g,
+      alpha: 0,
+      delay: 120,
+      duration: ms,
+      ease: 'Quad.In',
+      onComplete: () => {
+        ev.remove();
+        g.destroy();
+      },
+    });
+  }
+
   /** 지그재그 번개. 곁가지가 하나 갈라진다. */
   lightning(x1: number, y1: number, x2: number, y2: number, color: number, width = 2, ms = 160): void {
     const g = this.scene.add.graphics().setDepth(DEPTH.fx + 1).setBlendMode(Phaser.BlendModes.ADD);

@@ -1,9 +1,10 @@
-import { exportSave, importSave, type SaveData } from '../core/save';
+import { exportSave, importSave, type SaveData, skillSlotIds } from '../core/save';
 import { DEFAULT_KEYMAP, keyLabel, SLOT_ACTIONS, type Action } from '../core/input';
 import { weaponIconUrl } from '../game/weaponArt';
 import { addExp, derive, DEX_SPEED_CAP, enhanceMultiplier, expToNext, resetCost, totalStats, type Stats } from '../game/stats';
 import { CHAPTER_NAME, PHASES, SWEEP_RATE, SWEEP_TICKET_PRICE, type PhaseDef } from '../data/phases';
-import { skillsFor, STARTER_SKILLS } from '../data/skills';
+import { SKILL_BY_ID, SKILL_SLOTS, SKILL_TIER_NAME, skillsFor, STARTER_SKILLS } from '../data/skills';
+import type { WeaponType } from '../data/weapons';
 import { CLASS_NAME, enhanceCost, GRADES, MAX_ENHANCE, WEAPON_TYPE_NAME, WEAPONS, type WeaponDef } from '../data/weapons';
 import { MATERIALS } from '../data/items';
 import { sfx } from '../core/audio';
@@ -604,31 +605,37 @@ export class VillageUI {
       if (seen.has(def.type)) continue;
       seen.add(def.type);
       const s = this.section(`${WEAPON_TYPE_NAME[def.type]} 스킬`, def.name);
-      const list = skillsFor(def.type);
-      let slot = 0;
-      for (const sk of list) {
+      const type = def.type;
+      const set = skillSlotIds(save, type);
+      this.renderSkillSet(s, save, type, set);
+      for (const sk of skillsFor(type)) {
         const learned = save.learnedSkills.includes(sk.id);
-        const card = el('div', `v-card skill${learned ? ' learned' : ''}`, s);
+        const card = el('div', `v-card skill${learned ? ' learned' : ''}${sk.tier ? ` tier${sk.tier}` : ''}`, s);
         const head = el('div', 'v-card-head', card);
         el('span', 'v-card-title', head, sk.name);
+        if (sk.tier) el('span', `v-badge tier${sk.tier}`, head, SKILL_TIER_NAME[sk.tier]);
         if (learned) {
-          const action = SLOT_ACTIONS[slot];
-          slot++;
           el('span', 'v-badge clear', head, '습득');
-          if (action) el('span', 'v-key', head, keyLabel(save.keymap[action]));
-          else el('span', 'v-muted', head, '슬롯 없음');
+          const at = set.indexOf(sk.id);
+          if (at >= 0) el('span', 'v-key', head, keyLabel(save.keymap[SLOT_ACTIONS[at]]));
+          else el('span', 'v-muted', head, '세트에 없음');
         }
         const meta = el('div', 'v-meta', card);
         el('span', '', meta, `마나 ${sk.mana}`);
         el('span', '', meta, `쿨타임 ${sk.cooldown}초`);
         el('span', save.level < sk.reqLevel ? 'v-short' : '', meta, `요구 레벨 ${sk.reqLevel}`);
         el('p', 'v-desc', card, sk.desc);
+        const actions = el('div', 'v-actions', card);
         if (!learned) {
-          const actions = el('div', 'v-actions', card);
           button(actions, '배우기 (스킬 포인트 1)', 'primary', save.skillPoints >= 1 && save.level >= sk.reqLevel, () =>
             this.learn(sk.id),
           );
           if (save.level < sk.reqLevel) el('span', 'v-muted', actions, `Lv ${sk.reqLevel}부터 배울 수 있습니다`);
+        } else if (set.includes(sk.id)) {
+          button(actions, '세트에서 빼기', '', true, () => this.editSet(type, (ids) => ids.filter((id) => id !== sk.id)));
+        } else {
+          button(actions, '세트에 넣기', 'primary', set.length < SKILL_SLOTS, () => this.editSet(type, (ids) => [...ids, sk.id]));
+          if (set.length >= SKILL_SLOTS) el('span', 'v-muted', actions, '세트가 가득 찼습니다. 먼저 하나를 빼세요');
         }
       }
     }
@@ -636,7 +643,7 @@ export class VillageUI {
       'p',
       'v-muted v-note',
       this.body,
-      `배운 스킬은 해당 무기의 슬롯에 목록 순서대로 자동 배치됩니다 (${SLOT_ACTIONS.map((a) => keyLabel(this.getSave().keymap[a])).join(' ')}).`,
+      `스킬 세트: 무기마다 스킬을 최대 ${SKILL_SLOTS}개 골라 ${SLOT_ACTIONS.map((a) => keyLabel(this.getSave().keymap[a])).join(' ')} 슬롯에 둡니다. 세트 칸을 눌러 앞으로 옮길 수 있습니다.`,
     );
 
     const rs = this.section('스킬 초기화', '기본 스킬을 제외한 스킬과 패시브의 포인트를 모두 돌려받습니다');
@@ -698,7 +705,37 @@ export class VillageUI {
     if (save.skillPoints < 1 || save.learnedSkills.includes(id)) return;
     save.skillPoints -= 1;
     save.learnedSkills.push(id);
+    // 직접 고른 세트가 있으면 빈자리에 새 스킬을 넣어 준다.
+    const type = SKILL_BY_ID[id]?.weapon;
+    const set = type && save.skillSets[type];
+    if (set && skillSlotIds(save, type).length < SKILL_SLOTS) set.push(id);
     this.changed();
+  }
+
+  /** 스킬 세트를 고친다. 처음 고칠 때 지금 슬롯 구성에서 시작한다. */
+  private editSet(type: WeaponType, edit: (ids: string[]) => string[]): void {
+    const save = this.getSave();
+    save.skillSets[type] = edit(skillSlotIds(save, type)).slice(0, SKILL_SLOTS);
+    this.changed();
+  }
+
+  /** 스킬 세트: 슬롯 8칸에 지금 들어 있는 스킬. 칸을 누르면 한 칸 앞으로 옮긴다. */
+  private renderSkillSet(parent: HTMLElement, save: SaveData, type: WeaponType, set: string[]): void {
+    const bar = el('div', 'v-skillset', parent);
+    for (let i = 0; i < SKILL_SLOTS; i++) {
+      const sk = set[i] ? SKILL_BY_ID[set[i]] : undefined;
+      const cell = el('button', `v-skillset-slot${sk ? '' : ' empty'}${sk?.tier ? ` tier${sk.tier}` : ''}`, bar);
+      el('span', 'v-skillset-key', cell, keyLabel(save.keymap[SLOT_ACTIONS[i]]));
+      el('span', 'v-skillset-name', cell, sk ? sk.short : '');
+      cell.title = sk ? `${sk.name} — 눌러서 앞으로` : '빈 칸';
+      cell.disabled = !sk || i === 0;
+      cell.onclick = () =>
+        this.editSet(type, (ids) => {
+          const next = [...ids];
+          [next[i - 1], next[i]] = [next[i], next[i - 1]];
+          return next;
+        });
+    }
   }
 
   private resetSkills(): void {

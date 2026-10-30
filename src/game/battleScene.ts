@@ -1,12 +1,12 @@
 import Phaser from 'phaser';
 import { SLOT_ACTIONS, keyLabel, type Input } from '../core/input';
 import { sfx } from '../core/audio';
-import type { SaveData } from '../core/save';
+import { skillSlotIds, type SaveData } from '../core/save';
 import { gearBonus, POTION_LIMIT_PER_PHASE } from '../data/gear';
 import { MATERIALS } from '../data/items';
 import { ELITE_MOD, MONSTERS, type MonsterKind } from '../data/monsters';
 import type { PhaseDef } from '../data/phases';
-import { SKILLS, type SkillDef } from '../data/skills';
+import { SKILL_BY_ID, type SkillDef } from '../data/skills';
 import { CLASS_NAME, GRADES, WEAPONS, type WeaponType } from '../data/weapons';
 import { Hud, type HudSlot, type HudState } from '../ui/hud';
 import { updatePlayerCombat } from './combat2d';
@@ -158,8 +158,7 @@ const BUFF_COLOR: Record<string, number> = {
 
 /** 장착 무기의 스킬 슬롯: 배운 스킬을 목록 순서대로 최대 8개 채운다. */
 export function buildSlots(save: SaveData, type: WeaponType): (SkillDef | null)[] {
-  const learned = SKILLS.filter((s) => s.weapon === type && save.learnedSkills.includes(s.id)).slice(0, 8);
-  const slots: (SkillDef | null)[] = [...learned];
+  const slots: (SkillDef | null)[] = skillSlotIds(save, type).map((id) => SKILL_BY_ID[id]);
   while (slots.length < 8) slots.push(null);
   return slots;
 }
@@ -849,8 +848,9 @@ export class BattleScene extends Phaser.Scene {
         radius = 4 * size;
         break;
       case 'wave':
-        obj = this.add.sprite(o.x, o.y, 'fx-wave').play('fx-wave').setFlipX(o.vx < 0).setBlendMode(Phaser.BlendModes.ADD);
-        radius = 14;
+        obj = this.add.sprite(o.x, o.y, 'fx-wave').play('fx-wave').setFlipX(o.vx < 0).setBlendMode(Phaser.BlendModes.ADD).setScale(size);
+        if (o.color !== undefined) obj.setTint(o.color);
+        radius = 14 * size;
         break;
       case 'grenade':
         obj = this.add.image(o.x, o.y, 'fx-grenade');
@@ -883,8 +883,10 @@ export class BattleScene extends Phaser.Scene {
           .setFlipX(s.flipX)
           .setDepth(DEPTH.projectile - 1)
           .setBlendMode(Phaser.BlendModes.ADD)
+          .setScale(s.scaleX, s.scaleY)
+          .setTint(s.tintTopLeft)
           .setAlpha(0.5);
-        this.tweens.add({ targets: ghost, alpha: 0, scaleY: 0.7, duration: 180, onComplete: () => ghost.destroy() });
+        this.tweens.add({ targets: ghost, alpha: 0, scaleY: s.scaleY * 0.7, duration: 180, onComplete: () => ghost.destroy() });
         break;
       }
       case 'grenade':

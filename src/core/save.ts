@@ -1,6 +1,7 @@
 import { DEFAULT_KEYMAP, type Keymap } from './input';
-import { STARTER_SKILLS } from '../data/skills';
+import { SKILL_BY_ID, SKILL_SLOTS, SKILLS, STARTER_SKILLS } from '../data/skills';
 import type { GearSlot } from '../data/gear';
+import type { WeaponType } from '../data/weapons';
 
 export interface OwnedWeapon {
   uid: string;
@@ -19,6 +20,8 @@ export interface SaveData {
   weapons: OwnedWeapon[];
   equipped: [string, string];
   learnedSkills: string[];
+  /** 무기별로 직접 고른 스킬 세트 (슬롯 순서). 없으면 배운 순서대로 채운다. */
+  skillSets: Partial<Record<WeaponType, string[]>>;
   /** 공용 패시브 단계 */
   passives: Record<string, number>;
   /** 보유한 방어구·장신구 id와 부위별 장착 */
@@ -50,6 +53,7 @@ export function newSave(): SaveData {
     ],
     equipped: ['w1', 'w2'],
     learnedSkills: [...STARTER_SKILLS],
+    skillSets: {},
     passives: {},
     gear: { owned: [], equipped: {} },
     potions: { hp: 0, mp: 0 },
@@ -75,6 +79,7 @@ function normalize(data: Partial<SaveData>): SaveData {
     allocated: { ...base.allocated, ...data.allocated },
     materials: { ...data.materials },
     passives: { ...data.passives },
+    skillSets: { ...data.skillSets },
     gear: { owned: [...(data.gear?.owned ?? [])], equipped: { ...data.gear?.equipped } },
     potions: { ...base.potions, ...data.potions },
     // v3에서 2D 키보드 조작으로 바뀌어 예전(마우스·WASD) 키 설정은 버린다.
@@ -82,6 +87,14 @@ function normalize(data: Partial<SaveData>): SaveData {
     // 새 무기 종류가 추가되면 그 기본 스킬도 배운 상태로 맞춘다.
     learnedSkills: [...new Set([...(data.learnedSkills ?? []), ...STARTER_SKILLS])],
   };
+}
+
+/** 무기 종류의 슬롯에 들어가는 스킬 id (최대 8개, 슬롯 순서). 고른 세트가 있으면 그것을, 없으면 배운 스킬을 목록 순서대로. */
+export function skillSlotIds(save: SaveData, type: WeaponType): string[] {
+  const learned = (id: string): boolean => save.learnedSkills.includes(id) && SKILL_BY_ID[id]?.weapon === type;
+  const set = save.skillSets[type];
+  if (set) return set.filter(learned).slice(0, SKILL_SLOTS);
+  return SKILLS.filter((s) => learned(s.id)).map((s) => s.id).slice(0, SKILL_SLOTS);
 }
 
 export function loadSave(): SaveData {

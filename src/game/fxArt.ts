@@ -497,6 +497,60 @@ export function createFxArt(scene: Phaser.Scene): void {
   });
   anim(scene, 'fx-muzzle', 3, 24);
 
+  // 영검 (만검귀종): 칼끝이 아래. 회색조라 색을 입혀 쓴다.
+  sheet(scene, 'fx-sword', 11, 36, 1, (px) => {
+    for (let y = 9; y < 34; y++) {
+      const w = y > 29 ? 34 - y : 2;
+      for (let x = 5 - w; x <= 5 + w; x++) px(x, y, gray(x === 5 ? 255 : x < 5 ? 190 : 230), 1);
+    }
+    px(5, 34, gray(255));
+    for (let x = 0; x <= 10; x++) px(x, 8, gray(x === 0 || x === 10 ? 170 : 220));
+    for (let y = 1; y < 8; y++) px(5, y, gray(150));
+    px(4, 0, gray(220));
+    px(5, 0, gray(255));
+    px(6, 0, gray(220));
+  });
+
+  // 혈월: 핏빛 원판에 어두운 얼룩과 밝은 테두리
+  sheet(scene, 'fx-moon', 64, 64, 1, (px) => {
+    for (let y = 0; y < 64; y++) {
+      for (let x = 0; x < 64; x++) {
+        const d = Math.hypot(x - 31.5, y - 31.5);
+        if (d > 30) {
+          if (d < 32) px(x, y, 0xff3a4a, 0.5);
+          continue;
+        }
+        const crater = hash(Math.floor(x / 6), Math.floor(y / 6), 7) > 0.78 && d < 26;
+        const shade = (x - 31.5 + (y - 31.5)) / 60;
+        let c = d > 28 ? 0xff7a6a : shade > 0.25 ? 0x7a0a1a : 0xc8202a;
+        if (crater) c = 0x5a0812;
+        px(x, y, c, 1);
+      }
+    }
+  });
+
+  // 조준점 (데드아이): 붉은 고리와 네 개의 눈금
+  sheet(scene, 'fx-crosshair', 21, 21, 1, (px) => {
+    for (let a = 0; a < Math.PI * 2; a += 0.05) px(10 + Math.cos(a) * 7, 10 + Math.sin(a) * 7, 0xff3a2a);
+    for (let i = 0; i <= 4; i++) {
+      px(10, i, 0xff6a4a);
+      px(10, 20 - i, 0xff6a4a);
+      px(i, 10, 0xff6a4a);
+      px(20 - i, 10, 0xff6a4a);
+    }
+    px(10, 10, 0xffffff);
+  });
+
+  // 포탄 (포격 요청): 아래가 앞
+  sheet(scene, 'fx-shell', 7, 16, 1, (px) => {
+    for (let y = 3; y < 13; y++) for (let x = 1; x < 6; x++) px(x, y, x < 3 ? 0x8a9098 : 0x5a616b);
+    for (let y = 13; y < 16; y++) for (let x = 2; x < 5; x++) px(x, y, 0xff5a2a);
+    for (let x = 0; x < 7; x++) px(x, 2, 0x3a4048);
+    px(0, 1, 0x3a4048);
+    px(6, 1, 0x3a4048);
+    px(3, 0, 0x5a616b);
+  });
+
   // 깃털 (타락천사의 탄): 오른쪽이 끝
   sheet(scene, 'fx-feather', 12, 5, 1, (px) => {
     for (let x = 0; x < 12; x++) {
