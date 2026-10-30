@@ -198,6 +198,8 @@ export function createAnimations(scene: Phaser.Scene): void {
   sheetAnim(scene, 'hound-jump', 'hound-jump', 0, 5, 12, 0);
   sheetAnim(scene, 'wolf-run', 'wolf-run', 0, 3, 12);
   sheetAnim(scene, 'beast-burn', 'beast-burn', 0, 3, 10, 0);
+  // 화염 헬비스트의 불기둥 (불타는 그림의 뒤쪽 두 칸)
+  sheetAnim(scene, 'fire-pillar', 'beast-burn', 2, 3, 12);
   createVariants(scene);
 
   // 타일셋에서 쓸 조각을 잘라 프레임으로 등록한다.

@@ -11,16 +11,20 @@ export type Mission =
   | { kind: 'survive'; seconds: number }
   | { kind: 'kills'; target: number };
 
-export type Theme = 'day' | 'dusk' | 'night' | 'lava';
+export type Theme = 'day' | 'dusk' | 'night' | 'lava' | 'church' | 'castle';
 
 export interface PhaseDef {
   id: string;
   name: string;
   type: 'normal' | 'special' | 'boss';
+  /** 챕터 번호 (게시판에서 묶어 보여 준다) */
+  chapter: number;
   desc: string;
   /** 이 페이즈를 열려면 먼저 클리어해야 하는 페이즈 */
   requires?: string;
   hpMul: number;
+  /** 몬스터 공격력 배율 (없으면 1) */
+  dmgMul?: number;
   /** 맵 가로 길이(px) */
   width: number;
   /** 발판 [왼쪽 x, 윗면 y, 너비] (px). 땅의 윗면은 y=312 */
@@ -40,6 +44,7 @@ export const PHASES: PhaseDef[] = [
     id: '1-1',
     name: '버려진 묘지 외곽',
     type: 'normal',
+    chapter: 1,
     desc: '묘지에서 깨어난 몬스터들이 몰려온다. 5개의 웨이브를 모두 처치하라.',
     hpMul: 1,
     width: 1600,
@@ -75,6 +80,7 @@ export const PHASES: PhaseDef[] = [
     id: '1-2',
     name: '무너진 예배당',
     type: 'normal',
+    chapter: 1,
     desc: '독을 품은 해골과 불타는 구울이 나타났다. 마지막 웨이브에는 악몽마가 달려온다.',
     requires: '1-1',
     hpMul: 1.15,
@@ -108,6 +114,7 @@ export const PHASES: PhaseDef[] = [
     id: '1-3',
     name: '끝없는 밤',
     type: 'special',
+    chapter: 1,
     desc: '특별 스테이지. 밤새 몰려오는 몬스터를 90초 동안 버텨라. 시간이 지날수록 더 많이 몰려온다.',
     requires: '1-2',
     hpMul: 1.1,
@@ -130,6 +137,7 @@ export const PHASES: PhaseDef[] = [
     id: '1-4',
     name: '망자의 행렬',
     type: 'special',
+    chapter: 1,
     desc: '특별 스테이지. 끝없이 이어지는 망자의 행렬. 몬스터 60마리를 처치하라.',
     requires: '1-3',
     hpMul: 1.2,
@@ -152,6 +160,7 @@ export const PHASES: PhaseDef[] = [
     id: '1-5',
     name: '악마 군주의 제단',
     type: 'boss',
+    chapter: 1,
     desc: '묘지 깊은 곳 제단의 악마 군주. 바닥을 훑는 충격파는 점프로 피하고, 소환된 몬스터를 조심하라.',
     requires: '1-4',
     hpMul: 1,

@@ -3,8 +3,14 @@ import { ELITE_MOD, MONSTERS, type MonsterDef, type MonsterKind } from '../data/
 import { DEPTH } from './fx';
 import { PX_PER_M } from './player2d';
 import type { BattleScene } from './battleScene';
+import { CHAPTER2 } from './mobs/chapter2';
+import { ABYSS_PATTERNS, CHAPTER3 } from './mobs/chapter3';
 
-interface Look {
+/** 챕터 2·3 몬스터의 행동 (몬스터 하나를 한 프레임 움직인다) */
+export type Behavior = (m: Monster, dt: number) => void;
+const BEHAVIORS: Partial<Record<MonsterKind, Behavior>> = { ...CHAPTER2, ...CHAPTER3 };
+
+export interface Look {
   walk: string;
   attack?: string;
   spawn?: string;
@@ -24,12 +30,24 @@ const LOOKS: Record<MonsterKind, Look> = {
   golem: { walk: 'beast-idle', attack: 'beast-breath', facesLeft: true, body: [26, 52], scale: 1.15 },
   grave_knight: { walk: 'nightmare-idle', attack: 'nightmare-gallop', facesLeft: true, body: [64, 54], scale: 0.9 },
   golem_lord: { walk: 'demon-idle', attack: 'demon-attack', facesLeft: true, body: [70, 96], scale: 1.1 },
+  lantern_wraith: { walk: 'lantern-idle', facesLeft: false, body: [18, 44] },
+  halo_wraith: { walk: 'halo-idle', facesLeft: false, body: [18, 44] },
+  fire_skull: { walk: 'fire-skull', facesLeft: true, body: [20, 20], scale: 0.45 },
+  hell_cat: { walk: 'cat-walk', facesLeft: true, body: [40, 24], scale: 0.85 },
+  blood_skeleton: { walk: 'skeleton-blood-walk', spawn: 'skeleton-blood-rise', facesLeft: true, body: [16, 40] },
+  frost_mage: { walk: 'wizard-frost-idle', attack: 'wizard-frost-cast', facesLeft: false, body: [18, 44] },
+  fallen_angel: { walk: 'angel-idle', attack: 'angel-attack', facesLeft: false, body: [44, 76], scale: 1.4 },
+  hell_hound: { walk: 'hound-run', attack: 'hound-jump', facesLeft: true, body: [40, 24], scale: 1.2 },
+  silver_wolf: { walk: 'wolf-run', facesLeft: false, body: [36, 22], scale: 1.1 },
+  flame_beast: { walk: 'beast-idle', attack: 'beast-breath', facesLeft: true, body: [26, 52], scale: 1.2, tint: 0xffb080 },
+  wraith_knight: { walk: 'wraith-idle', attack: 'wraith-gallop', facesLeft: true, body: [64, 54], scale: 0.9 },
+  abyss_lord: { walk: 'abyss-idle', attack: 'abyss-attack', facesLeft: true, body: [70, 96], scale: 1.2 },
 };
 
-type State = 'move' | 'windup' | 'recover' | 'dash' | 'dive' | 'rise' | 'pattern';
-type Pattern = 'breath' | 'volley' | 'slam' | 'charge' | 'leap' | 'combo';
+export type State = 'move' | 'windup' | 'recover' | 'dash' | 'dive' | 'rise' | 'pattern' | 'leap';
+export type Pattern = 'breath' | 'volley' | 'slam' | 'charge' | 'leap' | 'combo' | 'feathers' | 'sweep' | 'beams' | 'pillars' | 'meteors';
 
-const HOVER_Y = 190;
+export const HOVER_Y = 190;
 
 export class Monster {
   readonly def: MonsterDef;
@@ -58,32 +76,42 @@ export class Monster {
   state: State = 'move';
   stateTime = 0;
   attackTimer: number;
-  private pattern: Pattern = 'breath';
-  private step = 0;
-  private hitDone = false;
+  // 아래는 챕터별 행동 함수(mobs/)도 쓰는 상태
+  pattern: Pattern = 'breath';
+  step = 0;
+  hitDone = false;
+  targetX = 0;
+  targetY = 0;
+  /** 이 체력 비율 아래로 내려갈 때마다 부하를 부른다 */
+  summonAt = [0.7, 0.4];
+  /** 받는 피해 감소 보호막 (후광 망령) 남은 시간 */
+  ward = 0;
+  /** 이동속도 증가 (늑대 울음) 남은 시간 */
+  boostTime = 0;
+  /** 행동 함수가 자유롭게 쓰는 타이머 */
+  aux = 0;
   private dashCd = 3;
-  private targetX = 0;
-  private targetY = 0;
   private bob = Math.random() * 10;
-  private summonAt = [0.7, 0.4];
+  private wardFx: Phaser.GameObjects.Image | null = null;
   private bar: Phaser.GameObjects.Rectangle | null = null;
   private barBg: Phaser.GameObjects.Rectangle | null = null;
   private barW = 26;
 
   constructor(
-    private readonly scene: BattleScene,
+    readonly scene: BattleScene,
     kind: MonsterKind,
     elite: boolean,
     hpMul: number,
     x: number,
     y: number,
+    dmgMul = 1,
   ) {
     this.def = MONSTERS[kind];
     this.elite = elite;
     this.look = LOOKS[kind];
     this.maxHp = Math.round(this.def.hp * hpMul * (elite ? ELITE_MOD.hp : 1));
     this.hp = this.maxHp;
-    this.damage = this.def.damage * (elite ? ELITE_MOD.damage : 1);
+    this.damage = this.def.damage * (elite ? ELITE_MOD.damage : 1) * dmgMul;
     this.speed = this.def.speed * PX_PER_M * 0.75 * (elite ? 1.15 : 1);
     this.attackTimer = this.def.attackCd * (0.4 + Math.random() * 0.6);
 
@@ -119,7 +147,7 @@ export class Monster {
   }
 
   get flying(): boolean {
-    return this.def.flying || this.def.kind === 'golem_lord';
+    return this.def.flying || this.def.kind === 'golem_lord' || this.def.kind === 'abyss_lord';
   }
 
   get boss(): boolean {
@@ -168,6 +196,7 @@ export class Monster {
   }
 
   destroy(): void {
+    this.wardFx?.destroy();
     this.sprite.destroy();
     this.zone.destroy();
     this.bar?.destroy();
@@ -189,6 +218,8 @@ export class Monster {
       if (this.vulnTime <= 0) this.vuln = 0;
     }
     this.knockTime = Math.max(0, this.knockTime - dt);
+    this.ward = Math.max(0, this.ward - dt);
+    this.boostTime = Math.max(0, this.boostTime - dt);
 
     if (this.spawnTime > 0) {
       this.spawnTime -= dt;
@@ -206,10 +237,12 @@ export class Monster {
         switch (this.def.kind) {
           case 'zombie':
           case 'poison_zombie':
+          case 'blood_skeleton':
             this.updateWalker(dt);
             break;
           case 'mage':
           case 'fire_mage':
+          case 'frost_mage':
             this.updateCaster(dt);
             break;
           case 'minion':
@@ -219,11 +252,15 @@ export class Monster {
             this.updateBeast(dt);
             break;
           case 'grave_knight':
+          case 'wraith_knight':
             this.updateNightmare(dt);
             break;
           case 'golem_lord':
+          case 'abyss_lord':
             this.updateDemon(dt);
             break;
+          default:
+            BEHAVIORS[this.def.kind]?.(this, dt);
         }
       }
     }
@@ -234,6 +271,15 @@ export class Monster {
 
   private sync(): void {
     const s = this.sprite;
+    if (this.ward > 0) {
+      this.wardFx ??= this.scene.add.image(0, 0, 'fx-hex').setTint(0xffd060).setBlendMode(Phaser.BlendModes.ADD).setDepth(DEPTH.monster + 1);
+      const size = Math.max(this.body.width, this.body.height) + 14;
+      this.wardFx
+        .setVisible(true)
+        .setPosition(this.x, this.y)
+        .setScale(size / 48)
+        .setAlpha(0.35 + Math.sin(this.scene.time.now * 0.008) * 0.15);
+    } else this.wardFx?.setVisible(false);
     s.setFlipX(this.look.facesLeft ? this.facing === 1 : this.facing === -1);
     const bob = this.flying ? Math.sin((this.bob += 0.06)) * 2 : 0;
     s.setPosition(Math.round(this.x), Math.round(this.body.bottom + 2 + bob));
@@ -245,20 +291,20 @@ export class Monster {
     }
   }
 
-  private toPlayer(): { dx: number; dy: number; dist: number } {
+  toPlayer(): { dx: number; dy: number; dist: number } {
     const p = this.scene.player;
     const dx = p.x - this.x;
     const dy = p.y - this.y;
     return { dx, dy, dist: Math.abs(dx) };
   }
 
-  private face(dx: number): void {
+  face(dx: number): void {
     if (dx !== 0) this.facing = dx > 0 ? 1 : -1;
   }
 
   /** 발판 끝에서 떨어지지 않도록 멈춘다. */
-  private walk(dir: number, speedMul = 1): void {
-    const v = dir * this.speed * this.slowMul * speedMul;
+  walk(dir: number, speedMul = 1): void {
+    const v = dir * this.speed * this.slowMul * speedMul * (this.boostTime > 0 ? 1.3 : 1);
     if (dir !== 0 && this.body.blocked.down) {
       const s = this.scene.surfaceUnder(this);
       if (s) {
@@ -273,7 +319,7 @@ export class Monster {
     if (dir !== 0) this.face(dir);
   }
 
-  private play(key: string | undefined): void {
+  play(key: string | undefined): void {
     if (key && this.sprite.anims.currentAnim?.key !== key) this.sprite.play(key);
   }
 
@@ -350,7 +396,7 @@ export class Monster {
   // ─── 해골 마법사 / 불타는 구울: 거리를 두고 쏜다 ───
   private updateCaster(dt: number): void {
     const { dx, dy, dist } = this.toPlayer();
-    const mage = this.def.kind === 'mage';
+    const mage = this.def.kind !== 'fire_mage';
     this.stateTime -= dt;
     this.attackTimer -= dt;
     if (this.state === 'move') {
@@ -378,7 +424,7 @@ export class Monster {
         const spreads = this.elite ? [-0.22, 0, 0.22] : [0];
         for (const s of spreads) {
           const v = mage ? 170 : 150;
-          this.scene.spawnEnemyBolt(ox, oy, Math.cos(ang + s) * v, Math.sin(ang + s) * v, this.damage, this, mage ? 0 : 26);
+          this.scene.spawnEnemyBolt(ox, oy, Math.cos(ang + s) * v, Math.sin(ang + s) * v, this.damage, this, mage ? 0 : 26, this.def.kind === 'frost_mage' ? { kind: 'frost', slow: true } : undefined);
         }
         this.attackTimer = this.def.attackCd;
         this.state = 'move';
@@ -485,8 +531,9 @@ export class Monster {
     const { dx, dist } = this.toPlayer();
     if (!this.phase2 && this.hp / this.maxHp < 0.5) {
       this.phase2 = true;
-      this.scene.announce('악몽마가 망자를 불러낸다!', 1.6);
-      for (let i = 0; i < 3; i++) this.scene.spawnMonster('zombie', false, this.x + (i - 1) * 60);
+      const wraith = this.def.kind === 'wraith_knight';
+      this.scene.announce(`${this.def.name}가 ${wraith ? '지옥견을' : '망자를'} 불러낸다!`, 1.6);
+      for (let i = 0; i < 3; i++) this.scene.spawnMonster(wraith ? 'hell_hound' : 'zombie', false, this.x + (i - 1) * 60);
     }
     this.stateTime -= dt;
     this.attackTimer -= dt;
@@ -528,7 +575,14 @@ export class Monster {
           this.scene.damagePlayer(this.damage, { x: this.x, monster: this, melee: true });
           this.scene.player.knockback(this.x, 220);
         }
-        if (this.stateTime <= 0 || this.body.blocked.left || this.body.blocked.right) this.endPattern();
+        if (this.stateTime <= 0 || this.body.blocked.left || this.body.blocked.right) {
+          // 망령 기사는 돌진이 끝나는 자리에서 충격파를 일으킨다.
+          if (this.def.kind === 'wraith_knight') {
+            this.scene.addShockwave(this.x, this.damage * 0.7, this);
+            this.scene.fx.ring(this.x, this.scene.floorY(), 60, 0x7ff0e0);
+          }
+          this.endPattern();
+        }
       }
     } else {
       if (this.step === 0) {
@@ -549,18 +603,26 @@ export class Monster {
   }
 
   // ─── 악마 군주 (보스): 떠다니며 화염 숨결, 불덩이, 내려찍기 충격파, 소환 ───
+  // 심연의 군주도 같은 행동을 쓰고, 불기둥 줄·운석 비 패턴이 더해진다 (mobs/chapter3.ts).
   private updateDemon(dt: number): void {
     const p = this.scene.player;
     const ratio = this.hp / this.maxHp;
+    const abyss = this.def.kind === 'abyss_lord';
     if (!this.phase2 && ratio < 0.5) {
       this.phase2 = true;
-      this.scene.announce('악마 군주가 격노했다!');
+      this.scene.announce(`${this.def.name}가 격노했다!`);
     }
     if (this.summonAt.length && ratio < this.summonAt[0]) {
       this.summonAt.shift();
-      this.scene.announce('악마 군주가 하수인을 부른다!');
-      for (let i = 0; i < 4; i++) this.scene.spawnMonster(i < 3 ? 'zombie' : 'minion', false, 100 + Math.random() * (this.scene.level.width - 200));
-      if (this.phase2) this.scene.spawnMonster('golem', true);
+      this.scene.announce(`${this.def.name}가 하수인을 부른다!`);
+      const W = this.scene.level.width;
+      if (abyss) {
+        for (let i = 0; i < 3; i++) this.scene.spawnMonster('hell_hound', false, 100 + Math.random() * (W - 200));
+        if (this.phase2) this.scene.spawnMonster('flame_beast', false);
+      } else {
+        for (let i = 0; i < 4; i++) this.scene.spawnMonster(i < 3 ? 'zombie' : 'minion', false, 100 + Math.random() * (W - 200));
+        if (this.phase2) this.scene.spawnMonster('golem', true);
+      }
     }
     const fast = this.phase2 ? 0.7 : 1;
     this.stateTime -= dt;
@@ -572,7 +634,7 @@ export class Monster {
       body.setVelocity((tx - this.x) * 0.8, (HOVER_Y - this.y) * 2);
       this.face(p.x - this.x);
       if (this.attackTimer <= 0) {
-        const options: Pattern[] = ['breath', 'volley', 'slam', 'breath'];
+        const options: Pattern[] = abyss ? ['breath', 'volley', 'slam', 'pillars', 'meteors', 'pillars'] : ['breath', 'volley', 'slam', 'breath'];
         this.pattern = options[Math.floor(Math.random() * options.length)];
         this.state = 'pattern';
         this.step = 0;
@@ -627,12 +689,15 @@ export class Monster {
           this.endPattern();
         }
         break;
-      default:
-        this.endPattern();
+      default: {
+        const extra = ABYSS_PATTERNS[this.pattern];
+        if (extra) extra(this, dt);
+        else this.endPattern();
+      }
     }
   }
 
-  private endPattern(): void {
+  endPattern(): void {
     this.state = 'recover';
     this.stateTime = this.phase2 ? 0.5 : 0.9;
     this.attackTimer = this.def.attackCd * (this.phase2 ? 0.7 : 1);

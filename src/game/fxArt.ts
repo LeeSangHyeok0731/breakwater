@@ -497,6 +497,18 @@ export function createFxArt(scene: Phaser.Scene): void {
   });
   anim(scene, 'fx-muzzle', 3, 24);
 
+  // 깃털 (타락천사의 탄): 오른쪽이 끝
+  sheet(scene, 'fx-feather', 12, 5, 1, (px) => {
+    for (let x = 0; x < 12; x++) {
+      const w = x < 2 ? 0 : x > 9 ? 0 : 1 + (x > 3 && x < 8 ? 1 : 0);
+      for (let y = 2 - w; y <= 2 + w; y++) px(x, y, y === 2 ? 0xd8c8b0 : x % 2 ? 0xffffff : 0xf0e8f8);
+    }
+    px(10, 2, 0xffffff);
+    px(11, 2, 0xffd0e0);
+    px(0, 2, 0xb0a090);
+    px(1, 2, 0xb0a090);
+  });
+
   // 수류탄과 탄피
   sheet(scene, 'fx-grenade', 7, 8, 1, (px) => {
     for (let y = 2; y < 8; y++) for (let x = 0; x < 7; x++) if (Math.hypot(x - 3, y - 4.8) <= 3.2) px(x, y, x < 3 ? 0x7a8a40 : 0x4a5a2a);

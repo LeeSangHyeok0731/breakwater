@@ -38,6 +38,8 @@ const THEME_TINT: Record<Theme, { bg: number; far: number; near: number; ground:
   dusk: { bg: 0xffb08a, far: 0xe0907a, near: 0xd8a080, ground: 0xf0c8a8 },
   night: { bg: 0x8090e0, far: 0x7080c8, near: 0x8090c0, ground: 0xa0a8d0 },
   lava: { bg: 0xff7060, far: 0xc04838, near: 0xb05040, ground: 0xe08070 },
+  church: { bg: 0xffffff, far: 0xffffff, near: 0xffffff, ground: 0xffffff },
+  castle: { bg: 0xffffff, far: 0xffffff, near: 0xffffff, ground: 0xffffff },
 };
 
 function seeded(seed: number): () => number {
