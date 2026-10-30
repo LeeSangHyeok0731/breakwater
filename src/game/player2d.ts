@@ -58,6 +58,9 @@ export interface Buff {
 /** 칼 휘두르기 대신 무기 그림이 움직이는 원거리 동작 */
 const RANGED_ACTIONS: ReadonlySet<ActionKind> = new Set(['shoot', 'volley', 'rapid', 'snipe', 'barrage', 'manaball', 'cast', 'laser']);
 
+/** 평타: 쓰는 동안에도 이동 속도가 줄지 않는다. */
+const BASIC_ACTIONS: ReadonlySet<ActionKind> = new Set(['slash', 'airSlash', 'crouchSlash', 'shoot', 'manaball']);
+
 /** 1m를 몇 픽셀로 보는가 (데이터의 m/s 이동속도를 픽셀로 바꿀 때) */
 export const PX_PER_M = 24;
 const JUMP_V = -390;
@@ -220,7 +223,13 @@ export class Player {
   /** 활·총·스태프를 겨누는 중 (조준 자세로 무기를 손에 든다) */
   get aiming(): boolean {
     if (this.isMelee || this.dead || this.dodgeTime > 0) return false;
-    // 연달아 쏠 때 자세가 깜빡이지 않게 쏜 뒤에도 잠깐 겨눈 채로 있는다.
+    // 차징·정조준·재장전·스킬은 멈춰 서서 겨눈다.
+    const a = this.action;
+    if (this.charge >= 0 || this.ads || this.reloadTime > 0) return true;
+    if (a && RANGED_ACTIONS.has(a.kind) && !BASIC_ACTIONS.has(a.kind)) return true;
+    // 평타는 달리면서 쏘면 달리기 동작을 그대로 두고 (조준 자세로 미끄러지지 않게),
+    // 서서 연달아 쏠 때는 자세가 깜빡이지 않게 쏜 뒤에도 잠깐 겨눈 채로 있는다.
+    if (Math.abs(this.body.velocity.x) > 40) return false;
     return this.aimHold > 0 || this.wantsAim;
   }
 
@@ -314,7 +323,7 @@ export class Player {
     if (this.crouching || this.guarding || this.ads) wish = 0;
     let speed = this.moveSpeed();
     if (this.charge >= 0 || this.action?.kind === 'laser' || this.action?.kind === 'snipe') speed *= 0.35;
-    else if (this.action && this.grounded) speed *= 0.4;
+    else if (this.action && this.grounded && !BASIC_ACTIONS.has(this.action.kind)) speed *= 0.4;
     // 넉백 중에는 조작이 덜 먹힌다.
     const control = this.hurtTimer > 0.15 ? 0.05 : this.grounded ? 0.35 : 0.12;
     body.setVelocityX(body.velocity.x + (wish * speed - body.velocity.x) * Math.min(1, control * 60 * dt));
