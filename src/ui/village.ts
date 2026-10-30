@@ -327,25 +327,25 @@ export class VillageUI {
   // ---- 출정 ----
 
   private renderPhases(save: SaveData): void {
-    const s = this.section('출정', '페이즈를 골라 도전하세요');
+    // 챕터마다 섹션을 따로 둔다.
     const chapters = [...new Set(PHASES.map((p) => p.chapter))];
     for (const ch of chapters) {
       const list = PHASES.filter((p) => p.chapter === ch);
       const first = list[0];
       const open = !first.requires || save.cleared.includes(first.requires);
       const done = list.filter((p) => save.cleared.includes(p.id)).length;
-      const head = el('div', 'v-chapter', s);
-      el('span', 'v-chapter-name', head, CHAPTER_NAME[ch] ?? `챕터 ${ch}`);
-      el('span', 'v-muted', head, open ? `${done} / ${list.length} 클리어` : '잠김');
+      const s = this.section(CHAPTER_NAME[ch] ?? `챕터 ${ch}`, open ? `${done} / ${list.length} 클리어` : '잠김');
+      s.classList.add('v-chapter');
       if (!open) {
         // 아직 열리지 않은 챕터는 카드 대신 한 줄로 알린다.
+        s.classList.add('locked');
         const req = PHASES.find((q) => q.id === first.requires);
-        el('p', 'v-lock v-chapter-lock', s, `${first.requires} ${req ? req.name : ''}을(를) 클리어하면 열립니다.`);
+        el('p', 'v-lock', s, `${first.requires} ${req ? req.name : ''}을(를) 클리어하면 열립니다.`);
         continue;
       }
       for (const p of list) this.phaseCard(s, save, p);
     }
-    el('p', 'v-muted v-note', s, `소탕: 클리어한 페이즈를 소탕권 1장으로 즉시 완료하고 클리어 보상의 ${Math.round(SWEEP_RATE * 100)}%를 받습니다. (소탕권 보상 제외)`);
+    el('p', 'v-muted v-note', this.body, `소탕: 클리어한 페이즈를 소탕권 1장으로 즉시 완료하고 클리어 보상의 ${Math.round(SWEEP_RATE * 100)}%를 받습니다. (소탕권 보상 제외)`);
   }
 
   private phaseCard(s: HTMLElement, save: SaveData, p: PhaseDef): void {

@@ -1225,27 +1225,31 @@ body {
   font-weight: 700;
 }
 
-.v-chapter {
-  display: flex;
-  align-items: baseline;
+/* 출정 게시판: 챕터별 섹션 */
+.v-section.v-chapter {
+  padding: 12px 14px 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: rgba(224, 180, 90, 0.04);
+}
+
+.v-chapter .v-section-head {
   justify-content: space-between;
-  margin: 14px 0 8px;
-  padding-bottom: 4px;
-  border-bottom: 1px solid var(--border-strong);
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
 }
 
-.v-chapter:first-of-type {
-  margin-top: 0;
-}
-
-.v-chapter-name {
-  font-size: 15px;
-  font-weight: 800;
+.v-chapter .v-section-title {
   color: var(--accent-2);
 }
 
-.v-chapter-lock {
-  margin: 0 0 8px;
+.v-section.v-chapter.locked {
+  opacity: 0.6;
+  padding-bottom: 12px;
+}
+
+.v-chapter.locked .v-lock {
+  margin: 0;
 }
 
 .v-phase-id {
