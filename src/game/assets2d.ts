@@ -210,4 +210,16 @@ export function createAnimations(scene: Phaser.Scene): void {
   cem.add('plat-r', 0, 192, 64, 16, 32);
   const town = scene.textures.get('town-tiles');
   town.add('ground', 0, 48, 144, 48, 32);
+  // 대성당: 보라색 석재 블록
+  const church = scene.textures.get('church-tiles');
+  church.add('ground', 0, 64, 168, 48, 40);
+  church.add('plat-l', 0, 64, 168, 16, 32);
+  church.add('plat-m', 0, 64, 168, 48, 32);
+  church.add('plat-r', 0, 96, 168, 16, 32);
+  // 마왕성: 위가 이끼로 덮인 녹색 벽돌
+  const castle = scene.textures.get('castle-tiles');
+  castle.add('ground', 0, 512, 154, 32, 48);
+  castle.add('plat-l', 0, 464, 154, 16, 22);
+  castle.add('plat-m', 0, 464, 154, 32, 22);
+  castle.add('plat-r', 0, 480, 154, 16, 22);
 }
