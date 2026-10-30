@@ -44,10 +44,9 @@ export const LEGIONS: Record<LegionId, LegionDef> = {
     title: '원거리 군단장',
     line: 'ranged',
     weapons: ['bow', 'gun'],
-    monster: 'silent_knight',
+    monster: 'corrupted_elf',
     shard: 'corrupt_shard',
-    gimmick: '패턴이 끝나면 파란 화살을 쏜다. 가드키로 패링하면 엘프가 잠시 멈추고 피해를 2배로 받는다.',
-    locked: true,
+    gimmick: '패턴이 끝나면 파란 화살을 쏜다. 가드키로 패링하면 엘프가 5초 동안 무너지고 피해를 2배로 받는다. 이 전투에서는 원거리 무기로도 패링할 수 있다.',
   },
   darklord: {
     id: 'darklord',

@@ -92,6 +92,8 @@ export class Player {
   derived: Derived;
   /** 침묵(군단장 기믹): 남은 시간 동안 스킬을 쓸 수 없다 */
   silenceTime = 0;
+  /** 원거리 패링 대기 (엘프전) */
+  parryCd = 0;
   weapons: EquippedWeapon[];
   active = 0;
   cooldowns = new Map<string, number>();
@@ -271,6 +273,7 @@ export class Player {
 
   updateTimers(dt: number): void {
     this.silenceTime = Math.max(0, this.silenceTime - dt);
+    this.parryCd = Math.max(0, this.parryCd - dt);
     this.dodgeCd = Math.max(0, this.dodgeCd - dt);
     this.invuln = Math.max(0, this.invuln - dt);
     this.parryTimer = Math.max(0, this.parryTimer - dt);

@@ -220,6 +220,8 @@ export class BattleScene extends Phaser.Scene {
   legion: LegionRun | null = null;
   /** 침묵 스택 (침묵의 기사단장) */
   silenceStacks = 0;
+  /** 엘프 그로기 남은 시간 (HUD 표시용) */
+  legionGroggy = 0;
   private reviveLeft = 0;
 
   constructor() {
@@ -230,6 +232,7 @@ export class BattleScene extends Phaser.Scene {
     this.phase = data.phase;
     this.legion = data.legion ?? null;
     this.silenceStacks = 0;
+    this.legionGroggy = 0;
     this.reviveLeft = this.legion?.mods.includes('revive') ? 1 : 0;
     this.monsters = [];
     this.bolts = [];
@@ -366,6 +369,7 @@ export class BattleScene extends Phaser.Scene {
     this.updateWavesFx(dt);
     this.updateBeam();
     this.level.update();
+    this.legionGroggy = Math.max(0, this.legionGroggy - dt);
     this.hud.update(this.hudState());
 
     if (this.endTimer >= 0) {
@@ -636,6 +640,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   get silenceMax(): number {
+    if (this.legion?.id !== 'knight') return 0;
     return SILENCE_STACKS + (this.legion?.mods.includes('gimmick') ? 2 : 0);
   }
 
@@ -1481,7 +1486,15 @@ export class BattleScene extends Phaser.Scene {
       gold: this.pending.gold,
       kills: this.pending.kills,
       boss: barTarget ? { name: barTarget.def.name, hp: Math.max(0, barTarget.hp), maxHp: barTarget.maxHp, phase2: barTarget.phase2 } : null,
-      legion: this.legion ? { stacks: this.silenceStacks, max: this.silenceMax, silence: p.silenceTime, revive: this.reviveLeft } : null,
+      legion: this.legion
+        ? {
+            stacks: this.silenceStacks,
+            max: this.silenceMax,
+            silence: p.silenceTime,
+            revive: this.reviveLeft,
+            status: this.legionGroggy > 0 ? `그로기 ${this.legionGroggy.toFixed(1)}초 · 받는 피해 200%` : '',
+          }
+        : null,
       dodgeReady: p.dodgeCd <= 0,
     };
   }

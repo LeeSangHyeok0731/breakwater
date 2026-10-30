@@ -36,7 +36,8 @@ export type MonsterKind =
   | 'void_knight'
   | 'void_king'
   // 군단장
-  | 'silent_knight';
+  | 'silent_knight'
+  | 'corrupted_elf';
 
 export interface MonsterDef {
   kind: MonsterKind;
@@ -672,6 +673,24 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
     attackCd: 1.4,
     radius: 0.9,
     height: 3.6,
+    flying: false,
+    gold: 0,
+    exp: 0,
+    mana: 30,
+    drops: [],
+  },
+  corrupted_elf: {
+    kind: 'corrupted_elf',
+    name: '타락한 엘프',
+    // [초안] 노멀 기준. 기사단장보다 체력이 적은 대신 공격이 쉴 새 없다.
+    boss: true,
+    hp: 48000,
+    speed: 5.5,
+    damage: 60,
+    range: 12,
+    attackCd: 1.2,
+    radius: 0.8,
+    height: 3.4,
     flying: false,
     gold: 0,
     exp: 0,

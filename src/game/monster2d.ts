@@ -8,10 +8,11 @@ import { ABYSS_PATTERNS, CHAPTER3 } from './mobs/chapter3';
 import { CHAPTER4 } from './mobs/chapter4';
 import { CHAPTER5 } from './mobs/chapter5';
 import { silentKnight } from './legion/knight';
+import { corruptedElf } from './legion/elf';
 
 /** 챕터 2·3 몬스터의 행동 (몬스터 하나를 한 프레임 움직인다) */
 export type Behavior = (m: Monster, dt: number) => void;
-const BEHAVIORS: Partial<Record<MonsterKind, Behavior>> = { ...CHAPTER2, ...CHAPTER3, ...CHAPTER4, ...CHAPTER5, silent_knight: silentKnight };
+const BEHAVIORS: Partial<Record<MonsterKind, Behavior>> = { ...CHAPTER2, ...CHAPTER3, ...CHAPTER4, ...CHAPTER5, silent_knight: silentKnight, corrupted_elf: corruptedElf };
 
 export interface Look {
   walk: string;
@@ -59,6 +60,7 @@ const LOOKS: Record<MonsterKind, Look> = {
   void_angel: { walk: 'vangel-idle', attack: 'vangel-attack', facesLeft: false, body: [30, 50], scale: 0.75 },
   void_knight: { walk: 'vknight-idle', attack: 'vknight-gallop', facesLeft: true, body: [64, 54], scale: 0.95 },
   silent_knight: { walk: 'knight:hero-run', attack: 'knight:hero-idle', idle: 'knight:hero-idle', facesLeft: false, body: [16, 44], scale: 2.2 },
+  corrupted_elf: { walk: 'elf:hero-run', attack: 'elf:hero-idle', idle: 'elf:hero-idle', facesLeft: false, body: [16, 44], scale: 2.1 },
   void_king: { walk: 'vking-idle', attack: 'vking-attack', facesLeft: true, body: [70, 96], scale: 1.3 },
 };
 

@@ -1030,3 +1030,10 @@
     grid-template-columns: 1fr;
   }
 }
+
+.hud-legion-status {
+  font-size: 14px;
+  font-weight: 900;
+  color: #c8f0ff;
+  text-shadow: 0 0 8px #4ab0ff, 0 1px 0 #000;
+}
