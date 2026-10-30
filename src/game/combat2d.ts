@@ -45,6 +45,8 @@ function around(b: BattleScene, w: number, h: number, up: number, damage: number
 
 let cleaveCharge = 0;
 let laserTick = 0;
+/** 레이저 판정 띠의 절반 높이 (px) */
+const LASER_HALF_H = 12;
 /** 발도가 지나간 길 (뒤따르는 칼바람이 친다) */
 let iaiPath: { x0: number; len: number; y: number } | null = null;
 
@@ -444,7 +446,11 @@ function updateLaser(b: BattleScene, dt: number): void {
   laserTick = 0.1;
   const p = b.player;
   const m = p.muzzle();
-  b.hitscan(m.x, m.y, p.facing === 1 ? 0 : Math.PI, 380, b.skillBase({ int: 0.5 }), { pierce: true, color: 0x9fe8ff, width: 0, quiet: true });
+  // 광선은 손 높이에서 나가므로, 선 하나로 판정하면 키 작은 적(고양이·늑대 등)을 지나친다.
+  // 보이는 광선 굵기만큼의 띠로 판정한다.
+  const len = 380;
+  const x0 = p.facing === 1 ? m.x : m.x - len;
+  b.hitArea(x0, m.y - LASER_HALF_H, len, LASER_HALF_H * 2, b.skillBase({ int: 0.5 }), { quiet: true, knock: 30 });
 }
 
 /** 시전 연출: 발밑 마법진과 피어오르는 기운. 버프는 빛기둥까지 솟는다. */
