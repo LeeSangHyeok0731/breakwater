@@ -25,7 +25,8 @@ export interface SaveData {
   /** 공용 패시브 단계 */
   passives: Record<string, number>;
   /** 보유한 방어구·장신구 id와 부위별 장착 */
-  gear: { owned: string[]; equipped: Partial<Record<GearSlot, string>> };
+  /** enhance: 방어구 id별 강화 수치 (세트 방어구 강화 합 효과에 쓴다. 강화 방법은 아직 없다) */
+  gear: { owned: string[]; equipped: Partial<Record<GearSlot, string>>; enhance: Record<string, number> };
   potions: { hp: number; mp: number };
   materials: Record<string, number>;
   cleared: string[];
@@ -55,7 +56,7 @@ export function newSave(): SaveData {
     learnedSkills: [...STARTER_SKILLS],
     skillSets: {},
     passives: {},
-    gear: { owned: [], equipped: {} },
+    gear: { owned: [], equipped: {}, enhance: {} },
     potions: { hp: 0, mp: 0 },
     materials: {},
     cleared: [],
@@ -80,7 +81,7 @@ function normalize(data: Partial<SaveData>): SaveData {
     materials: { ...data.materials },
     passives: { ...data.passives },
     skillSets: { ...data.skillSets },
-    gear: { owned: [...(data.gear?.owned ?? [])], equipped: { ...data.gear?.equipped } },
+    gear: { owned: [...(data.gear?.owned ?? [])], equipped: { ...data.gear?.equipped }, enhance: { ...data.gear?.enhance } },
     potions: { ...base.potions, ...data.potions },
     // v3에서 2D 키보드 조작으로 바뀌어 예전(마우스·WASD) 키 설정은 버린다.
     keymap: (data.version ?? 1) < 3 ? { ...DEFAULT_KEYMAP } : { ...DEFAULT_KEYMAP, ...data.keymap },

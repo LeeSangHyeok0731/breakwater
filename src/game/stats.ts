@@ -20,7 +20,7 @@ export const DEX_SPEED_CAP = 0.5;
 /** 레벨 자동 상승 + 분배한 포인트 + 장비 보너스 */
 export function totalStats(save: SaveData): Stats {
   const auto = BASE_STAT + (save.level - 1);
-  const g = gearBonus(save.gear.equipped);
+  const g = gearBonus(save.gear.equipped, save.gear.enhance);
   return {
     str: auto + save.allocated.str + g.str,
     dex: auto + save.allocated.dex + g.dex,
@@ -38,6 +38,11 @@ export interface Derived {
   /** 마나 계산에 쓰는 마력 (스탯 전환 패시브 포함) */
   manaInt: number;
   passive: PassiveBonus;
+  /** 장비·세트 효과: 치명타 피해 추가, 주는 피해 증가, 받는 피해 감소, 스킬 쿨타임 감소 */
+  critDamage: number;
+  damageMul: number;
+  damageReduce: number;
+  cdReduce: number;
 }
 
 export function derive(s: Stats, passives: Record<string, number> = {}, gear: GearStats = {}): Derived {
@@ -55,6 +60,10 @@ export function derive(s: Stats, passives: Record<string, number> = {}, gear: Ge
     moveSpeed: 5 * (1 + Math.min(s.dex * 0.005, DEX_SPEED_CAP)),
     manaInt,
     passive: pb,
+    critDamage: gear.critDamage ?? 0,
+    damageMul: gear.damageMul ?? 0,
+    damageReduce: gear.damageReduce ?? 0,
+    cdReduce: gear.cdReduce ?? 0,
   };
 }
 

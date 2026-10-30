@@ -231,6 +231,28 @@ export class DevPanel {
       for (const w of s.weapons) w.enhance = MAX_ENHANCE;
       return `모든 무기 +${MAX_ENHANCE}`;
     });
+    // 세트 방어구는 아직 얻는 곳과 강화 방법이 없어서 여기서 시험한다.
+    const srow = el('div', 'dev-row', it);
+    this.saveButton(srow, '세트 방어구 지급', (s) => {
+      const ids = Object.values(GEAR)
+        .filter((d) => d.set)
+        .map((d) => d.id);
+      s.gear.owned = [...new Set([...s.gear.owned, ...ids])];
+      return `세트 방어구 ${ids.length}개 지급`;
+    });
+    this.saveButton(srow, '입은 방어구 강화 +1', (s) => {
+      let n = 0;
+      for (const id of Object.values(s.gear.equipped)) {
+        if (!id || !GEAR[id]?.set) continue;
+        s.gear.enhance[id] = Math.min(MAX_ENHANCE, (s.gear.enhance[id] ?? 0) + 1);
+        n++;
+      }
+      return n ? `입은 세트 방어구 ${n}개 강화 +1` : '입은 세트 방어구가 없습니다';
+    });
+    this.saveButton(srow, '방어구 강화 초기화', (s) => {
+      s.gear.enhance = {};
+      return '방어구 강화 수치를 0으로';
+    });
     const mrow = el('div', 'dev-row', it);
     this.saveButton(mrow, '재료 각 +20', (s) => {
       for (const id of Object.keys(MATERIALS)) s.materials[id] = (s.materials[id] ?? 0) + 20;

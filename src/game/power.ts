@@ -2,7 +2,7 @@ import type { SaveData } from '../core/save';
 import { gearBonus } from '../data/gear';
 import { PHASES } from '../data/phases';
 import { WEAPONS, type WeaponDef } from '../data/weapons';
-import { BASE_STAT, CRIT_DAMAGE, STAT_POINTS_PER_LEVEL, basicDamage, derive, enhanceMultiplier, expToNext, totalStats, type Stats } from './stats';
+import { BASE_STAT, CRIT_DAMAGE, STAT_POINTS_PER_LEVEL, basicDamage, derive, enhanceMultiplier, expToNext, totalStats, type Derived, type Stats } from './stats';
 
 /**
  * 전투력 [초안]: 100 × √(한 방 기대 피해 × 최대 HP).
@@ -12,24 +12,26 @@ function powerOf(hit: number, maxHp: number): number {
   return Math.round(100 * Math.sqrt(Math.max(0, hit) * Math.max(0, maxHp)));
 }
 
-/** 치명타까지 반영한 한 방 기대 피해. 총은 치명타 대신 항상 오르는 규칙을 쓴다 (battleScene과 같다). */
-function expectedHit(def: WeaponDef, enhance: number, s: Stats, critBonus: number): number {
-  const c = Math.min(1, def.critChance + critBonus);
-  const mul = def.type === 'gun' ? 1 + (CRIT_DAMAGE + c) * 0.8 : 1 + c * CRIT_DAMAGE;
-  return basicDamage(def, enhance, s) * mul;
+/** 치명타·주는 피해 증가까지 반영한 한 방 기대 피해. 총은 치명타 대신 항상 오르는 규칙을 쓴다 (battleScene과 같다). */
+function expectedHit(def: WeaponDef, enhance: number, s: Stats, d: Derived): number {
+  const c = Math.min(1, def.critChance + d.passive.critBonus);
+  const critDamage = CRIT_DAMAGE + d.critDamage;
+  const mul = def.type === 'gun' ? 1 + (critDamage + c) * 0.8 : 1 + c * critDamage;
+  return basicDamage(def, enhance, s) * mul * (1 + d.damageMul);
 }
 
 /** 내 전투력: 장착한 두 무기 중 센 쪽 기준 */
 export function combatPower(save: SaveData): number {
   const stats = totalStats(save);
-  const d = derive(stats, save.passives, gearBonus(save.gear.equipped));
+  const d = derive(stats, save.passives, gearBonus(save.gear.equipped, save.gear.enhance));
   let hit = 0;
   for (const uid of save.equipped) {
     const w = save.weapons.find((o) => o.uid === uid);
     const def = w && WEAPONS[w.defId];
-    if (def) hit = Math.max(hit, expectedHit(def, w.enhance, stats, d.passive.critBonus));
+    if (def) hit = Math.max(hit, expectedHit(def, w.enhance, stats, d));
   }
-  return powerOf(hit, d.maxHp);
+  // 받는 피해가 줄면 그만큼 더 버틴다.
+  return powerOf(hit, d.maxHp / (1 - d.damageReduce));
 }
 
 /**
