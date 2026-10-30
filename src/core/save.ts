@@ -89,11 +89,18 @@ function normalize(data: Partial<SaveData>): SaveData {
   };
 }
 
-/** 무기 종류의 슬롯에 들어가는 스킬 id (최대 8개, 슬롯 순서). 고른 세트가 있으면 그것을, 없으면 배운 스킬을 목록 순서대로. */
+/**
+ * 무기 종류의 슬롯에 들어가는 스킬 id (최대 8개, 슬롯 순서). 고른 세트가 있으면 그것을, 없으면 배운 스킬을 목록 순서대로.
+ * 고른 세트에서는 빈칸을 ''로 남겨 둔다 (가운데 칸을 비워도 뒤 칸이 당겨지지 않는다).
+ */
 export function skillSlotIds(save: SaveData, type: WeaponType): string[] {
   const learned = (id: string): boolean => save.learnedSkills.includes(id) && SKILL_BY_ID[id]?.weapon === type;
   const set = save.skillSets[type];
-  if (set) return set.filter(learned).slice(0, SKILL_SLOTS);
+  if (set) {
+    const ids = set.slice(0, SKILL_SLOTS).map((id) => (learned(id) ? id : ''));
+    while (ids.length && !ids[ids.length - 1]) ids.pop();
+    return ids;
+  }
   return SKILLS.filter((s) => learned(s.id)).map((s) => s.id).slice(0, SKILL_SLOTS);
 }
 

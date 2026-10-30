@@ -1,17 +1,17 @@
 import { combatPower, powerVerdict, recommendedPower } from '../game/power';
 import { koNum } from './format';
-import { exportSave, importSave, type SaveData, skillSlotIds } from '../core/save';
-import { DEFAULT_KEYMAP, keyLabel, SLOT_ACTIONS, type Action } from '../core/input';
+import { renderEquipPanel, type PanelHost } from './equipPanel';
+import { renderSkillPanel } from './skillPanel';
+import { exportSave, importSave, type SaveData } from '../core/save';
+import { DEFAULT_KEYMAP, keyLabel, type Action } from '../core/input';
 import { weaponIconUrl } from '../game/weaponArt';
-import { addExp, derive, DEX_SPEED_CAP, enhanceMultiplier, expToNext, resetCost, totalStats, type Stats } from '../game/stats';
+import { addExp, enhanceMultiplier, expToNext } from '../game/stats';
 import { CHAPTER_NAME, PHASES, SWEEP_RATE, SWEEP_TICKET_PRICE, type PhaseDef } from '../data/phases';
-import { SKILL_BY_ID, SKILL_SLOTS, SKILL_TIER_NAME, skillsFor, STARTER_SKILLS } from '../data/skills';
 import type { WeaponType } from '../data/weapons';
-import { CLASS_NAME, enhanceCost, GRADES, MAX_ENHANCE, WEAPON_TYPE_NAME, WEAPONS, type WeaponDef } from '../data/weapons';
+import { enhanceCost, GRADES, MAX_ENHANCE, WEAPON_TYPE_NAME, WEAPONS, type WeaponDef } from '../data/weapons';
 import { MATERIALS } from '../data/items';
 import { sfx } from '../core/audio';
-import { PASSIVES, type PassiveDef } from '../data/passives';
-import { GEAR, GEAR_SLOT_NAME, GEAR_SLOTS, gearBonus, gearStatsText, POTIONS, type GearDef } from '../data/gear';
+import { GEAR, GEAR_SLOT_NAME, gearStatsText, POTIONS, type GearDef } from '../data/gear';
 
 export interface VillageCallbacks {
   onStartPhase(phaseId: string): void;
@@ -23,28 +23,21 @@ export interface VillageCallbacks {
   onReset(): void;
   /** 창을 닫았다 (닫기 버튼, Esc, 상호작용 키) */
   onClose(): void;
+  /** 장비창에 그릴 직업별 캐릭터 그림 */
+  portrait(type: WeaponType): HTMLCanvasElement | null;
 }
 
-export type Tab = 'phase' | 'char' | 'equip' | 'skill' | 'enhance' | 'exchange' | 'shop' | 'settings';
+export type Tab = 'phase' | 'equip' | 'skill' | 'enhance' | 'exchange' | 'shop' | 'settings';
 type ConfirmKey = 'statReset' | 'skillReset' | 'fullReset';
-type StatKey = keyof Stats;
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'phase', label: '출정' },
-  { id: 'char', label: '캐릭터' },
-  { id: 'equip', label: '장비' },
+  { id: 'equip', label: '장비 · 캐릭터' },
   { id: 'skill', label: '스킬' },
   { id: 'enhance', label: '강화' },
   { id: 'exchange', label: '재료 교환' },
   { id: 'shop', label: '상점' },
   { id: 'settings', label: '설정' },
-];
-
-const STAT_INFO: { key: StatKey; name: string; desc: string }[] = [
-  { key: 'str', name: '힘', desc: '근접 무기(도·검) 피해 증가. 활 피해에 30% 반영.' },
-  { key: 'dex', name: '민첩', desc: '활 피해 증가(70% 반영). 이동속도 증가(상한 있음).' },
-  { key: 'int', name: '마력', desc: '최대 마나와 마나 회복 증가. 마법(스태프) 피해 증가.' },
-  { key: 'hp', name: 'HP', desc: '최대 체력 증가 (1당 +10).' },
 ];
 
 const ACTION_LABELS: Record<Action, string> = {
@@ -69,6 +62,8 @@ const ACTION_LABELS: Record<Action, string> = {
   item1: '체력 포션',
   item2: '마나 포션',
   interact: '대화 (마을)',
+  inventory: '장비창 (마을)',
+  skills: '스킬창 (마을)',
   menu: '메뉴 · 일시정지',
 };
 
@@ -211,7 +206,10 @@ export class VillageUI {
   /** Esc나 상호작용 키로 창을 닫는다 (키 변경 중에는 무시). */
   private handleKey(e: KeyboardEvent): void {
     if (!this.visible || this.rebinding || e.repeat) return;
-    if (e.code === 'Escape' || e.code === this.getSave().keymap.interact) {
+    const km = this.getSave().keymap;
+    // 장비창·스킬창은 연 키를 다시 눌러도 닫힌다.
+    const toggle = this.allowed.length === 1 && ((this.tab === 'equip' && e.code === km.inventory) || (this.tab === 'skill' && e.code === km.skills));
+    if (e.code === 'Escape' || e.code === km.interact || toggle) {
       e.preventDefault();
       this.close();
     }
@@ -239,14 +237,11 @@ export class VillageUI {
       case 'phase':
         this.renderPhases(save);
         break;
-      case 'char':
-        this.renderChar(save);
-        break;
       case 'equip':
-        this.renderEquip(save);
+        renderEquipPanel(this.host, save);
         break;
       case 'skill':
-        this.renderSkills(save);
+        renderSkillPanel(this.host, save);
         break;
       case 'enhance':
         this.renderEnhance(save);
@@ -265,6 +260,20 @@ export class VillageUI {
   }
 
   // ---- 공통 ----
+
+  /** 장비창·스킬창 패널이 빌려 쓰는 기능 */
+  private get host(): PanelHost {
+    return {
+      body: this.body,
+      getSave: this.getSave,
+      changed: () => this.changed(),
+      toast: (text, kind) => this.toast(text, kind),
+      confirm: (key) => this.confirm(key),
+      isConfirming: (key) => this.confirming === key,
+      section: (title, note) => this.section(title, note),
+      portrait: (type) => this.cb.portrait(type),
+    };
+  }
 
   private changed(): void {
     this.clearConfirm();
@@ -425,174 +434,13 @@ export class VillageUI {
 
   // ---- 캐릭터 ----
 
-  private renderChar(save: SaveData): void {
-    const stats = totalStats(save);
-    const d = derive(stats, save.passives, gearBonus(save.gear.equipped));
-
-    const s = this.section('스탯', `남은 포인트 ${save.statPoints}`);
-    for (const info of STAT_INFO) {
-      const row = el('div', 'v-stat-row', s);
-      const left = el('div', 'v-stat-left', row);
-      const name = el('div', 'v-stat-name', left);
-      el('span', '', name, info.name);
-      el('span', 'v-stat-val', name, String(stats[info.key]));
-      const alloc = save.allocated[info.key];
-      if (alloc > 0) el('span', 'v-muted', name, `(분배 +${alloc})`);
-      el('div', 'v-desc', left, info.desc);
-      const btns = el('div', 'v-stat-btns', row);
-      button(btns, '+1', 'small', save.statPoints >= 1, () => this.allocate(info.key, 1));
-      button(btns, '+5', 'small', save.statPoints >= 5, () => this.allocate(info.key, 5));
-      // 남은 포인트를 이 스탯에 한 번에 모두 넣는다.
-      button(btns, save.statPoints > 0 ? `전부 +${save.statPoints}` : '전부', 'small', save.statPoints >= 1, () => this.allocate(info.key, this.getSave().statPoints));
-    }
-    el('p', 'v-muted v-note', s, '레벨이 오를 때마다 모든 기본 스탯이 1씩 자동으로 오르고, 스탯 포인트 5를 받습니다.');
-
-    const ds = this.section('능력치');
-    const grid = el('div', 'v-kv', ds);
-    const kv = (k: string, v: string, note?: string): void => {
-      el('span', 'v-kv-k', grid, k);
-      const ve = el('span', 'v-kv-v', grid, v);
-      if (note) el('span', 'v-muted', ve, `  ${note}`);
-    };
-    kv('최대 HP', fmt(d.maxHp));
-    kv('최대 마나', fmt(d.maxMp), d.manaInt > stats.int ? `(마나용 마력 ${d.manaInt.toFixed(1)})` : undefined);
-    kv('마나 회복', `초당 ${d.mpRegen.toFixed(2)}`);
-    const bonus = Math.min(stats.dex * 0.005, DEX_SPEED_CAP);
-    kv('이동속도', `${d.moveSpeed.toFixed(2)} m/s`, `(스탯 보너스 +${(bonus * 100).toFixed(1)}%, 최대 +${DEX_SPEED_CAP * 100}%)`);
-    if (d.passive.speedMul > 0) kv('패시브 이동속도', `+${(d.passive.speedMul * 100).toFixed(0)}%`, '(상한 없음)');
-    if (d.passive.critBonus > 0) kv('치명타 확률 보너스', `+${(d.passive.critBonus * 100).toFixed(0)}%`);
-
-    const rs = this.section('스탯 초기화', '분배한 포인트를 모두 돌려받습니다');
-    const cost = resetCost(save.level);
-    const allocated = save.allocated.str + save.allocated.dex + save.allocated.int + save.allocated.hp;
-    const confirming = this.confirming === 'statReset';
-    const actions = el('div', 'v-actions', rs);
-    button(
-      actions,
-      confirming ? `정말 초기화? (${fmt(cost)} 골드)` : `스탯 초기화 (${fmt(cost)} 골드)`,
-      confirming ? 'danger' : '',
-      allocated > 0 && save.gold >= cost,
-      () => {
-        if (this.confirm('statReset')) this.resetStats();
-      },
-    );
-    if (allocated === 0) el('span', 'v-muted', actions, '분배한 포인트가 없습니다');
-    else if (save.gold < cost) el('span', 'v-short', actions, '골드가 부족합니다');
-  }
-
-  private allocate(key: StatKey, n: number): void {
-    const save = this.getSave();
-    if (save.statPoints < n) return;
-    save.statPoints -= n;
-    save.allocated[key] += n;
-    this.changed();
-  }
-
-  private resetStats(): void {
-    const save = this.getSave();
-    const cost = resetCost(save.level);
-    if (save.gold < cost) return;
-    const a = save.allocated;
-    const total = a.str + a.dex + a.int + a.hp;
-    save.gold -= cost;
-    save.statPoints += total;
-    save.allocated = { str: 0, dex: 0, int: 0, hp: 0 };
-    this.changed();
-    this.toast(`스탯을 초기화했습니다. 포인트 ${total} 반환`);
-  }
-
   // ---- 장비 ----
-
-  private renderEquip(save: SaveData): void {
-    const s = this.section('장착 직업', '무기 종류가 곧 직업입니다. 전투 중 직업 교체 키로 두 직업을 오갑니다');
-    const slots = el('div', 'v-equip-slots', s);
-    save.equipped.forEach((uid, i) => {
-      const w = save.weapons.find((x) => x.uid === uid);
-      const def = w ? WEAPONS[w.defId] : undefined;
-      const box = el('div', 'v-equip-slot', slots);
-      el('span', 'v-muted', box, `직업 ${i + 1}`);
-      if (def) weaponIcon(box, def);
-      const name = el('span', 'v-card-title', box, def ? `${def.name}${w && w.enhance > 0 ? ` +${w.enhance}` : ''}` : '없음');
-      if (def) name.style.color = GRADES[def.grade].color;
-      if (def) el('span', 'v-muted', box, `${CLASS_NAME[def.type]} · ${WEAPON_TYPE_NAME[def.type]}`);
-    });
-
-    const list = this.section('보유 무기', `${save.weapons.length}개`);
-    for (const w of save.weapons) {
-      const def = WEAPONS[w.defId];
-      if (!def) continue;
-      const card = el('div', 'v-card', list);
-      const head = el('div', 'v-card-head', card);
-      weaponIcon(head, def);
-      const name = el('span', 'v-card-title', head, def.name);
-      name.style.color = GRADES[def.grade].color;
-      if (w.enhance > 0) el('span', 'v-enh', head, `+${w.enhance}`);
-      el('span', 'v-muted', head, `${GRADES[def.grade].name} ${WEAPON_TYPE_NAME[def.type]}`);
-      const slot = save.equipped.indexOf(w.uid);
-      if (slot >= 0) el('span', 'v-badge clear', head, `직업 ${slot + 1}`);
-      el('p', 'v-desc', card, def.desc);
-      this.weaponMeta(card, def);
-      const actions = el('div', 'v-actions', card);
-      for (const i of [0, 1]) {
-        button(actions, `직업 ${i + 1}에 장착`, i === 0 ? 'primary' : '', save.equipped[i] !== w.uid, () => this.equip(w.uid, i));
-      }
-    }
-    el('p', 'v-muted v-note', list, '새 무기는 상점에서 사거나 재료로 교환해 얻습니다.');
-
-    const gs = this.section('방어구·장신구', '방어구는 HP·스탯, 장신구는 특수 효과');
-    const grid = el('div', 'v-gear-slots', gs);
-    for (const slot of GEAR_SLOTS) {
-      const id = save.gear.equipped[slot];
-      const def = id ? GEAR[id] : undefined;
-      const box = el('div', `v-gear-slot${def ? '' : ' empty'}`, grid);
-      el('span', 'v-muted', box, GEAR_SLOT_NAME[slot]);
-      const name = el('span', 'v-gear-name', box, def ? def.name : '비어 있음');
-      if (def) {
-        name.style.color = GRADES[def.grade].color;
-        el('span', 'v-gear-stats', box, gearStatsText(def.stats));
-        button(box, '해제', 'small', true, () => {
-          delete this.getSave().gear.equipped[slot];
-          this.changed();
-        });
-      }
-    }
-
-    const owned = save.gear.owned.map((gid) => GEAR[gid]).filter((d): d is GearDef => !!d);
-    if (!owned.length) {
-      el('p', 'v-muted v-note', gs, '보유한 방어구·장신구가 없습니다. 상점에서 사거나 재료로 교환하세요.');
-      return;
-    }
-    for (const def of owned) {
-      const equipped = save.gear.equipped[def.slot] === def.id;
-      const card = el('div', 'v-card', gs);
-      const head = el('div', 'v-card-head', card);
-      const name = el('span', 'v-card-title', head, def.name);
-      name.style.color = GRADES[def.grade].color;
-      el('span', 'v-muted', head, `${GRADES[def.grade].name} ${GEAR_SLOT_NAME[def.slot]}`);
-      if (equipped) el('span', 'v-badge clear', head, '장착');
-      el('div', 'v-meta', card, gearStatsText(def.stats));
-      const actions = el('div', 'v-actions', card);
-      button(actions, equipped ? '장착 중' : '장착', 'primary small', !equipped, () => {
-        this.getSave().gear.equipped[def.slot] = def.id;
-        this.changed();
-      });
-    }
-  }
 
   private weaponMeta(card: HTMLElement, def: WeaponDef): void {
     const meta = el('div', 'v-meta', card);
     el('span', '', meta, `공격력 ${def.attack}`);
     el('span', '', meta, def.type === 'gun' ? `치명타 보정 ${(def.critChance * 100).toFixed(0)}%` : `치명타 ${(def.critChance * 100).toFixed(0)}%`);
     if (def.magazine) el('span', '', meta, `탄창 ${def.magazine}발`);
-  }
-
-  private equip(uid: string, slot: number): void {
-    const save = this.getSave();
-    const other = 1 - slot;
-    // 다른 칸에 이미 있으면 두 칸을 맞바꾼다.
-    if (save.equipped[other] === uid) save.equipped[other] = save.equipped[slot];
-    save.equipped[slot] = uid;
-    this.changed();
   }
 
   private addWeapon(defId: string): void {
@@ -602,170 +450,6 @@ export class VillageUI {
   }
 
   // ---- 스킬 ----
-
-  private equippedDefs(save: SaveData): WeaponDef[] {
-    const out: WeaponDef[] = [];
-    for (const uid of save.equipped) {
-      const w = save.weapons.find((x) => x.uid === uid);
-      const def = w ? WEAPONS[w.defId] : undefined;
-      if (def) out.push(def);
-    }
-    return out;
-  }
-
-  private renderSkills(save: SaveData): void {
-    this.renderPassives(save);
-    const seen = new Set<string>();
-    for (const def of this.equippedDefs(save)) {
-      if (seen.has(def.type)) continue;
-      seen.add(def.type);
-      const s = this.section(`${WEAPON_TYPE_NAME[def.type]} 스킬`, def.name);
-      const type = def.type;
-      const set = skillSlotIds(save, type);
-      this.renderSkillSet(s, save, type, set);
-      for (const sk of skillsFor(type)) {
-        const learned = save.learnedSkills.includes(sk.id);
-        const card = el('div', `v-card skill${learned ? ' learned' : ''}${sk.tier ? ` tier${sk.tier}` : ''}`, s);
-        const head = el('div', 'v-card-head', card);
-        el('span', 'v-card-title', head, sk.name);
-        if (sk.tier) el('span', `v-badge tier${sk.tier}`, head, SKILL_TIER_NAME[sk.tier]);
-        if (learned) {
-          el('span', 'v-badge clear', head, '습득');
-          const at = set.indexOf(sk.id);
-          if (at >= 0) el('span', 'v-key', head, keyLabel(save.keymap[SLOT_ACTIONS[at]]));
-          else el('span', 'v-muted', head, '세트에 없음');
-        }
-        const meta = el('div', 'v-meta', card);
-        el('span', '', meta, `마나 ${sk.mana}`);
-        el('span', '', meta, `쿨타임 ${sk.cooldown}초`);
-        el('span', save.level < sk.reqLevel ? 'v-short' : '', meta, `요구 레벨 ${sk.reqLevel}`);
-        el('p', 'v-desc', card, sk.desc);
-        const actions = el('div', 'v-actions', card);
-        if (!learned) {
-          button(actions, '배우기 (스킬 포인트 1)', 'primary', save.skillPoints >= 1 && save.level >= sk.reqLevel, () =>
-            this.learn(sk.id),
-          );
-          if (save.level < sk.reqLevel) el('span', 'v-muted', actions, `Lv ${sk.reqLevel}부터 배울 수 있습니다`);
-        } else if (set.includes(sk.id)) {
-          button(actions, '세트에서 빼기', '', true, () => this.editSet(type, (ids) => ids.filter((id) => id !== sk.id)));
-        } else {
-          button(actions, '세트에 넣기', 'primary', set.length < SKILL_SLOTS, () => this.editSet(type, (ids) => [...ids, sk.id]));
-          if (set.length >= SKILL_SLOTS) el('span', 'v-muted', actions, '세트가 가득 찼습니다. 먼저 하나를 빼세요');
-        }
-      }
-    }
-    el(
-      'p',
-      'v-muted v-note',
-      this.body,
-      `스킬 세트: 무기마다 스킬을 최대 ${SKILL_SLOTS}개 골라 ${SLOT_ACTIONS.map((a) => keyLabel(this.getSave().keymap[a])).join(' ')} 슬롯에 둡니다. 세트 칸을 눌러 앞으로 옮길 수 있습니다.`,
-    );
-
-    const rs = this.section('스킬 초기화', '기본 스킬을 제외한 스킬과 패시브의 포인트를 모두 돌려받습니다');
-    const cost = resetCost(save.level);
-    const refundable = save.learnedSkills.filter((id) => !STARTER_SKILLS.includes(id)).length + this.passivePoints(save);
-    const confirming = this.confirming === 'skillReset';
-    const actions = el('div', 'v-actions', rs);
-    button(
-      actions,
-      confirming ? `정말 초기화? (${fmt(cost)} 골드)` : `스킬 초기화 (${fmt(cost)} 골드)`,
-      confirming ? 'danger' : '',
-      refundable > 0 && save.gold >= cost,
-      () => {
-        if (this.confirm('skillReset')) this.resetSkills();
-      },
-    );
-    if (refundable === 0) el('span', 'v-muted', actions, '초기화할 스킬이 없습니다');
-    else if (save.gold < cost) el('span', 'v-short', actions, '골드가 부족합니다');
-  }
-
-  private passivePoints(save: SaveData): number {
-    return Object.values(save.passives).reduce((a, b) => a + b, 0);
-  }
-
-  private renderPassives(save: SaveData): void {
-    const s = this.section('공용 패시브', '무기와 상관없이 항상 적용됩니다');
-    const grid = el('div', 'v-passives', s);
-    for (const def of PASSIVES) {
-      const rank = save.passives[def.id] ?? 0;
-      const maxed = rank >= def.maxRank;
-      const card = el('div', `v-passive${rank > 0 ? ' learned' : ''}`, grid);
-      const head = el('div', 'v-card-head', card);
-      el('span', 'v-card-title', head, def.name);
-      const pips = el('span', 'v-pips', head);
-      for (let i = 0; i < def.maxRank; i++) el('span', `v-pip${i < rank ? ' on' : ''}`, pips);
-      el('p', 'v-desc', card, def.desc);
-      const actions = el('div', 'v-actions', card);
-      if (maxed) {
-        el('span', 'v-muted', actions, '최대 단계');
-        continue;
-      }
-      const canLevel = save.level >= def.reqLevel;
-      button(actions, rank === 0 ? '배우기 (1)' : `강화 (1)`, 'small', save.skillPoints >= 1 && canLevel, () => this.rankUp(def));
-      if (!canLevel) el('span', 'v-muted', actions, `Lv ${def.reqLevel}부터`);
-    }
-  }
-
-  private rankUp(def: PassiveDef): void {
-    const save = this.getSave();
-    const rank = save.passives[def.id] ?? 0;
-    if (save.skillPoints < 1 || rank >= def.maxRank || save.level < def.reqLevel) return;
-    save.skillPoints -= 1;
-    save.passives[def.id] = rank + 1;
-    this.changed();
-  }
-
-  private learn(id: string): void {
-    const save = this.getSave();
-    if (save.skillPoints < 1 || save.learnedSkills.includes(id)) return;
-    save.skillPoints -= 1;
-    save.learnedSkills.push(id);
-    // 직접 고른 세트가 있으면 빈자리에 새 스킬을 넣어 준다.
-    const type = SKILL_BY_ID[id]?.weapon;
-    const set = type && save.skillSets[type];
-    if (set && skillSlotIds(save, type).length < SKILL_SLOTS) set.push(id);
-    this.changed();
-  }
-
-  /** 스킬 세트를 고친다. 처음 고칠 때 지금 슬롯 구성에서 시작한다. */
-  private editSet(type: WeaponType, edit: (ids: string[]) => string[]): void {
-    const save = this.getSave();
-    save.skillSets[type] = edit(skillSlotIds(save, type)).slice(0, SKILL_SLOTS);
-    this.changed();
-  }
-
-  /** 스킬 세트: 슬롯 8칸에 지금 들어 있는 스킬. 칸을 누르면 한 칸 앞으로 옮긴다. */
-  private renderSkillSet(parent: HTMLElement, save: SaveData, type: WeaponType, set: string[]): void {
-    const bar = el('div', 'v-skillset', parent);
-    for (let i = 0; i < SKILL_SLOTS; i++) {
-      const sk = set[i] ? SKILL_BY_ID[set[i]] : undefined;
-      const cell = el('button', `v-skillset-slot${sk ? '' : ' empty'}${sk?.tier ? ` tier${sk.tier}` : ''}`, bar);
-      el('span', 'v-skillset-key', cell, keyLabel(save.keymap[SLOT_ACTIONS[i]]));
-      el('span', 'v-skillset-name', cell, sk ? sk.short : '');
-      cell.title = sk ? `${sk.name} — 눌러서 앞으로` : '빈 칸';
-      cell.disabled = !sk || i === 0;
-      cell.onclick = () =>
-        this.editSet(type, (ids) => {
-          const next = [...ids];
-          [next[i - 1], next[i]] = [next[i], next[i - 1]];
-          return next;
-        });
-    }
-  }
-
-  private resetSkills(): void {
-    const save = this.getSave();
-    const cost = resetCost(save.level);
-    if (save.gold < cost) return;
-    const keep = save.learnedSkills.filter((id) => STARTER_SKILLS.includes(id));
-    const refund = save.learnedSkills.length - keep.length + this.passivePoints(save);
-    save.gold -= cost;
-    save.learnedSkills = keep;
-    save.passives = {};
-    save.skillPoints += refund;
-    this.changed();
-    this.toast(`스킬을 초기화했습니다. 스킬 포인트 ${refund} 반환`);
-  }
 
   // ---- 강화 ----
 
