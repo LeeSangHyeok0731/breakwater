@@ -58,7 +58,7 @@ const LOOKS: Record<MonsterKind, Look> = {
   lesser_demon: { walk: 'ldemon-idle', attack: 'ldemon-attack', facesLeft: true, body: [34, 44], scale: 0.45 },
   void_angel: { walk: 'vangel-idle', attack: 'vangel-attack', facesLeft: false, body: [30, 50], scale: 0.75 },
   void_knight: { walk: 'vknight-idle', attack: 'vknight-gallop', facesLeft: true, body: [64, 54], scale: 0.95 },
-  silent_knight: { walk: 'knight:hero-run', attack: 'knight:hero-attack', idle: 'knight:hero-idle', facesLeft: false, body: [30, 72], scale: 2.2 },
+  silent_knight: { walk: 'knight:hero-run', attack: 'knight:hero-idle', idle: 'knight:hero-idle', facesLeft: false, body: [16, 44], scale: 2.2 },
   void_king: { walk: 'vking-idle', attack: 'vking-attack', facesLeft: true, body: [70, 96], scale: 1.3 },
 };
 
