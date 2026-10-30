@@ -1,11 +1,14 @@
 import Phaser from 'phaser';
 import './style.css';
 import './ui/theme.css';
+import './ui/panels.css';
 import { Input } from './core/input';
 import { sfx } from './core/audio';
 import { loadSave, newSave, writeSave, type SaveData } from './core/save';
 import { PHASE_BY_ID } from './data/phases';
 import type { MonsterKind } from './data/monsters';
+import type { WeaponType } from './data/weapons';
+import { classAnimKey } from './game/classSprites';
 import { MATERIALS } from './data/items';
 import { BattleScene } from './game/battleScene';
 import { BootScene } from './game/bootScene';
@@ -31,7 +34,7 @@ const STATION_TABS: Record<StationId, Tab[]> = {
   board: ['phase'],
   smith: ['enhance', 'exchange'],
   shop: ['shop'],
-  trainer: ['char', 'skill'],
+  trainer: ['skill'],
   chest: ['equip'],
 };
 
@@ -63,6 +66,7 @@ const village = new VillageUI(uiRoot, () => save, {
   },
   onImport: (s) => replaceSave(s),
   onReset: () => replaceSave(newSave()),
+  portrait: heroPortrait,
   onClose: () => {
     input.enabled = true;
     // 창을 닫은 키(↑·Esc)가 바로 다시 창을 열지 않게 이번 입력을 비운다.
@@ -171,6 +175,10 @@ Object.assign(ctx, {
     input.enabled = false;
     village.open(STATION_TABS[id], name);
   },
+  openPanel: (tab: 'equip' | 'skill') => {
+    input.enabled = false;
+    village.open([tab], tab === 'equip' ? '장비' : '스킬');
+  },
   openMenu: () => {
     input.enabled = false;
     village.open(['settings'], '메뉴');
@@ -216,4 +224,17 @@ if (import.meta.env.DEV) {
       return battle()?.debugSummary() ?? 'no battle';
     },
   };
+}
+
+/** 장비창의 캐릭터 그림: 직업별 대기 자세 첫 칸을 캔버스로 잘라 온다. */
+function heroPortrait(type: WeaponType): HTMLCanvasElement | null {
+  const key = classAnimKey(type, 'hero-idle');
+  if (!game.textures.exists(key)) return null;
+  const frame = game.textures.getFrame(key, 0);
+  if (!frame) return null;
+  const c = document.createElement('canvas');
+  c.width = frame.cutWidth;
+  c.height = frame.cutHeight;
+  c.getContext('2d')!.drawImage(frame.source.image as CanvasImageSource, frame.cutX, frame.cutY, frame.cutWidth, frame.cutHeight, 0, 0, frame.cutWidth, frame.cutHeight);
+  return c;
 }

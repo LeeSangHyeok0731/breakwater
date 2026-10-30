@@ -161,7 +161,7 @@ const BUFF_COLOR: Record<string, number> = {
 
 /** 장착 무기의 스킬 슬롯: 배운 스킬을 목록 순서대로 최대 8개 채운다. */
 export function buildSlots(save: SaveData, type: WeaponType): (SkillDef | null)[] {
-  const slots: (SkillDef | null)[] = skillSlotIds(save, type).map((id) => SKILL_BY_ID[id]);
+  const slots: (SkillDef | null)[] = skillSlotIds(save, type).map((id) => SKILL_BY_ID[id] ?? null);
   while (slots.length < 8) slots.push(null);
   return slots;
 }

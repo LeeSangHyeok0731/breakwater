@@ -224,6 +224,8 @@ export class TownScene extends Phaser.Scene {
     this.placeLabels(near);
     if (near && input.pressed('interact')) ctx.openStation(near.id, near.name);
     else if (input.pressed('menu') && !ctx.windowOpen()) ctx.openMenu();
+    else if (input.pressed('inventory') && !ctx.windowOpen()) ctx.openPanel('equip');
+    else if (input.pressed('skills') && !ctx.windowOpen()) ctx.openPanel('skill');
     // 대화 안내는 이름판 위에 붙어 나오므로 HUD 가운데 안내는 쓰지 않는다.
     ctx.townHud.update(ctx.getSave(), null);
     input.endFrame();

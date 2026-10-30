@@ -20,6 +20,8 @@ export type Action =
   | 'item1'
   | 'item2'
   | 'interact'
+  | 'inventory'
+  | 'skills'
   | 'menu';
 
 export type Keymap = Record<Action, string>;
@@ -48,6 +50,9 @@ export const DEFAULT_KEYMAP: Keymap = {
   item2: 'KeyX',
   // NPC 앞에서 위쪽 방향키로 대화한다 (위 방향과 같은 키).
   interact: 'ArrowUp',
+  // 마을에서 장비창·스킬창을 바로 연다.
+  inventory: 'KeyI',
+  skills: 'KeyK',
   menu: 'Escape',
 };
 

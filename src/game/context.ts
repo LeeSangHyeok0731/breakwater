@@ -26,6 +26,8 @@ export interface GameContext {
   /** 마을 창이 열려 있는가 */
   windowOpen(): boolean;
   openStation(id: StationId, name: string): void;
+  /** 단축키로 장비창·스킬창을 연다. */
+  openPanel(tab: 'equip' | 'skill'): void;
   openMenu(): void;
   /** 전투가 끝났다. 결과 창을 띄우고, 확인하면 마을로 돌아간다. */
   onBattleEnd(outcome: BattleOutcome, hud: Hud, backToTown: () => void): void;
