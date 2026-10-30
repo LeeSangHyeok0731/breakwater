@@ -248,7 +248,7 @@ export class BattleScene extends Phaser.Scene {
       const def = WEAPONS[owned.defId];
       return { def, enhance: owned.enhance, slots: buildSlots(this.save, def.type) };
     });
-    this.player = new Player(this, 80, FLOOR_Y - 40, derive(this.stats, this.save.passives, gearBonus(this.save.gear.equipped)), weapons);
+    this.player = new Player(this, 80, FLOOR_Y - 40, derive(this.stats, this.save.passives, gearBonus(this.save.gear.equipped, this.save.gear.enhance)), weapons);
 
     // 발판: 위에서 떨어질 때만 밟는다. ↓+점프 중에는 통과.
     const onTop = (body: Phaser.Physics.Arcade.Body, plat: Phaser.Physics.Arcade.StaticBody): boolean =>
@@ -413,18 +413,20 @@ export class BattleScene extends Phaser.Scene {
     }
     const w = p.weapon.def;
     const critChance = w.critChance + p.derived.passive.critBonus;
+    // 세트 효과의 치명타 피해 추가분은 기본 치명타 피해에 더한다.
+    const critDamage = CRIT_DAMAGE + p.derived.critDamage;
     let crit = false;
     let critMul: number;
     if (w.type === 'gun') {
       // 총: 치명타 대신 (치명타 데미지 + 치명타 확률)의 80%만큼 항상 증가
-      critMul = 1 + (CRIT_DAMAGE + critChance) * 0.8;
+      critMul = 1 + (critDamage + critChance) * 0.8;
     } else {
       crit = Math.random() < critChance;
-      critMul = crit ? 1 + CRIT_DAMAGE : 1;
+      critMul = crit ? 1 + critDamage : 1;
     }
     // 후광 망령의 보호막을 두른 적은 피해를 절반만 받는다.
     const ward = m.ward > 0 ? 0.5 : 1;
-    let dmg = Math.max(1, Math.round(base * p.damageMul * (1 + m.vuln) * critMul * dev.damageMul * ward));
+    let dmg = Math.max(1, Math.round(base * p.damageMul * (1 + p.derived.damageMul) * (1 + m.vuln) * critMul * dev.damageMul * ward));
     if (dev.oneHit) dmg = Math.max(dmg, Math.ceil(m.hp));
     m.hp -= dmg;
     m.onHit(p.x, opts.knock ?? 0);
@@ -570,7 +572,8 @@ export class BattleScene extends Phaser.Scene {
         return;
       }
     }
-    const dmg = Math.max(1, Math.round(amount));
+    // 세트 효과의 받는 피해 감소
+    const dmg = Math.max(1, Math.round(amount * (1 - p.derived.damageReduce)));
     p.hp -= dmg;
     p.hurtTimer = 0.35;
     // 맞으면 잠깐 무적이 되어 연속으로 맞지 않는다.
@@ -1342,7 +1345,7 @@ export class BattleScene extends Phaser.Scene {
       const key = keyLabel(keymap[SLOT_ACTIONS[i]]);
       if (!s) return { key, short: '', name: '', mana: 0, cdLeft: 0, cdRatio: 0, usable: false, empty: true };
       const cdLeft = p.cooldowns.get(s.id) ?? 0;
-      return { key, short: s.short, name: s.name, mana: s.mana, cdLeft, cdRatio: cdLeft / s.cooldown, usable: cdLeft <= 0 && p.mp >= s.mana, empty: false };
+      return { key, short: s.short, name: s.name, mana: s.mana, cdLeft, cdRatio: cdLeft / (s.cooldown * (1 - p.derived.cdReduce)), usable: cdLeft <= 0 && p.mp >= s.mana, empty: false };
     });
     const mission = this.phase.mission;
     let waveText: string;

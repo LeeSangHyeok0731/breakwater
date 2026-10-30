@@ -549,7 +549,7 @@ function tryCast(b: BattleScene, skill: SkillDef | null, slot: number): void {
   }
   if (p.action && CHANNELS.has(p.action.kind)) return;
   p.mp -= skill.mana;
-  p.cooldowns.set(skill.id, skill.cooldown);
+  p.cooldowns.set(skill.id, skill.cooldown * (1 - p.derived.cdReduce));
   p.charge = -1;
   p.guarding = false;
   if (skill.weapon === 'staff') sfx.play('magic', 1.2);

@@ -1,5 +1,5 @@
 import type { SaveData } from '../core/save';
-import { GEAR, GEAR_SLOT_NAME, gearBonus, gearStatsText, type GearDef, type GearSlot } from '../data/gear';
+import { GEAR, GEAR_SLOT_NAME, gearBonus, gearStatsText, SET_LINE_NAME, SETS, setPieces, setProgress, type GearDef, type GearSlot, type GearStats } from '../data/gear';
 import { CLASS_NAME, GRADES, WEAPON_TYPE_NAME, WEAPONS, type Grade, type WeaponDef, type WeaponType } from '../data/weapons';
 import { combatPower } from '../game/power';
 import { derive, DEX_SPEED_CAP, resetCost, totalStats, type Stats } from '../game/stats';
@@ -146,10 +146,9 @@ function gradeFrame(cell: HTMLElement, save: SaveData, item: DragItem): void {
   if (item.kind === 'weapon') grade = weaponOf(save, item.uid)?.def.grade;
   else if (item.kind === 'gear') grade = GEAR[item.id]?.grade;
   if (grade) cell.dataset.grade = grade;
-  if (item.kind === 'weapon') {
-    const w = weaponOf(save, item.uid);
-    if (w && w.enhance > 0) el('span', 'eq-enh', cell, `+${w.enhance}`);
-  }
+  const enh = item.kind === 'weapon' ? (weaponOf(save, item.uid)?.enhance ?? 0) : item.kind === 'gear' ? (save.gear.enhance[item.id] ?? 0) : 0;
+  if (enh > 0) el('span', 'eq-enh', cell, `+${enh}`);
+  if (item.kind === 'gear' && GEAR[item.id]?.set) cell.classList.add('set');
 }
 
 function renderDoll(host: PanelHost, parent: HTMLElement, save: SaveData): void {
@@ -202,6 +201,19 @@ function renderDoll(host: PanelHost, parent: HTMLElement, save: SaveData): void 
   const power = el('div', 'eq-power', parent);
   el('span', 'eq-power-label', power, '전투력');
   el('span', 'eq-power-num', power, koNum(combatPower(save)));
+
+  // 입고 있는 세트와 켜진 효과
+  for (const pr of setProgress(save.gear.equipped, save.gear.enhance)) {
+    const box = el('div', 'eq-setsum', parent);
+    const head = el('div', 'eq-setsum-head', box);
+    const name = el('span', 'eq-set-name', head, pr.set.name);
+    name.style.color = GRADES[pr.set.grade].color;
+    el('span', 'eq-set-count', head, `${pr.worn} / 4`);
+    el('span', 'v-muted', head, `강화 합 +${pr.enhanceSum}`);
+    // 같은 종류의 효과는 합쳐서 보여 준다.
+    if (pr.active.length) el('div', 'eq-set-on', box, gearStatsText(sumStats(pr.active)));
+    else el('div', 'v-muted', box, '2부위부터 세트 효과가 켜집니다');
+  }
 }
 
 const GRADE_ORDER = Object.keys(GRADES) as Grade[];
@@ -380,10 +392,12 @@ function renderDetail(host: PanelHost, box: HTMLElement, save: SaveData, item: D
     el('p', 'v-desc', box, w.def.desc);
   } else if (item.kind === 'gear') {
     const def: GearDef = GEAR[item.id];
-    const name = el('div', 'eq-detail-name', info, def.name);
+    const enh = save.gear.enhance[def.id] ?? 0;
+    const name = el('div', 'eq-detail-name', info, `${def.name}${enh > 0 ? ` +${enh}` : ''}`);
     name.style.color = GRADES[def.grade].color;
     el('div', 'v-muted', info, `${GRADES[def.grade].name} ${GEAR_SLOT_NAME[def.slot]}`);
     el('div', 'v-meta', box, gearStatsText(def.stats));
+    if (def.set) setInfo(box, save, def.set);
   }
 
   const equipped = isEquipped(save, item);
@@ -416,11 +430,41 @@ function renderDetail(host: PanelHost, box: HTMLElement, save: SaveData, item: D
   }
 }
 
+function sumStats(list: GearStats[]): GearStats {
+  const out: Record<string, number> = {};
+  for (const st of list) for (const [k, v] of Object.entries(st)) out[k] = (out[k] ?? 0) + (v ?? 0);
+  return out as GearStats;
+}
+
+/** 상세 창의 세트 정보: 부위별 착용 여부, 세트 효과, 강화 합 효과. 켜진 줄은 밝게 표시한다. */
+function setInfo(box: HTMLElement, save: SaveData, setId: string): void {
+  const set = SETS[setId];
+  if (!set) return;
+  const pr = setProgress(save.gear.equipped, save.gear.enhance).find((p) => p.set.id === setId);
+  const worn = pr?.worn ?? 0;
+  const sum = pr?.enhanceSum ?? 0;
+  const wrap = el('div', 'eq-set', box);
+  const head = el('div', 'eq-set-head', wrap);
+  const name = el('span', 'eq-set-name', head, set.name);
+  name.style.color = GRADES[set.grade].color;
+  el('span', 'v-muted', head, `${GRADES[set.grade].name} ${SET_LINE_NAME[set.line]} 세트`);
+  el('span', 'eq-set-count', head, `${worn} / 4`);
+
+  const parts = el('div', 'eq-set-parts', wrap);
+  for (const id of setPieces(setId)) {
+    const on = Object.values(save.gear.equipped).includes(id);
+    el('span', on ? 'on' : '', parts, GEAR[id]?.name ?? id);
+  }
+  for (const [n, st] of set.pieces) el('div', `eq-set-line${worn >= n ? ' on' : ''}`, wrap, `${n}세트 · ${gearStatsText(st)}`);
+  el('div', 'eq-set-sub', wrap, `강화 합 +${sum} / ${set.enhance[set.enhance.length - 1][0]} (입은 세트 부위의 강화 수치 합)`);
+  for (const [n, st] of set.enhance) el('div', `eq-set-line${sum >= n ? ' on' : ''}`, wrap, `강화 합 ${n} · ${gearStatsText(st)}`);
+}
+
 // ───────── 스탯 (마을 창의 캐릭터 탭에서 옮겨 왔다) ─────────
 
 function renderStats(host: PanelHost, save: SaveData): void {
   const stats = totalStats(save);
-  const d = derive(stats, save.passives, gearBonus(save.gear.equipped));
+  const d = derive(stats, save.passives, gearBonus(save.gear.equipped, save.gear.enhance));
 
   const s = host.section('스탯', `남은 포인트 ${save.statPoints}`);
   for (const info of STAT_INFO) {

@@ -1,4 +1,5 @@
 import type { GearDef } from '../data/gear';
+import { setGearIconUrl } from './setArt';
 import type { PassiveDef } from '../data/passives';
 import type { SkillDef } from '../data/skills';
 
@@ -245,6 +246,9 @@ function drawGear(g: Canvas, look: GearLook): void {
 }
 
 export function gearIconUrl(def: GearDef): string {
+  // 세트 방어구는 세트마다 따로 디자인한 그림을 쓴다.
+  const set = setGearIconUrl(def.id);
+  if (set) return set;
   return cached(`gear:${def.id}`, (g) => drawGear(g, GEAR_LOOK[def.id] ?? { shape: SLOT_SHAPE[def.slot] ?? 'ring', base: 0xa8a8b8, accent: 0xffd34a }));
 }
 
