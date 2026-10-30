@@ -140,7 +140,7 @@ export class Fx {
   slash(x: number, y: number, facing: 1 | -1, radius: number, color: number, wide = false, o: SlashOpts = {}): void {
     const key = wide ? 'fx-slash-w' : 'fx-slash';
     const scale = radius / SLASH_R;
-    const make = (k: string, tint: number | null): void => {
+    const make = (k: string, tint: number): void => {
       const s = this.scene.add
         .sprite(x, y, k)
         .setDepth(DEPTH.fx)
@@ -150,13 +150,15 @@ export class Fx {
         .setFlipY(!!o.up)
         .setScale(scale, scale * (o.squash ?? 1))
         .setRotation((o.rot ?? 0) * facing);
-      if (tint !== null) s.setTint(tint);
+      s.setTint(tint);
       s.play(k);
       if (o.speed) s.anims.timeScale = o.speed;
       s.once('animationcomplete', () => s.destroy());
     };
     make(key, color);
-    make(`${key}-core`, null);
+    // 하얀 날도 무기 색을 살짝 머금게 한다 (하양 60% + 무기 색 40%).
+    const mix = (c: number, sh: number): number => Math.round(255 * 0.6 + ((c >> sh) & 255) * 0.4) << sh;
+    make(`${key}-core`, mix(color, 16) | mix(color, 8) | mix(color, 0));
   }
 
   /** 맞은 자리의 십자 빛 */

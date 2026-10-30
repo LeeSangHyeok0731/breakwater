@@ -776,6 +776,30 @@ body {
   color: var(--text-muted);
 }
 
+.hud-weapon-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 무기 아이콘: 32px 도트를 확대해 그린다 */
+.hud-weapon-icon,
+.v-weapon-icon {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  image-rendering: pixelated;
+  background: radial-gradient(circle at 50% 45%, rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0.35));
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+}
+
+.hud-weapon-icon.small {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+}
+
 .hud-weapon-name {
   font-size: 16px;
   font-weight: 800;
@@ -1250,6 +1274,16 @@ body {
 
 .v-chapter.locked .v-lock {
   margin: 0;
+}
+
+.v-card-head .v-weapon-icon {
+  width: 36px;
+  height: 36px;
+}
+
+.v-equip-slot .v-weapon-icon {
+  width: 48px;
+  height: 48px;
 }
 
 .v-phase-id {
