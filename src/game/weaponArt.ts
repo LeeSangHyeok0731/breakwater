@@ -34,6 +34,8 @@ interface BowPalette {
 const BOWS: Record<string, BowPalette> = {
   hunting: { wood: 0xd09858, dark: 0x7a4a22, light: 0xf0c890, tip: 0xf6d68e, string: 0xe8e0d0 },
   gale: { wood: 0xd8eedc, dark: 0x3a7a4a, light: 0xffffff, tip: 0x6af0a0, string: 0xe0fff0, plume: 0x6af0a0 },
+  seraph: { wood: 0xfff4e0, dark: 0xc8a050, light: 0xffffff, tip: 0xffe08a, string: 0xfff0c0, plume: 0xffffff },
+  abyss: { wood: 0x5a3a78, dark: 0x2a1a3a, light: 0xb080e0, tip: 0xd060ff, string: 0xe08aff, plume: 0xb040ff },
 };
 
 export const BOW_HELD: HeldDef = { w: 20, h: 32, grip: [8, 16], tip: { x: 12, y: 0 } };
@@ -76,7 +78,7 @@ function drawBow(px: Px, style: string, pull: number): void {
   if (pull > 0) {
     rect(px, 0xb8a080, pullX, 16, 20 - pullX, 1);
     rect(px, 0xdfe6ee, 17, 15, 3, 3);
-    rect(px, style === 'gale' ? 0x6af0a0 : 0xc83a2a, pullX, 15, 2, 3);
+    rect(px, c.plume ?? 0xc83a2a, pullX, 15, 2, 3);
   }
 }
 
@@ -87,9 +89,47 @@ export const GUN_HELD: Record<string, HeldDef> = {
   revolver: { w: 18, h: 10, grip: [4, 7], tip: { x: 14, y: -4 } },
   // 장총: 30×10, 손잡이 (10, 7). 총신이 길고 개머리판과 조준경이 있다.
   rifle: { w: 30, h: 10, grip: [10, 7], tip: { x: 19, y: -4 } },
+  // 마도 소총: 장총과 같은 틀에 룬이 새겨진 보랏빛 총신
+  arcane: { w: 30, h: 10, grip: [10, 7], tip: { x: 19, y: -4 } },
+  // 용의 포효: 30×12, 굵은 총신 끝이 용의 아가리
+  dragon: { w: 30, h: 12, grip: [9, 9], tip: { x: 20, y: -4 } },
 };
 
 function drawGun(px: Px, style: string): void {
+  if (style === 'arcane') {
+    rect(px, 0x3a2448, 0, 4, 9, 3);
+    rect(px, 0x5a3a70, 0, 4, 9, 1);
+    rect(px, 0x2a1a30, 0, 7, 3, 2);
+    rect(px, 0x4a3a6a, 8, 2, 19, 3);
+    rect(px, 0x9a7ad8, 8, 2, 19, 1);
+    for (const x of [12, 16, 20, 24]) px(x, 3, 0xd8a8ff);
+    rect(px, 0xb070ff, 27, 1, 3, 5);
+    rect(px, 0xf0d8ff, 28, 2, 1, 2);
+    rect(px, 0x5a3a70, 9, 5, 4, 4);
+    rect(px, 0x2a1a30, 9, 8, 4, 1);
+    return;
+  }
+  if (style === 'dragon') {
+    rect(px, 0x5a1a1a, 0, 6, 8, 3);
+    rect(px, 0x8a2a1a, 0, 6, 8, 1);
+    rect(px, 0x3a0a0a, 0, 9, 3, 2);
+    rect(px, 0xb8301a, 7, 2, 18, 6);
+    rect(px, 0xffb040, 7, 2, 18, 1);
+    rect(px, 0x7a1a0a, 7, 7, 18, 1);
+    for (const x of [10, 14, 18]) rect(px, 0xffd060, x, 3, 1, 4);
+    // 용의 아가리: 위아래 턱과 이빨
+    rect(px, 0xb8301a, 25, 1, 5, 2);
+    rect(px, 0xb8301a, 25, 7, 5, 2);
+    rect(px, 0x2a0a0a, 25, 3, 5, 4);
+    for (const x of [26, 28]) {
+      px(x, 3, 0xfff0c0);
+      px(x + 1, 6, 0xfff0c0);
+    }
+    px(26, 1, 0xffd060);
+    rect(px, 0x8a2a1a, 8, 8, 4, 4);
+    rect(px, 0x3a0a0a, 8, 11, 4, 1);
+    return;
+  }
   if (style === 'rifle') {
     rect(px, 0x8a5a2a, 0, 4, 9, 3);
     rect(px, 0xb07840, 0, 4, 9, 1);
@@ -131,6 +171,22 @@ function drawStaff(px: Px, style: string): void {
     rect(px, 0xf0d8ff, 3, 1, 1, 2);
     return;
   }
+  if (style === 'abyss') {
+    // 심연의 홀: 검은 자루, 보랏빛 발톱이 감싼 심연의 눈
+    rect(px, 0x2a1a30, 3, 9, 2, 27);
+    rect(px, 0x5a3a70, 3, 9, 1, 27);
+    for (const y of [16, 24, 32]) rect(px, 0xd060ff, 3, y, 2, 1);
+    rect(px, 0x8a3ad8, 0, 2, 1, 7);
+    rect(px, 0x8a3ad8, 7, 2, 1, 7);
+    rect(px, 0x8a3ad8, 1, 8, 6, 1);
+    rect(px, 0x8a3ad8, 1, 0, 1, 2);
+    rect(px, 0x8a3ad8, 6, 0, 1, 2);
+    rect(px, 0x3a0a4a, 1, 2, 6, 6);
+    rect(px, 0xd060ff, 2, 3, 4, 4);
+    rect(px, 0xffffff, 3, 4, 2, 2);
+    px(4, 4, 0xff3a8a);
+    return;
+  }
   if (style === 'magma') {
     // 용암 심장 지팡이: 쇠 자루와 세 갈래 발톱이 끓는 용암 구슬을 쥐었다
     rect(px, 0x3a3438, 3, 9, 2, 27);
@@ -170,6 +226,11 @@ const HELD_STYLE: Record<string, string> = {
   apprentice_staff: 'apprentice',
   rune_staff: 'rune',
   magma_heart_staff: 'magma',
+  seraph_bow: 'seraph',
+  abyss_bow: 'abyss',
+  arcane_rifle: 'arcane',
+  dragon_cannon: 'dragon',
+  abyss_scepter: 'abyss',
 };
 
 const DEFAULT_STYLE: Record<string, string> = { bow: 'hunting', gun: 'revolver', staff: 'apprentice' };
@@ -180,7 +241,7 @@ export function heldStyle(def: WeaponDef): string {
 
 export const BOW_STYLES = Object.keys(BOWS);
 export const GUN_STYLES = Object.keys(GUN_HELD);
-export const STAFF_STYLES = ['apprentice', 'rune', 'magma'];
+export const STAFF_STYLES = ['apprentice', 'rune', 'magma', 'abyss'];
 
 /** 손에 드는 그림 그리기 (활은 당긴 정도 pull) */
 export function drawHeld(px: Px, type: 'bow' | 'gun' | 'staff', style: string, pull = 0): void {
@@ -201,7 +262,7 @@ export function heldDef(type: 'bow' | 'gun' | 'staff', style: string): HeldDef {
  */
 export interface MeleeLook {
   slash: number;
-  aura?: 'flame' | 'moon' | 'steel';
+  aura?: 'flame' | 'moon' | 'steel' | 'blood' | 'holy' | 'thunder';
 }
 
 const MELEE_LOOK: Record<string, MeleeLook> = {
@@ -210,6 +271,9 @@ const MELEE_LOOK: Record<string, MeleeLook> = {
   lord_flame_sword: { slash: 0xff8a3a, aura: 'flame' },
   training_dao: { slash: 0xffd2a8 },
   moonlight_dao: { slash: 0xa8c8ff, aura: 'moon' },
+  crimson_dao: { slash: 0xff3a4a, aura: 'blood' },
+  holy_sword: { slash: 0xfff0b0, aura: 'holy' },
+  thunder_dao: { slash: 0x9fe8ff, aura: 'thunder' },
 };
 
 export function meleeLook(def: WeaponDef): MeleeLook {
@@ -221,7 +285,27 @@ export const RANGED_AURA: Record<string, number> = {
   gale: 0x9ff0c0,
   rune: 0xc890ff,
   magma: 0xff7a1a,
+  seraph: 0xfff0c0,
+  abyss: 0xd060ff,
+  arcane: 0xb070ff,
+  dragon: 0xff7a1a,
 };
+
+/** 원거리 무기의 화살 꼬리·총알 궤적 색 */
+const SHOT_COLOR: Record<string, number> = {
+  hunting: 0xe8dcc0,
+  gale: 0xbff8d8,
+  seraph: 0xffe08a,
+  abyss: 0xd060ff,
+  revolver: 0xffd890,
+  rifle: 0xffd890,
+  arcane: 0xc890ff,
+  dragon: 0xff8a3a,
+};
+
+export function shotColor(def: WeaponDef): number {
+  return SHOT_COLOR[heldStyle(def)] ?? 0xffd890;
+}
 
 // ───────────────────────── UI 아이콘 ─────────────────────────
 
@@ -243,6 +327,9 @@ const BLADES: Record<string, BladeLook> = {
   lord_flame_sword: { blade: 0xc8301a, edge: 0xffa040, fuller: 0xffd060, guard: 0x2a1a1a, grip: 0x5a1a1a, glow: 0xff7a1a },
   training_dao: { blade: 0x9aa2ac, edge: 0xd8dee6, guard: 0x7a4a22, grip: 0x4a2a1a, curved: true },
   moonlight_dao: { blade: 0xb8ccf0, edge: 0xffffff, guard: 0x8a9ac8, grip: 0x2a3050, curved: true, glow: 0x9fc0ff },
+  crimson_dao: { blade: 0x8a1a2a, edge: 0xff5a6a, guard: 0x2a1a1a, grip: 0x4a0a1a, curved: true, glow: 0xff3a4a },
+  holy_sword: { blade: 0xf0f4ff, edge: 0xffffff, fuller: 0xffd060, guard: 0xffd060, grip: 0x5a3a8a, glow: 0xfff0b0 },
+  thunder_dao: { blade: 0x6a8ab0, edge: 0xdff8ff, fuller: 0x9fe8ff, guard: 0x2a3048, grip: 0x1a2030, curved: true, glow: 0x7fe8ff },
 };
 
 /** 칼 아이콘: 왼쪽 아래 손잡이에서 오른쪽 위로 뻗는 칼날 (32×32) */

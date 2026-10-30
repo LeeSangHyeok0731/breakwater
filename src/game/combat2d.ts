@@ -5,7 +5,7 @@ import type { SkillDef } from '../data/skills';
 import type { BattleScene, HitOpts } from './battleScene';
 import { DEPTH } from './fx';
 import type { ActionKind } from './player2d';
-import { meleeLook } from './weaponArt';
+import { meleeLook, shotColor } from './weaponArt';
 
 // 플레이어의 공격 입력과 무기 동작, 스킬. 히트박스는 플레이어 앞쪽의 사각형이다.
 
@@ -352,6 +352,21 @@ function swingFx(b: BattleScene, x: number, y: number): void {
     case 'steel':
       b.fx.spark(x + b.player.facing * 6, y - 12, 0xffffff);
       break;
+    case 'blood':
+      // 핏방울이 흩어지며 떨어진다.
+      b.fx.burst(x, y, 0xff3a4a, 9, 90, 480, 1, 420);
+      b.fx.spark(x, y, 0xff5a6a);
+      break;
+    case 'holy':
+      b.fx.embers(x, y, 0xffe08a, 8, 18, 40, 600);
+      b.fx.spark(x, y - 4, 0xfff0b0, 2);
+      break;
+    case 'thunder': {
+      const f = b.player.facing;
+      b.fx.lightning(x - f * 14, y - 16, x + f * 26, y + 8, 0x9fe8ff, 1, 140);
+      b.fx.spark(x + f * 20, y, 0xdff8ff);
+      break;
+    }
   }
 }
 
@@ -394,7 +409,7 @@ function fireArrow(b: BattleScene, c: number): void {
     vy: 0,
     damage: b.weaponBase() * (1 + 2.5 * c),
     kind: 'arrow',
-    color: c > 0.95 ? 0xffe08a : 0xe8dcc0,
+    color: c > 0.95 ? 0xffe08a : shotColor(p.weapon.def),
     size: 1 + c * 0.6,
     basic: true,
     pierce: c > 0.6,
@@ -418,7 +433,7 @@ function gunShot(b: BattleScene, mul: number, spread: number): void {
   const m = p.muzzle();
   const base = p.facing === 1 ? 0 : Math.PI;
   const ang = base + (Math.random() - 0.5) * 2 * (spread + (p.ads ? 0 : 0.03));
-  b.hitscan(m.x, m.y, ang, p.ads ? 520 : 420, b.weaponBase() * mul * (p.ads ? 1.25 : 1), { pierce: false, color: 0xffd890, width: 2 });
+  b.hitscan(m.x, m.y, ang, p.ads ? 520 : 420, b.weaponBase() * mul * (p.ads ? 1.25 : 1), { pierce: false, color: shotColor(p.weapon.def), width: 2 });
   b.fx.muzzle(m.x, m.y, p.facing, 1, ang - (p.facing === 1 ? 0 : Math.PI));
   b.fx.casing(p.x + p.facing * 8, p.y - 8, p.facing, p.feet);
 }

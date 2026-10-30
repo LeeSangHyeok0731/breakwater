@@ -529,9 +529,17 @@ export class Player {
     if (this.isMelee) {
       const aura = meleeLook(def).aura;
       if (!aura) return;
-      color = aura === 'flame' ? (Math.random() < 0.5 ? 0xff7a1a : 0xffc040) : aura === 'moon' ? 0xbfd4ff : 0xffffff;
-      rate = aura === 'steel' ? 0.06 : aura === 'flame' ? 0.5 : 0.3;
-      size = aura === 'flame' && Math.random() < 0.3 ? 2 : 1;
+      const AURA_COLOR = {
+        flame: Math.random() < 0.5 ? 0xff7a1a : 0xffc040,
+        moon: 0xbfd4ff,
+        steel: 0xffffff,
+        blood: Math.random() < 0.6 ? 0xff3a4a : 0x8a1a2a,
+        holy: Math.random() < 0.5 ? 0xffe08a : 0xffffff,
+        thunder: Math.random() < 0.7 ? 0x9fe8ff : 0xffffff,
+      };
+      color = AURA_COLOR[aura];
+      rate = aura === 'steel' ? 0.06 : aura === 'flame' || aura === 'holy' ? 0.5 : aura === 'thunder' ? 0.4 : 0.3;
+      size = (aura === 'flame' || aura === 'holy') && Math.random() < 0.3 ? 2 : 1;
       // 칼은 몸 앞쪽(칼을 쥔 쪽)에서 피어오른다.
       at = { x: this.x + this.facing * (6 + Math.random() * 10), y: this.y - 4 + (Math.random() - 0.5) * 16 };
     } else {
