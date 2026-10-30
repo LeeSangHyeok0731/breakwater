@@ -282,9 +282,10 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
   fallen_angel: {
     kind: 'fallen_angel',
     name: '타락천사',
-    hp: 5200,
+    // 보스 페이즈 배율(체력 1.6, 공격 1.4)을 곱하면 체력 5200, 공격 34
+    hp: 3250,
     speed: 3,
-    damage: 34,
+    damage: 24,
     range: 6,
     attackCd: 2,
     radius: 1.5,
@@ -372,9 +373,10 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
   abyss_lord: {
     kind: 'abyss_lord',
     name: '심연의 군주',
-    hp: 8000,
+    // 보스 페이즈 배율(체력 2.5, 공격 1.9)을 곱하면 체력 8000, 공격 46
+    hp: 3200,
     speed: 2.4,
-    damage: 46,
+    damage: 24,
     range: 5,
     attackCd: 2,
     radius: 2.2,

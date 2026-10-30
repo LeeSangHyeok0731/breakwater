@@ -1225,6 +1225,29 @@ body {
   font-weight: 700;
 }
 
+.v-chapter {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 14px 0 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border-strong);
+}
+
+.v-chapter:first-of-type {
+  margin-top: 0;
+}
+
+.v-chapter-name {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--accent-2);
+}
+
+.v-chapter-lock {
+  margin: 0 0 8px;
+}
+
 .v-phase-id {
   font-size: 12px;
   font-weight: 800;

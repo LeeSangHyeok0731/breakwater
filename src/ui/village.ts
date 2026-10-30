@@ -1,7 +1,7 @@
 import { exportSave, importSave, type SaveData } from '../core/save';
 import { DEFAULT_KEYMAP, keyLabel, SLOT_ACTIONS, type Action } from '../core/input';
 import { addExp, derive, DEX_SPEED_CAP, enhanceMultiplier, expToNext, resetCost, totalStats, type Stats } from '../game/stats';
-import { PHASES, SWEEP_RATE, SWEEP_TICKET_PRICE, type PhaseDef } from '../data/phases';
+import { CHAPTER_NAME, PHASES, SWEEP_RATE, SWEEP_TICKET_PRICE, type PhaseDef } from '../data/phases';
 import { skillsFor, STARTER_SKILLS } from '../data/skills';
 import { CLASS_NAME, enhanceCost, GRADES, MAX_ENHANCE, WEAPON_TYPE_NAME, WEAPONS, type WeaponDef } from '../data/weapons';
 import { MATERIALS } from '../data/items';
@@ -328,37 +328,55 @@ export class VillageUI {
 
   private renderPhases(save: SaveData): void {
     const s = this.section('출정', '페이즈를 골라 도전하세요');
-    for (const p of PHASES) {
-      const locked = !!p.requires && !save.cleared.includes(p.requires);
-      const cleared = save.cleared.includes(p.id);
-      const card = el('div', `v-card phase${locked ? ' locked' : ''}`, s);
-      const head = el('div', 'v-card-head', card);
-      el('span', 'v-phase-id', head, p.id);
-      el('span', 'v-card-title', head, p.name);
-      if (p.type === 'boss') el('span', 'v-badge boss', head, '보스');
-      if (p.type === 'special') el('span', 'v-badge special', head, '특별');
-      if (cleared) el('span', 'v-badge clear', head, '클리어');
-      el('p', 'v-desc', card, p.desc);
-
-      const info = el('div', 'v-meta', card);
-      el('span', '', info, phaseKindText(p));
-      el('span', '', info, `보상: 골드 ${fmt(p.clearReward.gold)} · 경험치 ${fmt(p.clearReward.exp)}`);
-      const mats = Object.entries(p.clearReward.materials).map(([id, n]) => `${materialName(id)} x${n}`);
-      if (p.clearReward.sweepTickets > 0) mats.push(`소탕권 x${p.clearReward.sweepTickets}`);
-      if (mats.length) el('span', '', info, mats.join(', '));
-
-      const actions = el('div', 'v-actions', card);
-      if (locked) {
-        const req = PHASES.find((q) => q.id === p.requires);
-        el('span', 'v-lock', actions, `잠김: ${p.requires} ${req ? req.name : ''} 클리어 필요`);
-      } else {
-        button(actions, '도전', 'primary', true, () => this.cb.onStartPhase(p.id));
-        if (cleared) {
-          button(actions, '소탕 (소탕권 1)', '', save.sweepTickets >= 1, () => this.sweep(p));
-        }
+    const chapters = [...new Set(PHASES.map((p) => p.chapter))];
+    for (const ch of chapters) {
+      const list = PHASES.filter((p) => p.chapter === ch);
+      const first = list[0];
+      const open = !first.requires || save.cleared.includes(first.requires);
+      const done = list.filter((p) => save.cleared.includes(p.id)).length;
+      const head = el('div', 'v-chapter', s);
+      el('span', 'v-chapter-name', head, CHAPTER_NAME[ch] ?? `챕터 ${ch}`);
+      el('span', 'v-muted', head, open ? `${done} / ${list.length} 클리어` : '잠김');
+      if (!open) {
+        // 아직 열리지 않은 챕터는 카드 대신 한 줄로 알린다.
+        const req = PHASES.find((q) => q.id === first.requires);
+        el('p', 'v-lock v-chapter-lock', s, `${first.requires} ${req ? req.name : ''}을(를) 클리어하면 열립니다.`);
+        continue;
       }
+      for (const p of list) this.phaseCard(s, save, p);
     }
     el('p', 'v-muted v-note', s, `소탕: 클리어한 페이즈를 소탕권 1장으로 즉시 완료하고 클리어 보상의 ${Math.round(SWEEP_RATE * 100)}%를 받습니다. (소탕권 보상 제외)`);
+  }
+
+  private phaseCard(s: HTMLElement, save: SaveData, p: PhaseDef): void {
+    const locked = !!p.requires && !save.cleared.includes(p.requires);
+    const cleared = save.cleared.includes(p.id);
+    const card = el('div', `v-card phase${locked ? ' locked' : ''}`, s);
+    const head = el('div', 'v-card-head', card);
+    el('span', 'v-phase-id', head, p.id);
+    el('span', 'v-card-title', head, p.name);
+    if (p.type === 'boss') el('span', 'v-badge boss', head, '보스');
+    if (p.type === 'special') el('span', 'v-badge special', head, '특별');
+    if (cleared) el('span', 'v-badge clear', head, '클리어');
+    el('p', 'v-desc', card, p.desc);
+
+    const info = el('div', 'v-meta', card);
+    el('span', '', info, phaseKindText(p));
+    el('span', '', info, `보상: 골드 ${fmt(p.clearReward.gold)} · 경험치 ${fmt(p.clearReward.exp)}`);
+    const mats = Object.entries(p.clearReward.materials).map(([id, n]) => `${materialName(id)} x${n}`);
+    if (p.clearReward.sweepTickets > 0) mats.push(`소탕권 x${p.clearReward.sweepTickets}`);
+    if (mats.length) el('span', '', info, mats.join(', '));
+
+    const actions = el('div', 'v-actions', card);
+    if (locked) {
+      const req = PHASES.find((q) => q.id === p.requires);
+      el('span', 'v-lock', actions, `잠김: ${p.requires} ${req ? req.name : ''} 클리어 필요`);
+    } else {
+      button(actions, '도전', 'primary', true, () => this.cb.onStartPhase(p.id));
+      if (cleared) {
+        button(actions, '소탕 (소탕권 1)', '', save.sweepTickets >= 1, () => this.sweep(p));
+      }
+    }
   }
 
   private sweep(p: PhaseDef): void {
