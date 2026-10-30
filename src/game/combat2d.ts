@@ -6,6 +6,7 @@ import type { BattleScene, HitOpts } from './battleScene';
 import { DEPTH } from './fx';
 import type { ActionKind } from './player2d';
 import { meleeLook, shotColor } from './weaponArt';
+import { castUltimate } from './ultimates';
 
 // 플레이어의 공격 입력과 무기 동작, 스킬. 히트박스는 플레이어 앞쪽의 사각형이다.
 
@@ -767,5 +768,8 @@ function castSkill(b: BattleScene, skill: SkillDef): void {
       p.startAction('barrage', 2.05, hits);
       break;
     }
+    default:
+      // 상급·궁극 스킬 (화면 전체를 휩쓰는 광역기)
+      castUltimate(b, skill.id);
   }
 }
