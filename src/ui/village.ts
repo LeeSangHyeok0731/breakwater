@@ -429,6 +429,8 @@ export class VillageUI {
       const btns = el('div', 'v-stat-btns', row);
       button(btns, '+1', 'small', save.statPoints >= 1, () => this.allocate(info.key, 1));
       button(btns, '+5', 'small', save.statPoints >= 5, () => this.allocate(info.key, 5));
+      // 남은 포인트를 이 스탯에 한 번에 모두 넣는다.
+      button(btns, save.statPoints > 0 ? `전부 +${save.statPoints}` : '전부', 'small', save.statPoints >= 1, () => this.allocate(info.key, this.getSave().statPoints));
     }
     el('p', 'v-muted v-note', s, '레벨이 오를 때마다 모든 기본 스탯이 1씩 자동으로 오르고, 스탯 포인트 5를 받습니다.');
 
