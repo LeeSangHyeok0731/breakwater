@@ -299,7 +299,7 @@ function performHit(b: BattleScene, kind: ActionKind, index: number): void {
       break;
     case 'manaball': {
       sfx.play('magic');
-      const m = p.muzzle();
+      const m = p.castPoint();
       b.spawnPlayerBolt({ x: m.x, y: m.y, vx: f * 300, vy: 0, damage: base, kind: 'orb', size: 1, basic: true });
       break;
     }
@@ -376,7 +376,7 @@ function releaseOrb(b: BattleScene): void {
   const c = Math.min(p.charge, 1.2) / 1.2;
   p.charge = -1;
   sfx.play('magic', 1 + c);
-  const m = p.muzzle();
+  const m = p.castPoint();
   if (c > 0.95) {
     b.fx.spark(m.x, m.y, 0x7fe8ff, 2);
     b.fx.burst(m.x, m.y, 0xbff6ff, 10, 120, 300);

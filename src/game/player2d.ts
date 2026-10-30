@@ -711,6 +711,14 @@ export class Player {
     return { x: this.x + this.facing * 16, y: this.y - 4 };
   }
 
+  /**
+   * 지팡이 평타가 나가는 위치. 지팡이 끝은 손보다 한참 위(휘두르는 각도에 따라 바닥에서 40~50px)라
+   * 거기서 쏘면 키 작은 적의 머리 위로 지나간다. 그래서 몸 앞, 가슴 높이에서 쏜다.
+   */
+  castPoint(): { x: number; y: number } {
+    return { x: this.x + this.facing * 16, y: this.y };
+  }
+
   destroy(): void {
     this.sprite.destroy();
     this.zone.destroy();
