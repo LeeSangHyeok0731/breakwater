@@ -240,9 +240,9 @@ export class Hud {
       this.slots.push({ root, key, short, mana, cdFill, cdText });
     }
 
-    // 우하단: 무기
+    // 우하단: 직업 (무기)
     this.weaponPanel = el('div', 'hud-weapon hud-panel', w);
-    el('div', 'hud-weapon-label', this.weaponPanel, '현재 무기');
+    el('div', 'hud-weapon-label', this.weaponPanel, '현재 직업');
     this.weaponName = el('div', 'hud-weapon-name', this.weaponPanel);
     const other = el('div', 'hud-weapon-other', this.weaponPanel);
     this.swapKey = el('span', 'hud-key', other);
@@ -491,7 +491,7 @@ export class Hud {
       ['강화 공격', `${k('special')} (누르고 있다가 놓기)`],
       ['구르기', k('dodge')],
       ['가드 (근접)', `${k('guard')} 누르고 있기`],
-      ['무기 교체', k('swap')],
+      ['직업 교체', k('swap')],
       ['스킬', [k('slot1'), k('slot2'), k('slot3'), k('slot4'), k('slot5'), k('slot6'), k('slot7'), k('slot8')].join(' ')],
       ['일시정지', 'Esc'],
     ];
