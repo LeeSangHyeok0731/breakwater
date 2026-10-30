@@ -54,10 +54,9 @@ export const LEGIONS: Record<LegionId, LegionDef> = {
     title: '마법 군단장',
     line: 'magic',
     weapons: ['staff'],
-    monster: 'silent_knight',
+    monster: 'dark_lord',
     shard: 'dark_shard',
-    gimmick: '피해를 받을 때마다 20회 보호막을 두르고 중앙에서 한쪽 절반을 즉사 공격한다. 보호막을 깨면 그로기.',
-    locked: true,
+    gimmick: '체력 75% · 50% · 25%마다 맵 중앙에서 20회 보호막을 두른다. 시간 안에 깨면 그로기(받는 피해 200%), 못 깨면 한쪽 절반에 즉사 심판이 내린다. 반대편으로 피하라.',
   },
 };
 

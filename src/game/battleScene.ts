@@ -222,6 +222,8 @@ export class BattleScene extends Phaser.Scene {
   silenceStacks = 0;
   /** 엘프 그로기 남은 시간 (HUD 표시용) */
   legionGroggy = 0;
+  /** 군단장이 HUD에 띄우는 상태 (보호막 남은 횟수 등). 그로기보다 먼저 보인다. */
+  legionNote = '';
   private reviveLeft = 0;
 
   constructor() {
@@ -233,6 +235,7 @@ export class BattleScene extends Phaser.Scene {
     this.legion = data.legion ?? null;
     this.silenceStacks = 0;
     this.legionGroggy = 0;
+    this.legionNote = '';
     this.reviveLeft = this.legion?.mods.includes('revive') ? 1 : 0;
     this.monsters = [];
     this.bolts = [];
@@ -439,6 +442,23 @@ export class BattleScene extends Phaser.Scene {
     if (opts.noDamage) {
       this.fx.spark(m.x, m.y, 0xc060ff, 1, Math.PI / 4);
       this.fx.burst(m.x, m.y, 0xb04aff, 6, 50, 400);
+      return;
+    }
+    // 횟수 보호막: 피해 대신 한 번씩 깎인다.
+    if (m.hitShield !== 0) {
+      const hx = m.x + (Math.random() - 0.5) * 60;
+      const hy = m.y + (Math.random() - 0.5) * 60;
+      if (m.hitShield > 0) {
+        m.hitShield--;
+        this.fx.text(m.x, m.body.top - 30, String(m.hitShield), 'crit');
+        this.fx.spark(hx, hy, 0xe0d0ff, 1.5, Math.random() < 0.5 ? 0 : Math.PI / 4);
+        this.fx.burst(hx, hy, 0xb04aff, 6, 120, 300);
+        sfx.play('block', 0.6);
+        if (p.isMelee) this.fx.stop(0.03);
+      } else {
+        this.fx.text(m.x, m.body.top - 30, '무효', 'quiet');
+        sfx.play('block', 0.3);
+      }
       return;
     }
     const w = p.weapon.def;
@@ -654,12 +674,18 @@ export class BattleScene extends Phaser.Scene {
     this.fx.burst(p.x, p.y, 0xb04aff, 12, 120, 500);
     sfx.play('magic', 0.5);
     if (this.silenceStacks < this.silenceMax) return;
-    // 가득 찼다: HP 100% 피해 (무적·가드 무시)
-    this.announce('침묵의 심판', 1.2);
-    this.fx.flashScreen(0x6a1aa8, 0.6, 500);
-    this.fx.pillar(p.x, p.feet, 0xb04aff, 220, 800);
-    this.fx.shake(1.5, 300);
     this.silenceStacks = 0;
+    this.executePlayer('침묵의 심판', 0xb04aff);
+  }
+
+  /** 군단장 즉사기: HP 100% 피해 (무적·가드 무시) */
+  executePlayer(name: string, color: number): void {
+    const p = this.player;
+    if (p.dead) return;
+    this.announce(name, 1.2);
+    this.fx.flashScreen(0x6a1aa8, 0.6, 500);
+    this.fx.pillar(p.x, p.feet, color, 220, 800);
+    this.fx.shake(1.5, 300);
     p.invuln = 0;
     p.guarding = false;
     p.shield = 0;
@@ -1492,7 +1518,7 @@ export class BattleScene extends Phaser.Scene {
             max: this.silenceMax,
             silence: p.silenceTime,
             revive: this.reviveLeft,
-            status: this.legionGroggy > 0 ? `그로기 ${this.legionGroggy.toFixed(1)}초 · 받는 피해 200%` : '',
+            status: this.legionNote || (this.legionGroggy > 0 ? `그로기 ${this.legionGroggy.toFixed(1)}초 · 받는 피해 200%` : ''),
           }
         : null,
       dodgeReady: p.dodgeCd <= 0,

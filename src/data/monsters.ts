@@ -37,7 +37,8 @@ export type MonsterKind =
   | 'void_king'
   // 군단장
   | 'silent_knight'
-  | 'corrupted_elf';
+  | 'corrupted_elf'
+  | 'dark_lord';
 
 export interface MonsterDef {
   kind: MonsterKind;
@@ -689,6 +690,24 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
     damage: 60,
     range: 12,
     attackCd: 1.2,
+    radius: 0.8,
+    height: 3.4,
+    flying: false,
+    gold: 0,
+    exp: 0,
+    mana: 30,
+    drops: [],
+  },
+  dark_lord: {
+    kind: 'dark_lord',
+    name: '암흑의 군주',
+    // [초안] 노멀 기준. 보호막 기믹이 있어 체력은 기사단장보다 조금 적다.
+    boss: true,
+    hp: 52000,
+    speed: 4,
+    damage: 65,
+    range: 12,
+    attackCd: 1.4,
     radius: 0.8,
     height: 3.4,
     flying: false,
