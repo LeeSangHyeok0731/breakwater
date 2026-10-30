@@ -5,6 +5,7 @@ import type { SkillDef } from '../data/skills';
 import type { BattleScene, HitOpts } from './battleScene';
 import { DEPTH } from './fx';
 import type { ActionKind } from './player2d';
+import { meleeLook } from './weaponArt';
 
 // 플레이어의 공격 입력과 무기 동작, 스킬. 히트박스는 플레이어 앞쪽의 사각형이다.
 
@@ -50,8 +51,6 @@ const LASER_HALF_H = 12;
 /** 발도가 지나간 길 (뒤따르는 칼바람이 친다) */
 let iaiPath: { x0: number; len: number; y: number } | null = null;
 
-/** 검사 스킬 잔상 색 */
-const SWORD_FX = 0x9fd8ff;
 
 export function updatePlayerCombat(b: BattleScene, dt: number): void {
   const p = b.player;
@@ -158,7 +157,8 @@ function performHit(b: BattleScene, kind: ActionKind, index: number): void {
   const base = b.weaponBase();
   const dao = p.weapon.def.type === 'dao';
   const mul = dao ? 1.2 : 1;
-  const color = dao ? 0xffd2a8 : 0xbfe4ff;
+  // 기본 잔상 색은 무기마다 다르다 (화염검은 붉게, 월광도는 푸르게).
+  const color = meleeLook(p.weapon.def).slash;
   const f = p.facing;
   if (SWINGS.has(kind)) sfx.play('slash');
   switch (kind) {
@@ -166,15 +166,18 @@ function performHit(b: BattleScene, kind: ActionKind, index: number): void {
       const second = p.comboStep % 2 === 0;
       // 칼끝까지 닿도록 넉넉하게: 몸 앞 72px
       b.fx.slash(p.x + f * 18, p.y - 2, f, 40, color, !second);
+      swingFx(b, p.x + f * 40, p.y - 2);
       box(b, 0, 72, 48, 2, base * (second ? 0.9 : 1.0) * mul, { basic: true, knock: 90 });
       break;
     }
     case 'airSlash':
       b.fx.slash(p.x + f * 14, p.y - 4, f, 40, color, true);
+      swingFx(b, p.x + f * 36, p.y - 4);
       box(b, -8, 76, 76, 6, base * 1.0 * mul, { basic: true, knock: 70 });
       break;
     case 'crouchSlash':
       b.fx.slash(p.x + f * 18, p.y + 10, f, 34, color);
+      swingFx(b, p.x + f * 36, p.y + 10);
       box(b, 0, 70, 24, -10, base * 0.9 * mul, { basic: true, knock: 60 });
       break;
     case 'thrust':
@@ -204,10 +207,10 @@ function performHit(b: BattleScene, kind: ActionKind, index: number): void {
     case 'whirl': {
       // 선풍: 몸을 돌리며 앞뒤로 네 번 벤다.
       const dir = (index % 2 === 0 ? f : -f) as 1 | -1;
-      b.fx.slash(p.x + dir * 4, p.y - 2, dir, 42, SWORD_FX, true, { up: index % 2 === 1, speed: 1.3 });
+      b.fx.slash(p.x + dir * 4, p.y - 2, dir, 42, meleeLook(p.weapon.def).slash, true, { up: index % 2 === 1, speed: 1.3 });
       b.fx.burst(p.x, p.y, 0xbfe8ff, 5, 130, 260);
       if (index === 3) {
-        b.fx.ring(p.x, p.feet, 80, SWORD_FX, 360);
+        b.fx.ring(p.x, p.feet, 80, meleeLook(p.weapon.def).slash, 360);
         b.fx.shake(0.5);
       }
       around(b, 120, 60, 2, b.skillBase({ str: 0.75 }), { stun: 1.0, knock: index === 3 ? 140 : 40 });
@@ -331,6 +334,23 @@ function performHit(b: BattleScene, kind: ActionKind, index: number): void {
       break;
     }
     default:
+      break;
+  }
+}
+
+/** 무기의 개성이 드러나는 휘두르기 연출: 화염검은 불씨, 월광도는 달빛 가루, 강철 장검은 칼끝 반짝임 */
+function swingFx(b: BattleScene, x: number, y: number): void {
+  switch (meleeLook(b.player.weapon.def).aura) {
+    case 'flame':
+      b.fx.embers(x, y, 0xff7a1a, 8, 18, 34, 500);
+      b.fx.burst(x, y, 0xffc040, 6, 110, 320);
+      break;
+    case 'moon':
+      b.fx.burst(x, y, 0xbfd4ff, 8, 70, 450);
+      b.fx.spark(x, y - 6, 0xbfd4ff, 1, Math.PI / 4);
+      break;
+    case 'steel':
+      b.fx.spark(x + b.player.facing * 6, y - 12, 0xffffff);
       break;
   }
 }

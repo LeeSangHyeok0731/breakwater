@@ -4,7 +4,8 @@ import type { SkillDef } from '../data/skills';
 import { MELEE_TYPES, type WeaponDef } from '../data/weapons';
 import { ORIGIN_X } from './assets2d';
 import { AIM_ANIM, AIM_HAND, AIM_ORIGIN_X, baseAnimKey, classAnimKey } from './classSprites';
-import { createWeaponSprites, WEAPON_ORIGIN } from './weaponSprites';
+import { heldDef, heldStyle, meleeLook, RANGED_AURA } from './weaponArt';
+import { createWeaponSprites, heldKey, heldOrigin } from './weaponSprites';
 import { DEPTH } from './fx';
 import type { Derived } from './stats';
 
@@ -176,7 +177,7 @@ export class Player {
     this.guardFx = scene.add.circle(x, y, 16, 0x9fd8ff, 0).setStrokeStyle(2, 0x9fd8ff, 0.8).setDepth(DEPTH.fx).setVisible(false);
     this.shieldFx = scene.add.image(x, y, 'fx-hex').setDepth(DEPTH.fx).setVisible(false).setBlendMode(Phaser.BlendModes.ADD);
     createWeaponSprites(scene);
-    this.held = scene.add.image(x, y, 'w-staff').setDepth(DEPTH.player + 1).setVisible(false);
+    this.held = scene.add.image(x, y, heldKey('staff', 'apprentice')).setDepth(DEPTH.player + 1).setVisible(false);
     this.flash = scene.add.image(x, y, 'w-flash').setDepth(DEPTH.player + 2).setVisible(false).setBlendMode(Phaser.BlendModes.ADD);
     this.orb = scene.add.image(x, y, 'dot').setDepth(DEPTH.player + 2).setVisible(false).setTint(0x7fe8ff).setBlendMode(Phaser.BlendModes.ADD);
     // 강화 공격 차징 게이지 (머리 위)
@@ -496,6 +497,7 @@ export class Player {
       .setScale(0.95 + Math.sin(t * 0.004) * 0.03);
 
     this.updateHeld();
+    this.weaponAura();
     this.chargeMotes();
     this.landingDust();
 
@@ -511,6 +513,47 @@ export class Player {
       this.chargeFill.width = 22 * r;
       this.chargeFill.fillColor = r >= 1 ? 0xffe08a : 0x9fd8ff;
     }
+  }
+
+  /**
+   * 무기의 기운: 화염검은 불씨, 월광도는 달빛, 강철 장검은 반짝임,
+   * 바람의 장궁·룬 지팡이·용암 지팡이는 무기 끝에서 기운이 피어오른다.
+   */
+  private weaponAura(): void {
+    if (this.dead || this.dodgeTime > 0) return;
+    const def = this.weapon.def;
+    let color: number | undefined;
+    let at: { x: number; y: number };
+    let rate = 0.35;
+    let size = 1;
+    if (this.isMelee) {
+      const aura = meleeLook(def).aura;
+      if (!aura) return;
+      color = aura === 'flame' ? (Math.random() < 0.5 ? 0xff7a1a : 0xffc040) : aura === 'moon' ? 0xbfd4ff : 0xffffff;
+      rate = aura === 'steel' ? 0.06 : aura === 'flame' ? 0.5 : 0.3;
+      size = aura === 'flame' && Math.random() < 0.3 ? 2 : 1;
+      // 칼은 몸 앞쪽(칼을 쥔 쪽)에서 피어오른다.
+      at = { x: this.x + this.facing * (6 + Math.random() * 10), y: this.y - 4 + (Math.random() - 0.5) * 16 };
+    } else {
+      color = RANGED_AURA[heldStyle(def)];
+      if (color === undefined || !this.held.visible) return;
+      at = this.muzzle();
+    }
+    if (Math.random() > rate) return;
+    const dot = this.scene.add
+      .image(at.x, at.y, 'fx-px')
+      .setTint(color)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setDepth(DEPTH.player + 2)
+      .setScale(size);
+    this.scene.tweens.add({
+      targets: dot,
+      y: at.y - 10 - Math.random() * 12,
+      x: at.x + (Math.random() - 0.5) * 6,
+      alpha: 0,
+      duration: 450 + Math.random() * 300,
+      onComplete: () => dot.destroy(),
+    });
   }
 
   /** 차징 중에는 무기 끝(근접은 칼날)으로 빛이 빨려 들고, 가득 차면 번쩍인다. */
@@ -572,31 +615,30 @@ export class Player {
     const a = this.action;
     const ranged = a && RANGED_ACTIONS.has(a.kind) ? a : null;
     const t = ranged ? ranged.t : 0;
-    let key = 'w-staff';
+    // 무기마다 그림이 다르다 (사냥꾼의 활 / 바람의 장궁, 리볼버 / 장총, 지팡이 3종).
+    const heldType = type as 'bow' | 'gun' | 'staff';
+    const style = heldStyle(this.weapon.def);
+    let key = heldKey(heldType, style);
     let forward = 0;
     let down = 0;
     let rot = 0;
-    let tipLocal = { x: 0, y: -22 };
+    const tipLocal = heldDef(heldType, style).tip;
     let flash = false;
     let orbScale = 0;
 
     if (type === 'bow') {
-      tipLocal = { x: 12, y: 0 };
-      key = 'w-bow-0';
       if (this.charge >= 0) {
         // 차징: 당긴 만큼 시위가 뒤로
         const c = Math.min(1, this.charge / 1.2);
-        key = c < 0.45 ? 'w-bow-1' : 'w-bow-2';
+        key = heldKey('bow', style, c < 0.45 ? 1 : 2);
         forward = -c * 2;
       } else if (ranged) {
         // 쏘기: 짧게 당겼다가 놓으면서 살짝 밀려난다
         const cycle = ranged.kind === 'volley' ? (t % 0.075) / 0.075 : Math.min(1, t / 0.2);
-        key = cycle < 0.35 ? 'w-bow-2' : 'w-bow-0';
+        key = heldKey('bow', style, cycle < 0.35 ? 2 : 0);
         if (cycle >= 0.35) forward -= 2 * (1 - cycle);
       }
     } else if (type === 'gun') {
-      key = 'w-gun';
-      tipLocal = { x: 14, y: -4 };
       if (this.reloadTime > 0) {
         // 재장전: 총을 아래로 돌려 탄을 채운다
         rot = 1.1 + Math.sin(this.reloadTime * 10) * 0.15;
@@ -613,8 +655,6 @@ export class Player {
         }
       }
     } else {
-      key = 'w-staff';
-      tipLocal = { x: 0, y: -22 };
       if (this.charge >= 0) {
         // 차징: 곧게 세워 끝에 마력을 모은다
         const c = Math.min(1, this.charge / 1.2);
@@ -633,7 +673,7 @@ export class Player {
 
     // 손 위치: 조준 자세 그림의 손 (발끝 기준점에서)
     const f = this.facing;
-    const [gx, gy] = WEAPON_ORIGIN[key];
+    const [gx, gy] = heldOrigin(heldType, style);
     const hx = Math.round(this.x) + f * (AIM_HAND.x + forward);
     const hy = Math.round(this.feet + 1) + AIM_HAND.y + down;
     this.held

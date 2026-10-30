@@ -13,6 +13,7 @@ import { updatePlayerCombat } from './combat2d';
 import { ctx, type BattleOutcome } from './context';
 import { DEPTH, Fx } from './fx';
 import type { Palette } from './fxArt';
+import { meleeLook, weaponIconUrl } from './weaponArt';
 import { Monster } from './monster2d';
 import { dev } from './dev';
 import { Player } from './player2d';
@@ -431,7 +432,7 @@ export class BattleScene extends Phaser.Scene {
     if (!opts.quiet) {
       const hx = m.x + (Math.random() - 0.5) * m.body.width * 0.6;
       const hy = m.y + (Math.random() - 0.5) * m.body.height * 0.4;
-      const tone = HIT_COLOR[w.type];
+      const tone = p.isMelee ? meleeLook(w).slash : HIT_COLOR[w.type];
       this.fx.spark(hx, hy, crit ? 0xffd060 : tone, crit ? 2 : 1, Math.random() < 0.5 ? 0 : Math.PI / 4);
       this.fx.burst(hx, hy, crit ? 0xffc040 : tone, crit ? 10 : 5, 110, 300);
       if (crit) this.fx.spark(hx, hy, 0xffffff, 1, Math.PI / 4);
@@ -1357,6 +1358,8 @@ export class BattleScene extends Phaser.Scene {
       expRatio: this.save.exp / expToNext(this.save.level),
       weaponName: `${CLASS_NAME[w.def.type]} · ${w.def.name}${w.enhance > 0 ? ` +${w.enhance}` : ''}`,
       weaponGradeColor: GRADES[w.def.grade].color,
+      weaponIcon: weaponIconUrl(w.def),
+      otherWeaponIcon: weaponIconUrl(other.def),
       otherWeaponName: `${CLASS_NAME[other.def.type]} · ${other.def.name}${other.enhance > 0 ? ` +${other.enhance}` : ''}`,
       swapKey: keyLabel(keymap.swap),
       slots,

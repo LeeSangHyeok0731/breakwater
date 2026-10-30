@@ -26,7 +26,10 @@ export interface HudState {
   expRatio: number;
   weaponName: string;
   weaponGradeColor: string;
+  /** 무기 아이콘 (data URL) */
+  weaponIcon: string;
   otherWeaponName: string;
+  otherWeaponIcon: string;
   swapKey: string;
   /** 항상 8개 */
   slots: HudSlot[];
@@ -72,7 +75,7 @@ function setText(e: HTMLElement, s: string): void {
   if (e.textContent !== s) e.textContent = s;
 }
 
-function setStyle(e: HTMLElement, prop: 'width' | 'left' | 'transform' | 'display' | 'color', v: string): void {
+function setStyle(e: HTMLElement, prop: 'width' | 'left' | 'transform' | 'display' | 'color' | 'borderColor', v: string): void {
   if (e.style[prop] !== v) e.style[prop] = v;
 }
 
@@ -156,7 +159,9 @@ export class Hud {
 
   private weaponPanel: HTMLDivElement;
   private weaponName: HTMLDivElement;
+  private weaponIcon: HTMLImageElement;
   private otherWeapon: HTMLSpanElement;
+  private otherIcon: HTMLImageElement;
   private swapKey: HTMLSpanElement;
 
   private banner: HTMLDivElement;
@@ -243,9 +248,12 @@ export class Hud {
     // 우하단: 직업 (무기)
     this.weaponPanel = el('div', 'hud-weapon hud-panel', w);
     el('div', 'hud-weapon-label', this.weaponPanel, '현재 직업');
-    this.weaponName = el('div', 'hud-weapon-name', this.weaponPanel);
+    const main = el('div', 'hud-weapon-main', this.weaponPanel);
+    this.weaponIcon = el('img', 'hud-weapon-icon', main);
+    this.weaponName = el('div', 'hud-weapon-name', main);
     const other = el('div', 'hud-weapon-other', this.weaponPanel);
     this.swapKey = el('span', 'hud-key', other);
+    this.otherIcon = el('img', 'hud-weapon-icon small', other);
     this.otherWeapon = el('span', 'hud-weapon-other-name', other);
     this.ammoEl = el('div', 'hud-weapon-ammo', this.weaponPanel);
     this.weaponPanel.insertBefore(this.ammoEl, other);
@@ -381,6 +389,9 @@ export class Hud {
     // 무기
     setText(this.weaponName, s.weaponName);
     setStyle(this.weaponName, 'color', s.weaponGradeColor);
+    setStyle(this.weaponIcon, 'borderColor', s.weaponGradeColor);
+    if (this.weaponIcon.getAttribute('src') !== s.weaponIcon) this.weaponIcon.src = s.weaponIcon;
+    if (this.otherIcon.getAttribute('src') !== s.otherWeaponIcon) this.otherIcon.src = s.otherWeaponIcon;
     setText(this.otherWeapon, s.otherWeaponName);
     setText(this.swapKey, s.swapKey);
     if (s.ammo) {

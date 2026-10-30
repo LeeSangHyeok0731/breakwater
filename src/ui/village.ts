@@ -1,5 +1,6 @@
 import { exportSave, importSave, type SaveData } from '../core/save';
 import { DEFAULT_KEYMAP, keyLabel, SLOT_ACTIONS, type Action } from '../core/input';
+import { weaponIconUrl } from '../game/weaponArt';
 import { addExp, derive, DEX_SPEED_CAP, enhanceMultiplier, expToNext, resetCost, totalStats, type Stats } from '../game/stats';
 import { CHAPTER_NAME, PHASES, SWEEP_RATE, SWEEP_TICKET_PRICE, type PhaseDef } from '../data/phases';
 import { skillsFor, STARTER_SKILLS } from '../data/skills';
@@ -69,6 +70,15 @@ const ACTION_LABELS: Record<Action, string> = {
 };
 
 const CONFIRM_TIMEOUT = 4000;
+
+/** 무기 아이콘 (테두리는 등급 색) */
+function weaponIcon(parent: HTMLElement, def: WeaponDef): HTMLImageElement {
+  const img = el('img', 'v-weapon-icon', parent);
+  img.src = weaponIconUrl(def);
+  img.alt = '';
+  img.style.borderColor = GRADES[def.grade].color;
+  return img;
+}
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, parent?: HTMLElement, text?: string): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -485,6 +495,7 @@ export class VillageUI {
       const def = w ? WEAPONS[w.defId] : undefined;
       const box = el('div', 'v-equip-slot', slots);
       el('span', 'v-muted', box, `직업 ${i + 1}`);
+      if (def) weaponIcon(box, def);
       const name = el('span', 'v-card-title', box, def ? `${def.name}${w && w.enhance > 0 ? ` +${w.enhance}` : ''}` : '없음');
       if (def) name.style.color = GRADES[def.grade].color;
       if (def) el('span', 'v-muted', box, `${CLASS_NAME[def.type]} · ${WEAPON_TYPE_NAME[def.type]}`);
@@ -496,6 +507,7 @@ export class VillageUI {
       if (!def) continue;
       const card = el('div', 'v-card', list);
       const head = el('div', 'v-card-head', card);
+      weaponIcon(head, def);
       const name = el('span', 'v-card-title', head, def.name);
       name.style.color = GRADES[def.grade].color;
       if (w.enhance > 0) el('span', 'v-enh', head, `+${w.enhance}`);
@@ -713,6 +725,7 @@ export class VillageUI {
       const grade = GRADES[def.grade];
       const card = el('div', 'v-card enhance', s);
       const head = el('div', 'v-card-head', card);
+      weaponIcon(head, def);
       const name = el('span', 'v-card-title', head, def.name);
       name.style.color = grade.color;
       el('span', 'v-enh', head, `+${w.enhance}`);
@@ -791,6 +804,7 @@ export class VillageUI {
       if (def.price === undefined) continue;
       const card = el('div', 'v-card', ws);
       const head = el('div', 'v-card-head', card);
+      weaponIcon(head, def);
       const name = el('span', 'v-card-title', head, def.name);
       name.style.color = GRADES[def.grade].color;
       el('span', 'v-muted', head, `${GRADES[def.grade].name} ${WEAPON_TYPE_NAME[def.type]}`);
@@ -862,6 +876,7 @@ export class VillageUI {
       if (!ex) continue;
       const card = el('div', 'v-card', xs);
       const head = el('div', 'v-card-head', card);
+      weaponIcon(head, def);
       const name = el('span', 'v-card-title', head, def.name);
       name.style.color = GRADES[def.grade].color;
       el('span', 'v-muted', head, `${GRADES[def.grade].name} ${WEAPON_TYPE_NAME[def.type]}`);
