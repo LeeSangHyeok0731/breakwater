@@ -324,9 +324,26 @@ export class Player {
     let speed = this.moveSpeed();
     if (this.charge >= 0 || this.action?.kind === 'laser' || this.action?.kind === 'snipe') speed *= 0.35;
     else if (this.action && this.grounded && !BASIC_ACTIONS.has(this.action.kind)) speed *= 0.4;
-    // 넉백 중에는 조작이 덜 먹힌다.
-    const control = this.hurtTimer > 0.15 ? 0.05 : this.grounded ? 0.35 : 0.12;
-    body.setVelocityX(body.velocity.x + (wish * speed - body.velocity.x) * Math.min(1, control * 60 * dt));
+    const vx = body.velocity.x;
+    const k = (c: number): number => Math.min(1, c * 60 * dt);
+    if (this.hurtTimer > 0.15) {
+      // 넉백 중에는 조작이 덜 먹힌다.
+      body.setVelocityX(vx + (wish * speed - vx) * k(0.05));
+    } else if (this.grounded) {
+      body.setVelocityX(vx + (wish * speed - vx) * k(0.35));
+    } else {
+      // 공중에서는 관성을 지킨다: 반대로 꺾어도 조금 늦출 뿐 방향이 바뀌지 않고, 키를 떼도 그대로 날아간다.
+      let next = vx;
+      if (wish !== 0 && (Math.abs(vx) < 20 || Math.sign(wish) === Math.sign(vx))) {
+        // 같은 방향(또는 제자리 점프)이면 이동 속도까지 천천히 붙는다.
+        if (Math.abs(vx) < speed) next = vx + (wish * speed - vx) * k(0.05);
+      } else if (wish !== 0) {
+        next = vx * (1 - k(0.02));
+      }
+      // 구르기 직후처럼 이동 속도보다 빠르면 서서히 줄인다.
+      if (Math.abs(next) > speed) next -= (next - Math.sign(next) * speed) * k(0.08);
+      body.setVelocityX(next);
+    }
 
     if (this.grounded) this.airJumps = 1;
     if (input.pressed('jump') && !this.guarding) {
@@ -342,6 +359,8 @@ export class Player {
         // 더블 점프: 공중에서 한 번 더
         this.airJumps--;
         body.setVelocityY(JUMP_V * 0.9);
+        // 공중에서 방향을 바꾸는 유일한 수단: 누르고 있는 쪽으로 다시 뛴다.
+        if (wish !== 0) body.setVelocityX(wish * this.moveSpeed());
         this.jumpPuff();
         // 점프 동작을 처음부터 다시 보여 준다.
         if (this.sprite.anims.currentAnim?.key === classAnimKey(this.weapon.def.type, 'hero-jump')) this.sprite.anims.restart();
