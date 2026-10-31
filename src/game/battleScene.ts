@@ -9,6 +9,7 @@ import type { PhaseDef } from '../data/phases';
 import { DIFFICULTY, LEGIONS, rewardMul, SILENCE_STACKS, SILENCE_TIME, type LegionRun } from '../data/legion';
 import { barProgress, totalReward, WORLD_BOSS_BARS, WORLD_BOSS_TIME } from '../data/worldBoss';
 import { koNum } from '../ui/format';
+import { column, impactBurst, PAL, rays, shockwave, tint } from './vfx';
 import { SKILL_BY_ID, type SkillDef } from '../data/skills';
 import { CLASS_NAME, GRADES, WEAPONS, type WeaponType } from '../data/weapons';
 import { Hud, type HudSlot, type HudState } from '../ui/hud';
@@ -1137,6 +1138,7 @@ export class BattleScene extends Phaser.Scene {
     const ground = Math.min(y + 8, FLOOR_Y);
     this.fx.boom(x, y, radius * 0.6, palette);
     this.fx.ring(x, ground, radius, palette === 'arcane' ? 0x7fe8ff : 0xffa040);
+    impactBurst(this, x, y, radius * 0.9, palette === 'arcane' ? PAL.arcane : PAL.flame, ground);
     this.fx.burst(x, y, palette === 'arcane' ? 0xbff6ff : 0xffc060, 14, 160, 450, 1, 300);
     for (let i = 0; i < 3; i++) this.time.delayedCall(120 + i * 60, () => this.fx.smoke(x + (i - 1) * radius * 0.4, y - 4, 2, palette === 'arcane' ? 0x6a7aa8 : 0x7a706a));
     this.fx.shake(0.5);
@@ -1476,6 +1478,12 @@ export class BattleScene extends Phaser.Scene {
         });
         this.fx.ring(x, FLOOR_Y, 110, 0xff6a1a, 450);
         this.fx.ring(x, FLOOR_Y, 70, 0xffd060, 300);
+        // 거대한 불기둥과 땅을 타는 충격파
+        impactBurst(this, x, FLOOR_Y - 30, 90, PAL.flame, FLOOR_Y);
+        column(this, x, FLOOR_Y, 44, 360, PAL.flame, 650);
+        shockwave(this, x, FLOOR_Y, 260, PAL.gold, 600);
+        rays(this, x, FLOOR_Y - 30, 16, 200, PAL.flame, 460);
+        tint(this, 0xff5a1a, 0.2, 380);
         this.fx.burst(x, FLOOR_Y - 16, 0xffb050, 26, 240, 650, 1, 500);
         this.fx.burst(x, FLOOR_Y - 10, 0x8a6a50, 14, 200, 700, 1.5, 700);
         for (let i = 0; i < 6; i++) this.time.delayedCall(150 + i * 50, () => this.fx.smoke(x + (i - 2.5) * 22, FLOOR_Y - 18, 3, 0x6a5a54, -24));
