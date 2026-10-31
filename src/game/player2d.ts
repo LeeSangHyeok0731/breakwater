@@ -363,7 +363,8 @@ export class Player {
 
     const left = input.isDown('left');
     const right = input.isDown('right');
-    const lockFacing = this.action !== null || this.charge >= 0;
+    // 평타 중에는 방향을 바꿀 수 있다 (연계 도중 뒤의 적을 칠 수 있게). 스킬·차징은 방향이 고정된다.
+    const lockFacing = (this.action !== null && !BASIC_ACTIONS.has(this.action.kind)) || this.charge >= 0;
     if (!lockFacing) {
       if (left && !right) this.facing = -1;
       else if (right && !left) this.facing = 1;
