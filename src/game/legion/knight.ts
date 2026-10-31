@@ -306,6 +306,7 @@ export const silentKnight: Behavior = (m, dt) => {
   if (!st) {
     makeKnightArt(b);
     const rig = new Rig(b, KNIGHT_RIG, KNIGHT_IDLE);
+    rig.glowColor = PURPLE;
     m.sprite.setVisible(false);
     const s: KnightState = {
       pattern: null,

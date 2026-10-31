@@ -3,6 +3,8 @@ import { sfx } from '../../core/audio';
 import { DEPTH } from '../fx';
 import type { Behavior, Monster } from '../monster2d';
 import { FLOOR_Y } from '../world';
+import { ELF_GROGGY, ELF_IDLE, ELF_RIG, makeElfArt } from './elfArt';
+import { lerpPose, Rig, type Pose } from './rig';
 
 /**
  * 타락한 엘프 (원거리 군단장). 석궁으로 쉴 새 없이 쏜다.
@@ -15,11 +17,7 @@ import { FLOOR_Y } from '../world';
 const BLUE = 0x4ab0ff;
 const BLUE_HI = 0xc8f0ff;
 const CORRUPT = 0x7aff9a;
-const BOW_KEY = 'elf-crossbow';
 const BOLT_KEY = 'elf-bolt';
-
-/** 석궁을 쥔 손 (발끝 기준, 오른쪽을 볼 때) */
-const HAND = { x: 12, y: -52 };
 /** 그로기 시간 (기믹 완화를 고르면 1.5배) */
 const GROGGY = 5;
 
@@ -30,9 +28,17 @@ interface ElfState {
   t: number;
   fired: Set<number>;
   last: Pattern | null;
-  bow: Phaser.GameObjects.Image;
-  glow: Phaser.GameObjects.Image;
+  rig: Rig;
   aim: Phaser.GameObjects.Graphics;
+  /** 쏠 때 석궁이 튀는 반동 (1 → 0) */
+  kick: number;
+  /** 걷기 주기 */
+  walk: number;
+  /** 그로기에서 막 깨어났다: 자세를 섞어 일어난다 */
+  wasStunned: boolean;
+  blendFrom: Pose | null;
+  blend: number;
+  blendTotal: number;
   /** 석궁이 겨누는 각도 */
   angle: number;
   /** 저격·파란 화살: 마지막 순간에 고정한 각도 */
@@ -45,38 +51,8 @@ interface ElfState {
 
 const states = new WeakMap<Monster, ElfState>();
 
-/** 석궁 그림 (오른쪽을 향함): 검보라 개머리, 은빛 활대, 초록 독이 묻은 볼트 */
+/** 볼트 그림 */
 function makeArt(scene: Phaser.Scene): void {
-  if (!scene.textures.exists(BOW_KEY)) {
-    const c = document.createElement('canvas');
-    c.width = 22;
-    c.height = 16;
-    const g = c.getContext('2d')!;
-    const px = (x: number, y: number, w: number, h: number, color: string): void => {
-      g.fillStyle = color;
-      g.fillRect(x, y, w, h);
-    };
-    // 개머리와 몸통
-    px(0, 7, 16, 4, '#120c18');
-    px(1, 8, 14, 2, '#4a2a5a');
-    px(1, 8, 14, 1, '#7a4a8a');
-    px(2, 10, 4, 4, '#120c18');
-    px(3, 10, 2, 3, '#3a1a4a');
-    // 활대 (앞쪽 세로)
-    px(14, 1, 3, 14, '#120c18');
-    px(15, 2, 1, 12, '#c8c8e0');
-    px(13, 0, 2, 2, '#120c18');
-    px(13, 14, 2, 2, '#120c18');
-    // 시위
-    for (let y = 2; y < 14; y++) px(13 - Math.round(Math.abs(y - 8) * 0.0), y, 1, 1, y === 8 ? '#e8e0ff' : '#8a8aa8');
-    // 장전된 볼트와 독
-    px(8, 8, 13, 1, '#d8d8e8');
-    px(19, 7, 3, 3, '#3a6a4a');
-    px(20, 8, 2, 1, '#7aff9a');
-    // 개머리 보석
-    px(4, 8, 2, 1, '#7aff9a');
-    scene.textures.addCanvas(BOW_KEY, c);
-  }
   if (!scene.textures.exists(BOLT_KEY)) {
     const c = document.createElement('canvas');
     c.width = 14;
@@ -214,7 +190,7 @@ function groggy(m: Monster): void {
   const st = states.get(m);
   if (st) {
     st.pattern = null;
-    st.glow.setVisible(false);
+    st.rig.glowing = false;
     st.aim.clear();
   }
 }
@@ -227,12 +203,13 @@ function once(st: ElfState, step: number, at: number): boolean {
 
 /** 석궁 끝 (볼트가 나가는 곳) */
 function muzzle(st: ElfState): { x: number; y: number } {
-  return { x: st.bow.x + Math.cos(st.angle) * 26, y: st.bow.y + Math.sin(st.angle) * 26 };
+  return st.rig.tip();
 }
 
 function aimAt(m: Monster, st: ElfState, dt: number, turn = 6): void {
   const p = m.scene.player;
-  const want = Math.atan2(p.y - 4 - st.bow.y, p.x - st.bow.x);
+  const h = st.rig.handPos();
+  const want = Math.atan2(p.y - 4 - h.y, p.x - h.x);
   const diff = Phaser.Math.Angle.Wrap(want - st.angle);
   st.angle += Phaser.Math.Clamp(diff, -turn * dt, turn * dt);
 }
@@ -243,7 +220,8 @@ function begin(m: Monster, st: ElfState, pattern: Pattern): void {
   st.fired.clear();
   st.locked = null;
   m.body.setVelocityX(0);
-  m.play(m.look.idle);
+  st.blendFrom = { ...st.rig.pose };
+  st.blend = st.blendTotal = BLEND;
   const b = m.scene;
   const W = b.level.width;
   if (pattern === 'backstep') {
@@ -261,14 +239,62 @@ function choose(m: Monster, st: ElfState): Pattern {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
-function syncBow(m: Monster, st: ElfState): void {
-  const s = m.sprite;
+const BLEND = 0.15;
+const deg = (r: number): number => (r * 180) / Math.PI;
+
+/** 석궁을 어깨에 대고 조준 각도로 겨눈 자세. 반동·무릎 꿇기·공중 자세를 얹는다. */
+function aimPose(m: Monster, st: ElfState, o: { kneel?: number; air?: number; walk?: number } = {}): Pose {
   const f = Math.cos(st.angle) >= 0 ? 1 : -1;
   m.face(f);
-  const hx = s.x + m.facing * HAND.x;
-  const hy = s.y + HAND.y;
-  st.bow.setPosition(hx, hy).setRotation(st.angle).setFlipY(f === -1);
-  st.glow.setPosition(hx, hy).setRotation(st.angle).setFlipY(f === -1);
+  // 바라보는 쪽 기준 조준 각도 (0 = 앞, -는 위)
+  const local = Phaser.Math.Angle.Wrap(f === 1 ? st.angle : Math.PI - st.angle);
+  const p = { ...ELF_IDLE };
+  p.w = 90 + deg(local) - st.kick * 14;
+  p.aFx = 1 + Math.cos(local) * 5 - st.kick * 2.5;
+  p.aFy = 2 + Math.sin(local) * 5;
+  p.head = deg(local) * 0.35;
+  p.lean += deg(local) * 0.1 - st.kick * 4;
+  p.hy += Math.sin(m.scene.time.now * 0.002) * 0.3;
+  if (o.walk) {
+    const sn = Math.sin(st.walk);
+    const c = Math.cos(st.walk);
+    p.fFx = 1 + sn * 6;
+    p.fFy = -Math.max(0, c) * 3;
+    p.fBx = -1 - sn * 6;
+    p.fBy = -Math.max(0, -c) * 3;
+    p.hy += 0.8 - Math.abs(c) * 1;
+  }
+  if (o.kneel) {
+    // 저격: 앞무릎을 세우고 뒷무릎을 꿇는다.
+    const k = o.kneel;
+    p.hy += 8 * k;
+    p.fFx += 2 * k;
+    p.fBx -= 4 * k;
+    p.lean += 6 * k;
+  }
+  if (o.air) {
+    // 공중: 다리를 모은다.
+    const k = o.air;
+    p.hy -= 3 * k;
+    p.fFx = p.fFx * (1 - k) + 5 * k;
+    p.fFy = -8 * k;
+    p.fBx = p.fBx * (1 - k) - 4 * k;
+    p.fBy = -6 * k;
+  }
+  return p;
+}
+
+/** 자세를 리그에 넘긴다 (새 동작이면 잠깐 섞고, 반동은 줄여 간다). */
+function finish(st: ElfState, pose: Pose, dt: number): void {
+  st.kick = Math.max(0, st.kick - dt * 6);
+  if (st.blendFrom && st.blend > 0) {
+    const total = st.blendTotal;
+    st.blend = Math.max(0, st.blend - dt);
+    const from = { ...st.blendFrom };
+    from.w += Math.round((pose.w - from.w) / 360) * 360;
+    pose = lerpPose(from, pose, 1 - st.blend / total);
+  }
+  st.rig.pose = pose;
 }
 
 export const corruptedElf: Behavior = (m, dt) => {
@@ -277,25 +303,59 @@ export const corruptedElf: Behavior = (m, dt) => {
   let st = states.get(m);
   if (!st) {
     makeArt(b);
-    const bow = b.add.image(m.x, m.y, BOW_KEY).setOrigin(0.3, 0.6).setScale(2).setDepth(DEPTH.monster + 1);
-    const glow = b.add.image(m.x, m.y, BOW_KEY).setOrigin(0.3, 0.6).setScale(2.5).setDepth(DEPTH.monster).setTint(BLUE).setBlendMode(Phaser.BlendModes.ADD).setVisible(false);
+    makeElfArt(b);
+    const rig = new Rig(b, ELF_RIG, ELF_IDLE);
+    rig.glowColor = BLUE;
+    m.sprite.setVisible(false);
     const aim = b.add.graphics().setDepth(DEPTH.fx);
-    st = { pattern: null, t: 0, fired: new Set(), last: null, bow, glow, aim, angle: Math.PI, locked: null, from: 0, to: 0, blueNext: false };
-    states.set(m, st);
-    const hide = (): void => {
-      if (m.alive) return;
-      b.tweens.add({ targets: [bow, glow], alpha: 0, duration: 400 });
-      aim.clear();
-      b.events.off('postupdate', hide);
+    const s: ElfState = {
+      pattern: null,
+      t: 0,
+      fired: new Set(),
+      last: null,
+      rig,
+      aim,
+      kick: 0,
+      walk: 0,
+      wasStunned: false,
+      blendFrom: null,
+      blend: 0,
+      blendTotal: BLEND,
+      angle: Math.PI,
+      locked: null,
+      from: 0,
+      to: 0,
+      blueNext: false,
     };
-    b.events.on('postupdate', hide);
+    st = s;
+    states.set(m, s);
+    // 리그는 본체 발밑을 따라간다. 그로기(멈춤) 동안에는 무릎 꿇은 자세로 무너진다.
+    const follow = (): void => {
+      const step = b.fx.hitstop > 0 ? 0 : Math.min(0.05, b.game.loop.delta / 1000);
+      if (m.alive && m.stun > 0) {
+        s.rig.pose = lerpPose(s.rig.pose, ELF_GROGGY, Math.min(1, step * 8));
+        s.rig.glowing = false;
+        s.wasStunned = true;
+      }
+      if (!m.alive) aim.clear();
+      s.rig.mirror(m.sprite);
+      s.rig.update(m.x, m.body.bottom + 1, m.facing, step);
+    };
+    b.events.on('postupdate', follow);
     b.events.once('shutdown', () => {
-      b.events.off('postupdate', hide);
-      bow.destroy();
-      glow.destroy();
+      b.events.off('postupdate', follow);
+      s.rig.destroy();
       aim.destroy();
     });
     m.attackTimer = 1.4;
+    // 개발용: 콘솔에서 패턴을 바로 시켜 본다
+    if (import.meta.env.DEV) (m as unknown as { force: (p: Pattern) => void }).force = (pat) => begin(m, s, pat);
+  }
+  if (st.wasStunned) {
+    // 그로기에서 일어난다.
+    st.wasStunned = false;
+    st.blendFrom = { ...st.rig.pose };
+    st.blend = st.blendTotal = 0.35;
   }
   if (!m.phase2 && m.hp / m.maxHp < 0.5) {
     m.phase2 = true;
@@ -314,11 +374,13 @@ export const corruptedElf: Behavior = (m, dt) => {
     const W = b.level.width;
     const blocked = (want < 0 && m.x < 70) || (want > 0 && m.x > W - 70);
     body.setVelocityX(blocked ? 0 : want * m.speed * 0.7);
-    m.play(want && !blocked ? m.look.walk : m.look.idle);
     aimAt(m, st, dt, 4);
+    const moving = want !== 0 && !blocked;
+    // 뒷걸음질이면 발을 거꾸로 옮긴다.
+    if (moving) st.walk += dt * 8 * want * (Math.cos(st.angle) >= 0 ? 1 : -1);
+    finish(st, aimPose(m, st, { walk: moving ? 1 : 0 }), dt);
     m.attackTimer -= dt;
     if (m.attackTimer <= 0) begin(m, st, choose(m, st));
-    syncBow(m, st);
     return;
   }
 
@@ -340,6 +402,7 @@ export const corruptedElf: Behavior = (m, dt) => {
         shoot(m, mz.x, mz.y, st.angle, 520, m.damage * 0.45, CORRUPT);
         b.fx.spark(mz.x, mz.y, CORRUPT, 1);
         sfx.play('arrow', 0.9);
+        st.kick = 0.7;
       });
       if (t > shots[shots.length - 1] + 0.35) done = true;
       break;
@@ -356,6 +419,7 @@ export const corruptedElf: Behavior = (m, dt) => {
         b.fx.burst(mz.x, mz.y, CORRUPT, 10, 120, 300);
         b.fx.shake(0.4, 100);
         sfx.play('arrow', 1.2);
+        st.kick = 1.3;
       }
       if (t > 1.1) done = true;
       break;
@@ -369,6 +433,7 @@ export const corruptedElf: Behavior = (m, dt) => {
         const mz = muzzle(st);
         for (let i = 0; i < 3; i++) b.time.delayedCall(i * 90, () => b.fx.streak(mz.x, mz.y, up, 60, CORRUPT, 220, 2));
         sfx.play('arrow', 1.3);
+        st.kick = 1;
         const W = b.level.width;
         const n = m.phase2 ? 5 : 3;
         const xs = [p.x];
@@ -408,6 +473,7 @@ export const corruptedElf: Behavior = (m, dt) => {
         b.fx.tracer(mz.x, mz.y, mz.x + Math.cos(st.angle) * 900, mz.y + Math.sin(st.angle) * 900, 0xffffff, 2, 120);
         b.fx.shake(0.6, 120);
         sfx.play('arrow', 0.7);
+        st.kick = 1.6;
       }
       if (t > 1.7) done = true;
       break;
@@ -418,7 +484,6 @@ export const corruptedElf: Behavior = (m, dt) => {
       if (k < 1) {
         body.reset(st.from + (st.to - st.from) * k, FLOOR_Y - body.height / 2 - Math.sin(k * Math.PI) * 110);
         body.setVelocity(0, 0);
-        m.play('elf:hero-jump');
         aimAt(m, st, dt, 10);
       }
       if (once(st, 0, 0.35)) {
@@ -438,7 +503,7 @@ export const corruptedElf: Behavior = (m, dt) => {
       body.setVelocityX(0);
       if (t < 0.55) aimAt(m, st, dt, 4);
       else if (st.locked === null) st.locked = st.angle;
-      st.glow.setVisible(true).setAlpha(0.4 + 0.4 * Math.sin(t * 25));
+      st.rig.glowing = true;
       const mz = muzzle(st);
       if (t < 0.85) {
         st.aim.lineStyle(2, BLUE, 0.35 + 0.35 * Math.sin(t * 30)).lineBetween(mz.x, mz.y, mz.x + Math.cos(st.angle) * 700, mz.y + Math.sin(st.angle) * 700);
@@ -446,7 +511,8 @@ export const corruptedElf: Behavior = (m, dt) => {
       }
       if (once(st, 9, 0)) b.fx.text(m.x, m.body.top - 16, '!', 'crit');
       if (once(st, 0, 0.85)) {
-        st.glow.setVisible(false);
+        st.rig.glowing = false;
+        st.kick = 1.4;
         blueBolt(m, mz.x, mz.y, st.angle);
         b.fx.spark(mz.x, mz.y, BLUE_HI, 2);
       }
@@ -460,8 +526,12 @@ export const corruptedElf: Behavior = (m, dt) => {
     st.blueNext = st.pattern !== 'blue' && st.pattern !== 'backstep';
     st.last = st.pattern;
     st.pattern = null;
-    st.glow.setVisible(false);
+    st.rig.glowing = false;
     m.attackTimer = (st.blueNext ? 0.3 : 0.6 + Math.random() * 0.5) * pace;
   }
-  syncBow(m, st);
+  // 패턴별 몸 자세: 저격은 무릎을 꿇고, 뒤로 도약할 때는 다리를 모은다.
+  const pat = st.pattern as Pattern | null;
+  const kneel = pat === 'snipe' ? Math.min(1, t / 0.3) * (1 - Phaser.Math.Clamp((t - 1.45) / 0.25, 0, 1)) : 0;
+  const air = pat === 'backstep' ? Math.sin(Phaser.Math.Clamp(t / 0.7, 0, 1) * Math.PI) : 0;
+  finish(st, aimPose(m, st, { kneel, air }), dt);
 };

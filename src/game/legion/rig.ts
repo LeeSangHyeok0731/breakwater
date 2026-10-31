@@ -186,6 +186,8 @@ interface Cloth {
   oy: number;
   w: number;
   h: number;
+  /** 마지막으로 다시 그린 뒤 흐른 시간 (천 모양은 초당 30번만 다시 그린다) */
+  since: number;
 }
 
 /** 두 뼈 IK: 어깨(엉덩이) s에서 목표 t로. bend +1이면 (오른쪽을 볼 때) 관절이 시계 방향 쪽으로 굽는다. */
@@ -227,6 +229,8 @@ export class Rig {
   facing: 1 | -1 = 1;
   /** 무기가 빛난다 */
   glowing = false;
+  /** 무기 빛 색 */
+  glowColor = 0xffffff;
   /** 계산된 앞손 위치 (리그 좌표) */
   private hand: Pt = [0, 0];
   private lastX = 0;
@@ -262,7 +266,7 @@ export class Rig {
         const ox = Math.round(w / 2);
         const oy = 3;
         img.setOrigin((ox + 1) / (w + 2), (oy + 1) / (h + 2));
-        this.cloths.push({ def: cd, img, tex, springs: Array.from({ length: cd.segs }, () => ({ a: cd.rest, v: 0 })), ox, oy, w, h });
+        this.cloths.push({ def: cd, img, tex, springs: Array.from({ length: cd.segs }, () => ({ a: cd.rest, v: 0 })), ox, oy, w, h, since: 1 });
         this.root.add(img);
         continue;
       }
@@ -379,7 +383,7 @@ export class Rig {
     const glow = this.imgs.get('glow');
     if (glow) {
       this.place('glow', armF.end, w);
-      glow.setVisible(this.glowing).setScale(1.12).setAlpha(0.45 + Math.sin(this.time * 18) * 0.2);
+      glow.setVisible(this.glowing).setScale(1.12).setTint(this.glowColor).setAlpha(0.45 + Math.sin(this.time * 18) * 0.2);
     }
     this.place('pauldronF', sF, lean + (boneRot(sF, armF.mid) - lean) * 0.3);
     // 뒷팔: 두 손으로 잡으면 손잡이 아래쪽, 아니면 자세의 뒷손 위치
@@ -400,7 +404,8 @@ export class Rig {
     }
     if (d.plume) {
       const at2 = rot(d.plume.at, headRot);
-      const target = headRot + d.plume.rest + Phaser.Math.Clamp(fwd * 0.003, -0.6, 0.8) + Math.sin(this.time * 3) * 0.08;
+      // 머리카락·장식은 머리 각도를 조금만 따르고 대체로 아래로 늘어진다.
+      const target = headRot * 0.35 + d.plume.rest + Phaser.Math.Clamp(fwd * 0.003, -0.6, 0.8) + Math.sin(this.time * 3) * 0.08;
       spring(this.plumeSpring, target, dt, 60, 8);
       this.place('plume', [neck[0] + at2[0], neck[1] + at2[1]], this.plumeSpring.a);
     }
@@ -409,7 +414,8 @@ export class Rig {
   /** 천을 마디마다 스프링으로 흔들고, 그 모양을 도트로 다시 그린다. */
   private drawCloth(c: Cloth, base: Pt, parentRot: number, fwd: number, vy: number, dt: number): void {
     const cd = c.def;
-    const blow = Phaser.Math.Clamp(fwd * 0.004 * cd.blow, -0.5, 1.1);
+    // 뒷걸음질할 때 앞으로 너무 휘면 몸 뒤에 가려지니 조금만 휜다.
+    const blow = Phaser.Math.Clamp(fwd * 0.004 * cd.blow, -0.12, 1.1);
     const lift = Phaser.Math.Clamp(-vy * 0.002 * cd.blow, -0.3, 0.5);
     const pts: Pt[] = [[0, 0]];
     const angs: number[] = [];
@@ -423,6 +429,10 @@ export class Rig {
       angs.push(s.a);
       prev = s.a;
     });
+    c.img.setPosition(base[0], base[1]);
+    c.since += dt;
+    if (c.since < 1 / 30) return;
+    c.since = 0;
     // 양쪽 가장자리: 마디 방향에 수직으로 폭만큼 벌린다. 몸 쪽(앞)은 붙어 있고 바깥쪽(뒤)으로 퍼진다.
     const n = pts.length;
     const front: Pt[] = [];
@@ -470,7 +480,6 @@ export class Rig {
     );
     art.paint(c.tex.getContext());
     c.tex.refresh();
-    c.img.setPosition(base[0], base[1]);
   }
 
   private place(name: PartName, at: Pt, r: number): void {
