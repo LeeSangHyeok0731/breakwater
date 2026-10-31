@@ -3,9 +3,9 @@ import { createAnimations, preloadAssets } from './assets2d';
 import { createClassSprites, createLegionSprites } from './classSprites';
 import { createFxArt } from './fxArt';
 
-/** 에셋을 불러오고 애니메이션을 만든 뒤 마을로 간다. 진행률은 HTML 로딩 화면에 표시한다. */
+/** 에셋을 불러오고 애니메이션을 만든 뒤, 첫 화면에서 시작하면 마을로 간다. */
 export class BootScene extends Phaser.Scene {
-  constructor(private readonly onProgress: (ratio: number) => void, private readonly onDone: () => void) {
+  constructor(private readonly onProgress: (ratio: number) => void, private readonly onDone: (enter: () => void) => void) {
     super('boot');
   }
 
@@ -19,7 +19,6 @@ export class BootScene extends Phaser.Scene {
     createClassSprites(this);
     createLegionSprites(this);
     createFxArt(this);
-    this.onDone();
-    this.scene.start('town');
+    this.onDone(() => this.scene.start('town'));
   }
 }
