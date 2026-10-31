@@ -38,6 +38,8 @@ export interface SaveData {
   legion: { loadout: Partial<Record<string, [string, string]>>; clears: Record<string, number> };
   /** 월드 보스: 오늘 날짜와 쓴 횟수 (도전·소탕), 최고 기록 */
   worldBoss: { day: string; used: number; bestBars: number; bestDamage: number };
+  /** 튜토리얼을 끝냈거나 건너뛰었는가 */
+  tutorialDone: boolean;
 }
 
 export const SAVE_VERSION = 3;
@@ -69,6 +71,7 @@ export function newSave(): SaveData {
     sfxVolume: 0.6,
     legion: { loadout: {}, clears: {} },
     worldBoss: { day: '', used: 0, bestBars: 0, bestDamage: 0 },
+    tutorialDone: false,
   };
 }
 
@@ -91,6 +94,8 @@ function normalize(data: Partial<SaveData>): SaveData {
     potions: { ...base.potions, ...data.potions },
     legion: { loadout: { ...data.legion?.loadout }, clears: { ...data.legion?.clears } },
     worldBoss: { ...base.worldBoss, ...data.worldBoss },
+    // 튜토리얼이 생기기 전 세이브는 진행한 흔적이 있으면 끝낸 것으로 본다.
+    tutorialDone: data.tutorialDone ?? ((data.level ?? 1) > 1 || (data.cleared?.length ?? 0) > 0),
     // v3에서 2D 키보드 조작으로 바뀌어 예전(마우스·WASD) 키 설정은 버린다.
     keymap: (data.version ?? 1) < 3 ? { ...DEFAULT_KEYMAP } : { ...DEFAULT_KEYMAP, ...data.keymap },
     // 새 무기 종류가 추가되면 그 기본 스킬도 배운 상태로 맞춘다.

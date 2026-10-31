@@ -1,0 +1,97 @@
+/* ===== 튜토리얼 안내 ===== */
+.tut-panel {
+  position: absolute;
+  top: 13%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 12;
+  width: min(560px, calc(100% - 32px));
+  padding: 14px 20px 12px;
+  text-align: center;
+  color: #e6fff4;
+  background: rgba(7, 26, 32, 0.9);
+  border: 2px solid #2a8a86;
+  pointer-events: none;
+}
+
+.tut-panel.done {
+  border-color: #5ccf7c;
+}
+
+.tut-panel.complete {
+  border-color: #ffc95a;
+}
+
+.tut-dots {
+  display: flex;
+  justify-content: center;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+
+.tut-dots span {
+  width: 14px;
+  height: 5px;
+  background: #1b4a4e;
+}
+
+.tut-dots span.on {
+  background: #5ccf7c;
+}
+
+.tut-title {
+  font-family: 'Black Han Sans', var(--font);
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.tut-panel.done .tut-title {
+  color: #8ff0a8;
+}
+
+.tut-panel.complete .tut-title {
+  color: #ffc95a;
+}
+
+.tut-text {
+  margin-top: 6px;
+  font-size: 15px;
+  line-height: 1.7;
+  color: #c4e8e0;
+}
+
+.tut-panel kbd {
+  display: inline-block;
+  min-width: 24px;
+  padding: 0 7px;
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 22px;
+  color: #2a1a05;
+  background: #ffc95a;
+  box-shadow: inset 0 -3px 0 #d8862a;
+}
+
+.tut-progress {
+  min-height: 20px;
+  margin-top: 2px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #ffc95a;
+}
+
+.tut-skip {
+  font-size: 12px;
+  color: #76aaa4;
+}
+
+.tut-skip kbd {
+  min-width: 0;
+  padding: 0 5px;
+  font-size: 11px;
+  line-height: 17px;
+  color: #c4e8e0;
+  background: #1b4a4e;
+  box-shadow: none;
+}
