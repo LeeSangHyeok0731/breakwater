@@ -1,0 +1,154 @@
+/* ===== 첫 화면 ===== */
+.landing {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  overflow: hidden;
+  background: #071a20;
+  pointer-events: auto;
+  transition: opacity 0.34s linear 0.32s;
+}
+
+.landing.leaving {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.landing-scene {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+
+.landing-flash {
+  position: absolute;
+  inset: 0;
+  background: #fff3c4;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.landing.leaving .landing-flash {
+  animation: landing-flash 0.5s ease-out both;
+}
+
+@keyframes landing-flash {
+  0% { opacity: 0; }
+  25% { opacity: 1; }
+  100% { opacity: 0.9; }
+}
+
+.landing-copy {
+  position: absolute;
+  top: 12vh;
+  left: 63vw;
+  width: 34vw;
+  color: #d8fff0;
+}
+
+.landing-title {
+  margin: 0;
+  font-family: 'Black Han Sans', var(--font);
+  font-size: clamp(56px, 8.4vw, 190px);
+  font-weight: 400;
+  line-height: 1;
+  white-space: nowrap;
+  color: #e6fff4;
+  /* 도트처럼 각진 겹그림자 */
+  text-shadow: 0.04em 0.04em 0 #2a8a86, 0.08em 0.08em 0 #123a40;
+}
+
+.landing-tagline {
+  margin: 1.1em 0 0;
+  font-size: clamp(14px, 1.15vw, 22px);
+  line-height: 1.6;
+  color: #a9dcd2;
+}
+
+.landing-start {
+  display: block;
+  margin-top: 28px;
+  padding: 0.62em 1.5em 0.56em;
+  border: 0;
+  background: #ffc95a;
+  color: #2a1a05;
+  font-family: 'Black Han Sans', var(--font);
+  font-size: clamp(22px, 2vw, 40px);
+  cursor: pointer;
+  /* 계단진 도트 모서리 */
+  clip-path: polygon(0 8px, 4px 8px, 4px 4px, 8px 4px, 8px 0, calc(100% - 8px) 0, calc(100% - 8px) 4px, calc(100% - 4px) 4px, calc(100% - 4px) 8px, 100% 8px, 100% calc(100% - 8px), calc(100% - 4px) calc(100% - 8px), calc(100% - 4px) calc(100% - 4px), calc(100% - 8px) calc(100% - 4px), calc(100% - 8px) 100%, 8px 100%, 8px calc(100% - 4px), 4px calc(100% - 4px), 4px calc(100% - 8px), 0 calc(100% - 8px));
+  box-shadow: inset 0 -6px 0 #d8862a, inset 0 4px 0 #fff0b8;
+}
+
+.landing-start:hover {
+  background: #ffdc85;
+}
+
+.landing-start:active {
+  transform: translateY(3px);
+}
+
+/* clip-path가 바깥 윤곽선을 자르므로 안쪽에 그린다 */
+.landing-start:focus-visible {
+  outline: 3px solid #2a1a05;
+  outline-offset: -9px;
+}
+
+.landing-progress {
+  display: none;
+  width: min(280px, 100%);
+  height: 10px;
+  margin-top: 36px;
+  background: #0c2a2f;
+}
+
+.landing-fill {
+  width: 0;
+  height: 100%;
+  background: #ffc95a;
+}
+
+.landing.started .landing-start {
+  display: none;
+}
+
+.landing.started .landing-progress {
+  display: block;
+}
+
+.landing-note {
+  margin: 16px 0 0;
+  font-size: clamp(12px, 0.85vw, 16px);
+  color: #76aaa4;
+}
+
+/* 세로로 긴 화면: 글을 위쪽 가운데로 */
+@media (max-aspect-ratio: 1/1) {
+  .landing-copy {
+    top: 6vh;
+    left: 16px;
+    right: 16px;
+    width: auto;
+    text-align: center;
+  }
+
+  .landing-title {
+    font-size: clamp(56px, 19vw, 120px);
+  }
+
+  .landing-start,
+  .landing-progress {
+    margin-left: auto;
+    margin-right: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing,
+  .landing.leaving .landing-flash {
+    transition: none;
+    animation: none;
+  }
+}

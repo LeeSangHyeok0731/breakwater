@@ -24,6 +24,7 @@ import type { Hud } from './ui/hud';
 import { TownHud } from './ui/townHud';
 import { VillageUI, type Tab } from './ui/village';
 import { DevPanel } from './ui/devPanel';
+import { Landing } from './ui/landing';
 
 const uiRoot = document.getElementById('ui')!;
 
@@ -54,13 +55,8 @@ function replaceSave(next: SaveData): void {
   writeSave(save);
 }
 
-// ───────── 로딩 화면 ─────────
-const loading = document.createElement('div');
-loading.className = 'loading-screen';
-loading.innerHTML =
-  '<div class="loading-title">파도막이</div><div class="loading-bar"><div class="loading-fill"></div></div><div class="loading-text">불러오는 중...</div>';
-uiRoot.appendChild(loading);
-const loadingFill = loading.querySelector<HTMLDivElement>('.loading-fill')!;
+// ───────── 첫 화면 (게임은 뒤에서 불러 둔다) ─────────
+const landing = new Landing(uiRoot);
 
 // ───────── UI ─────────
 const townHud = new TownHud(uiRoot);
@@ -108,8 +104,12 @@ const game = new Phaser.Game({
   scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
   scene: [
     new BootScene(
-      (r) => (loadingFill.style.width = `${Math.round(r * 100)}%`),
-      () => loading.remove(),
+      (r) => landing.setProgress(r),
+      (enter) =>
+        landing.ready(() => {
+          input.endFrame();
+          enter();
+        }),
     ),
     TownScene,
     BattleScene,
