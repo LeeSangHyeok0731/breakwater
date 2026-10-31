@@ -186,6 +186,8 @@ interface Cloth {
   oy: number;
   w: number;
   h: number;
+  /** 마지막으로 다시 그린 뒤 흐른 시간 (천 모양은 초당 30번만 다시 그린다) */
+  since: number;
 }
 
 /** 두 뼈 IK: 어깨(엉덩이) s에서 목표 t로. bend +1이면 (오른쪽을 볼 때) 관절이 시계 방향 쪽으로 굽는다. */
@@ -264,7 +266,7 @@ export class Rig {
         const ox = Math.round(w / 2);
         const oy = 3;
         img.setOrigin((ox + 1) / (w + 2), (oy + 1) / (h + 2));
-        this.cloths.push({ def: cd, img, tex, springs: Array.from({ length: cd.segs }, () => ({ a: cd.rest, v: 0 })), ox, oy, w, h });
+        this.cloths.push({ def: cd, img, tex, springs: Array.from({ length: cd.segs }, () => ({ a: cd.rest, v: 0 })), ox, oy, w, h, since: 1 });
         this.root.add(img);
         continue;
       }
@@ -427,6 +429,10 @@ export class Rig {
       angs.push(s.a);
       prev = s.a;
     });
+    c.img.setPosition(base[0], base[1]);
+    c.since += dt;
+    if (c.since < 1 / 30) return;
+    c.since = 0;
     // 양쪽 가장자리: 마디 방향에 수직으로 폭만큼 벌린다. 몸 쪽(앞)은 붙어 있고 바깥쪽(뒤)으로 퍼진다.
     const n = pts.length;
     const front: Pt[] = [];
@@ -474,7 +480,6 @@ export class Rig {
     );
     art.paint(c.tex.getContext());
     c.tex.refresh();
-    c.img.setPosition(base[0], base[1]);
   }
 
   private place(name: PartName, at: Pt, r: number): void {

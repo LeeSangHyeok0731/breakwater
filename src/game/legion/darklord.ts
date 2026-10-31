@@ -3,6 +3,8 @@ import { sfx } from '../../core/audio';
 import { DEPTH } from '../fx';
 import type { Behavior, Monster } from '../monster2d';
 import { FLOOR_Y } from '../world';
+import { DARKLORD_GROGGY, DARKLORD_IDLE, DARKLORD_RIG, makeDarkLordArt } from './darklordArt';
+import { lerpPose, Rig, type Pose } from './rig';
 
 /**
  * 암흑의 군주 (마법 군단장). 초승달 지팡이로 다크문 마법을 쓴다.
@@ -16,13 +18,8 @@ const VOID = 0x2a0a4a;
 const DARK = 0x6a1aa8;
 const PURPLE = 0xb04aff;
 const MOON = 0xe0d0ff;
-const STAFF_KEY = 'darklord-staff';
 const ORB_KEY = 'darklord-orb';
 
-/** 지팡이를 쥔 손 (발끝 기준, 오른쪽을 볼 때) */
-const HAND = { x: 20, y: -46 };
-/** 손에서 지팡이 머리(초승달)까지 */
-const HEAD_LEN = 54;
 /** 보호막을 두르는 체력 비율 */
 const SHIELD_AT = [0.75, 0.5, 0.25];
 const SHIELD_HITS = 20;
@@ -44,15 +41,16 @@ interface LordState {
   t: number;
   fired: Set<number>;
   last: Pattern | null;
-  staff: Phaser.GameObjects.Image;
+  rig: Rig;
+  /** 지금 자세 (목표 자세로 부드럽게 다가간다) */
+  cur: Pose;
+  /** 걷기 주기 */
+  walk: number;
+  wasStunned: boolean;
   /** 지팡이 머리의 빛 */
   glow: Phaser.GameObjects.Image;
   shield: Phaser.GameObjects.Arc;
   shieldRing: Phaser.GameObjects.Arc;
-  /** 지팡이 각도 (0 = 곧게 세움, 바라보는 쪽으로 기울면 +) */
-  angle: number;
-  /** 손을 들어 올린 높이 */
-  lift: number;
   /** 다음 보호막 (SHIELD_AT 인덱스) */
   next: number;
   /** 순간이동·중앙 이동의 출발점과 도착점 */
@@ -64,47 +62,8 @@ interface LordState {
 
 const states = new WeakMap<Monster, LordState>();
 
-/** 지팡이 그림 (세로): 금테를 두른 검은 자루, 끝에는 검은 달 구슬을 품은 초승달 */
+/** 검은 달 구슬 그림 */
 function makeArt(scene: Phaser.Scene): void {
-  if (!scene.textures.exists(STAFF_KEY)) {
-    const c = document.createElement('canvas');
-    c.width = 16;
-    c.height = 58;
-    const g = c.getContext('2d')!;
-    const px = (x: number, y: number, w: number, h: number, color: string): void => {
-      g.fillStyle = color;
-      g.fillRect(x, y, w, h);
-    };
-    // 초승달: 큰 원에서 오른쪽 위로 비켜 난 원을 뺀다.
-    for (let y = 0; y < 16; y++) {
-      for (let x = 0; x < 16; x++) {
-        const outer = Math.hypot(x - 7.5, y - 8) <= 7.2;
-        const inner = Math.hypot(x - 10, y - 5.5) <= 6;
-        const edge = Math.hypot(x - 7.5, y - 8) > 6.2;
-        if (outer && !inner) px(x, y, 1, 1, edge ? '#130a1b' : y < 8 ? '#f4ecff' : '#b8a8e0');
-      }
-    }
-    // 달이 품은 검은 구슬
-    for (let y = 4; y < 11; y++) {
-      for (let x = 6; x < 13; x++) {
-        const d = Math.hypot(x - 9, y - 7.5);
-        if (d <= 3.2) px(x, y, 1, 1, d > 2.4 ? '#130a1b' : d < 1.2 ? '#d090ff' : '#4a1a7a');
-      }
-    }
-    // 자루
-    px(6, 15, 4, 43, '#130a1b');
-    px(7, 15, 2, 42, '#2a1a3a');
-    px(7, 15, 1, 42, '#4a3a5a');
-    // 금테
-    for (const y of [16, 30, 44]) {
-      px(5, y, 6, 3, '#130a1b');
-      px(6, y + 1, 4, 1, '#ffcc61');
-      px(6, y + 2, 4, 1, '#bc6c17');
-    }
-    // 끝의 뾰족한 물미
-    px(7, 56, 2, 2, '#ffcc61');
-    scene.textures.addCanvas(STAFF_KEY, c);
-  }
   if (!scene.textures.exists(ORB_KEY)) {
     const c = document.createElement('canvas');
     c.width = 16;
@@ -130,28 +89,36 @@ function once(st: LordState, step: number, at: number): boolean {
   return true;
 }
 
-/** 지팡이 머리 위치 */
+// ───────── 자세 (오른쪽을 볼 때, 손은 어깨 기준, 지팡이 각도는 0이 위·+가 앞) ─────────
+
+/** 떠올라 보호막을 두를 때: 두 팔을 벌리고 발끝이 늘어진다 */
+const FLOAT_POSE: Partial<Pose> = { hy: -1, lean: -4, head: -8, fFx: 3, fFy: -1, fBx: -2, fBy: 0, aFx: 7, aFy: -4, aBx: -7, aBy: -3, w: 20 };
+/** 심판: 지팡이와 빈손을 하늘로 */
+const JUDGE: Partial<Pose> = { hy: -1, lean: -10, head: -18, fFx: 3, fFy: -1, fBx: -2, fBy: 0, aFx: 7, aFy: -14, aBx: 4, aBy: -14, w: 6 };
+/** 검은 달: 지팡이를 치켜들고 빈손을 펼친다 */
+const ORBS: Partial<Pose> = { lean: -8, head: -10, aFx: 7, aFy: -11, aBx: 5, aBy: -6, w: 4 };
+/** 초승달 참격: 지팡이를 뒤로 젖혔다가 → 크게 내디디며 앞으로 휘두른다 */
+const CRESCENT_UP: Partial<Pose> = { hy: 3, lean: -12, head: -6, fFx: 7, fBx: -7, aFx: -7, aFy: -2, aBx: 3, aBy: 5, w: -75 };
+const CRESCENT_SWING: Partial<Pose> = { hy: 4, lean: 16, head: 4, fFx: 9, fBx: -8, aFx: 9, aFy: 3, aBx: -6, aBy: 4, w: 105 };
+/** 월식: 두 팔을 하늘로 */
+const ECLIPSE: Partial<Pose> = { lean: -12, head: -20, aFx: 7, aFy: -14, aBx: 4, aBy: -13, w: 6 };
+/** 순간이동 뒤: 빈손을 앞으로 뻗어 터뜨린다 */
+const BLINK_CAST: Partial<Pose> = { hy: 2, lean: 10, head: 2, fFx: 7, fBx: -6, aFx: 3, aFy: 4, aBx: 11, aBy: -3, w: 25 };
+/** 달 낙하: 지팡이로 하늘을 가리킨다 */
+const MOONFALL: Partial<Pose> = { lean: -14, head: -22, aFx: 7, aFy: -14, aBx: 3, aBy: -13, w: 2 };
+
+/** 지팡이 머리 (화면 좌표) */
 function head(st: LordState): { x: number; y: number } {
-  const a = st.staff.rotation;
-  return { x: st.staff.x + Math.sin(a) * HEAD_LEN, y: st.staff.y - Math.cos(a) * HEAD_LEN };
+  return st.rig.tip();
 }
 
-/** 지팡이 자세: 목표 각도·손 높이로 부드럽게 옮긴다. */
-function pose(st: LordState, angle: number, lift: number, dt: number, speed = 10): void {
-  const k = Math.min(1, dt * speed);
-  st.angle += (angle - st.angle) * k;
-  st.lift += (lift - st.lift) * k;
+/** 목표 자세로 부드럽게 다가간다. */
+function pose(st: LordState, target: Partial<Pose>, dt: number, speed = 10): void {
+  st.cur = lerpPose(st.cur, { ...DARKLORD_IDLE, ...target }, Math.min(1, dt * speed));
 }
 
-function syncStaff(m: Monster, st: LordState): void {
-  const s = m.sprite;
-  const hx = s.x + m.facing * HAND.x;
-  const hy = s.y + HAND.y - st.lift;
-  st.staff.setPosition(hx, hy).setRotation(st.angle * m.facing).setFlipX(m.facing === -1);
-  const h = head(st);
-  st.glow.setPosition(h.x, h.y);
-  st.shield.setPosition(m.x, m.y - 6);
-  st.shieldRing.setPosition(m.x, m.y - 6);
+function syncStaff(_m: Monster, st: LordState): void {
+  st.rig.pose = st.cur;
 }
 
 /** 검은 달 구슬: 머리 위에 떠올랐다가 정한 자리로 날아가 터진다. */
@@ -196,7 +163,7 @@ function moonOrb(m: Monster, x: number, y: number, tx: number, ty: number, delay
 function crescent(m: Monster, x: number, dir: 1 | -1): void {
   const b = m.scene;
   const W = b.level.width;
-  const img = b.add.image(x, FLOOR_Y - 22, STAFF_KEY).setVisible(false);
+  const img = b.add.image(x, FLOOR_Y - 22, ORB_KEY).setVisible(false);
   // 나아가는 쪽으로 볼록한 초승달 호 세 겹 (검보라 바깥 → 보라 → 밝은 안쪽)
   const arc = b.add.graphics().setDepth(DEPTH.projectile).setBlendMode(Phaser.BlendModes.ADD);
   const mid = dir === 1 ? 0 : Math.PI;
@@ -281,7 +248,6 @@ function startShield(m: Monster, st: LordState): void {
   m.hitShield = -1;
   // 순간이동 도중이었으면 다시 보이게 한다.
   m.sprite.setAlpha(1);
-  st.staff.setAlpha(1);
   b.fx.smoke(m.x, m.y, 1.4, 0x2a1a3a);
   b.fx.burst(m.x, m.y, PURPLE, 18, 160, 500);
   b.announce('암흑의 군주가 보호막을 두른다!', 1.4);
@@ -303,8 +269,7 @@ function breakShield(m: Monster, st: LordState): void {
   m.vuln = Math.max(m.vuln, 1);
   m.vulnTime = time;
   b.legionGroggy = time;
-  st.lift = 0;
-  st.angle = 1.4;
+  st.cur = { ...DARKLORD_GROGGY };
   syncStaff(m, st);
   b.announce('보호막 파괴! 군주가 무너졌다', 1.4);
   sfx.play('boom', 0.9);
@@ -375,7 +340,7 @@ function updateShield(m: Monster, st: LordState, dt: number): void {
     const e = Phaser.Math.Easing.Sine.InOut(k);
     body.reset(st.from + (st.to - st.from) * e, groundY - FLOAT * e);
     m.face(b.player.x - m.x || 1);
-    pose(st, 0, 22, dt, 6);
+    pose(st, FLOAT_POSE, dt, 6);
     if (Math.random() < 0.7) b.fx.burst(m.x, m.y + 20, DARK, 1, 30, 300);
     if (k >= 1) {
       st.mode = 'shield';
@@ -395,7 +360,7 @@ function updateShield(m: Monster, st: LordState, dt: number): void {
   body.reset(st.to, groundY - FLOAT + Math.sin(st.t * 3) * 4);
   body.setVelocity(0, 0);
   m.face(b.player.x - m.x || 1);
-  pose(st, 0, 26 + Math.sin(st.t * 4) * 3, dt, 8);
+  pose(st, { ...FLOAT_POSE, aFy: -4 - Math.sin(st.t * 4) * 1.5, aBy: -3 - Math.sin(st.t * 4 + 1) * 1.5 }, dt, 8);
   st.shieldRing.rotation += dt * 1.5;
   if (Math.random() < 0.5) b.fx.burst(m.x + (Math.random() - 0.5) * 120, m.y + (Math.random() - 0.5) * 120, PURPLE, 1, 20, 400);
 
@@ -415,7 +380,7 @@ function updateShield(m: Monster, st: LordState, dt: number): void {
   }
   // judge: 심판을 기다린다 (telegraph가 judge()를 부른다).
   b.legionNote = '암흑의 심판! 반대편으로 피하라';
-  pose(st, 0, 34, dt, 8);
+  pose(st, JUDGE, dt, 8);
   if (Math.random() < 0.8) b.fx.burst(head(st).x, head(st).y, PURPLE, 1, 50, 300);
 }
 
@@ -425,45 +390,67 @@ export const darkLord: Behavior = (m, dt) => {
   let st = states.get(m);
   if (!st) {
     makeArt(b);
-    const staff = b.add.image(m.x, m.y, STAFF_KEY).setOrigin(0.5, 0.62).setScale(2).setDepth(DEPTH.monster + 1);
-    const glow = b.add.image(m.x, m.y, ORB_KEY).setScale(2.2).setDepth(DEPTH.monster + 2).setTint(PURPLE).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0);
+    makeDarkLordArt(b);
+    const rig = new Rig(b, DARKLORD_RIG, DARKLORD_IDLE);
+    rig.glowColor = PURPLE;
+    m.sprite.setVisible(false);
+    const glow = b.add.image(m.x, m.y, ORB_KEY).setScale(1.6).setDepth(DEPTH.monster + 2).setTint(PURPLE).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0);
     const shield = b.add.circle(m.x, m.y, 62, PURPLE, 0.35).setDepth(DEPTH.monster + 3).setBlendMode(Phaser.BlendModes.ADD).setVisible(false);
     const shieldRing = b.add.circle(m.x, m.y, 66).setStrokeStyle(3, PURPLE, 0.9).setDepth(DEPTH.monster + 3).setVisible(false);
-    st = {
+    const s: LordState = {
       mode: 'fight',
       pattern: null,
       t: 0,
       fired: new Set(),
       last: null,
-      staff,
+      rig,
+      cur: { ...DARKLORD_IDLE },
+      walk: 0,
+      wasStunned: false,
       glow,
       shield,
       shieldRing,
-      angle: 0.3,
-      lift: 0,
       next: 0,
       from: 0,
       to: 0,
       side: 1,
     };
-    states.set(m, st);
-    const s = st;
-    const hide = (): void => {
-      if (m.alive) return;
-      b.tweens.add({ targets: [staff, glow, shield, shieldRing], alpha: 0, duration: 400 });
-      b.legionNote = '';
-      b.events.off('postupdate', hide);
+    st = s;
+    states.set(m, s);
+    // 리그는 본체 발밑을 따라간다. 그로기 동안에는 무릎을 꿇고 무너진다. 지팡이 빛은 초승달을 따라간다.
+    const follow = (): void => {
+      const step = b.fx.hitstop > 0 ? 0 : Math.min(0.05, b.game.loop.delta / 1000);
+      if (m.alive && m.stun > 0) {
+        s.cur = lerpPose(s.cur, DARKLORD_GROGGY, Math.min(1, step * 8));
+        s.rig.pose = s.cur;
+        s.wasStunned = true;
+      }
+      s.rig.mirror(m.sprite);
+      s.rig.update(m.x, m.body.bottom + 1, m.facing, step);
+      const h = s.rig.tip(0.75);
+      glow.setPosition(h.x, h.y);
+      shield.setPosition(m.x, m.y - 6);
+      shieldRing.setPosition(m.x, m.y - 6);
+      if (!m.alive) {
+        glow.setAlpha(0);
+        shield.setVisible(false);
+        shieldRing.setVisible(false);
+        b.legionNote = '';
+      }
     };
-    b.events.on('postupdate', hide);
+    b.events.on('postupdate', follow);
     b.events.once('shutdown', () => {
-      b.events.off('postupdate', hide);
-      s.staff.destroy();
-      s.glow.destroy();
-      s.shield.destroy();
-      s.shieldRing.destroy();
+      b.events.off('postupdate', follow);
+      s.rig.destroy();
+      glow.destroy();
+      shield.destroy();
+      shieldRing.destroy();
     });
     m.attackTimer = 1.4;
+    // 개발용: 콘솔에서 패턴을 바로 시켜 본다
+    if (import.meta.env.DEV) (m as unknown as { force: (p: Pattern) => void }).force = (pat) => begin(m, s, pat);
   }
+  if (st.wasStunned) st.wasStunned = false;
 
   // 보호막 기준을 지났나 (한 번에 여러 기준을 넘어도 한 번만 두른다)
   if (st.mode === 'fight' && st.next < SHIELD_AT.length && m.hp / m.maxHp < SHIELD_AT[st.next]) {
@@ -493,8 +480,14 @@ export const darkLord: Behavior = (m, dt) => {
     const blocked = (want < 0 && m.x < 70) || (want > 0 && m.x > W - 70);
     body.setVelocityX(blocked ? 0 : want * m.speed * 0.5);
     m.face(dx || 1);
-    m.play(want && !blocked ? m.look.walk : m.look.idle);
-    pose(st, 0.3, 0, dt, 6);
+    const moving = want !== 0 && !blocked;
+    if (moving) {
+      // 로브 자락 아래로 발을 옮긴다 (뒷걸음질이면 거꾸로).
+      st.walk += dt * 6 * want * (dx >= 0 ? 1 : -1);
+      const sn = Math.sin(st.walk);
+      const c = Math.cos(st.walk);
+      pose(st, { fFx: 1 + sn * 5, fFy: -Math.max(0, c) * 2.5, fBx: -1 - sn * 5, fBy: -Math.max(0, -c) * 2.5, hy: 1.5 - Math.abs(c) * 0.8 }, dt, 14);
+    } else pose(st, { hy: 1 + Math.sin(b.time.now * 0.002) * 0.4 }, dt, 6);
     st.glow.setAlpha(0.25 + 0.1 * Math.sin(b.time.now / 200));
     m.attackTimer -= dt;
     if (m.attackTimer <= 0) begin(m, st, choose(m, st));
@@ -509,7 +502,7 @@ export const darkLord: Behavior = (m, dt) => {
       // 지팡이를 치켜들어 검은 달을 띄운다 → 플레이어가 있던 자리로 차례로 날린다.
       body.setVelocityX(0);
       m.face(p.x - m.x || 1);
-      pose(st, -0.1, 18, dt, 8);
+      pose(st, ORBS, dt, 8);
       st.glow.setAlpha(Math.min(1, t * 2));
       const n = m.phase2 ? 5 : 3;
       if (once(st, 0, 0.55)) {
@@ -530,9 +523,9 @@ export const darkLord: Behavior = (m, dt) => {
       body.setVelocityX(0);
       if (t < 0.6) {
         m.face(p.x - m.x || 1);
-        pose(st, -1.3, 10, dt, 7);
+        pose(st, CRESCENT_UP, dt, 7);
         if (Math.random() < 0.5) b.fx.burst(head(st).x, head(st).y, PURPLE, 1, 30, 260);
-      } else pose(st, 1.6, 0, dt, 30);
+      } else pose(st, CRESCENT_SWING, dt, 30);
       if (once(st, 0, 0.6)) {
         b.fx.bigSlash(m.x - m.facing * 20, m.y - 60, m.x + m.facing * 50, FLOOR_Y - 4, PURPLE, 10, 300);
         crescent(m, m.x + m.facing * 40, m.facing);
@@ -546,7 +539,7 @@ export const darkLord: Behavior = (m, dt) => {
     case 'eclipse': {
       // 지팡이를 하늘로 → 화면이 어두워지며 월식 기둥이 차례로 솟는다.
       body.setVelocityX(0);
-      pose(st, 0, 30, dt, 8);
+      pose(st, ECLIPSE, dt, 8);
       st.glow.setAlpha(0.7 + 0.3 * Math.sin(t * 20));
       if (once(st, 0, 0.4)) {
         const W = b.level.width;
@@ -569,14 +562,12 @@ export const darkLord: Behavior = (m, dt) => {
         b.fx.smoke(m.x, m.y, 1.4, 0x2a1a3a);
         b.fx.burst(m.x, m.y, PURPLE, 14, 140, 400);
         m.sprite.setAlpha(0);
-        st.staff.setAlpha(0);
         sfx.play('magic', 0.5);
       }
       if (once(st, 1, 0.45)) {
         body.reset(st.to, FLOOR_Y - body.height / 2);
         m.face(p.x - st.to || 1);
         m.sprite.setAlpha(1);
-        st.staff.setAlpha(1);
         b.fx.smoke(st.to, m.y, 1.4, 0x2a1a3a);
         b.fx.ring(st.to, m.y, 40, PURPLE, 300);
         b.addTelegraph(st.to - 95, FLOOR_Y - 130, 190, 130, 0.65 * pace + b.legionWarnBonus() * 0.5, m, () => {
@@ -588,14 +579,14 @@ export const darkLord: Behavior = (m, dt) => {
           b.areaHit(m.x - 95, FLOOR_Y - 130, 190, 130, m.damage * 1.1, m, false);
         }, PURPLE);
       }
-      if (t > 0.45) pose(st, 0, 20, dt, 10);
+      if (t > 0.45) pose(st, BLINK_CAST, dt, 10);
       if (t > 1.6) done = true;
       break;
     }
     case 'moonfall': {
       // (2단계) 거대한 검은 달이 플레이어 위로 떨어진다.
       body.setVelocityX(0);
-      pose(st, 0, 34, dt, 8);
+      pose(st, MOONFALL, dt, 8);
       if (once(st, 0, 0.3)) {
         const x = p.x;
         const W = b.level.width;

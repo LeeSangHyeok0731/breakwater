@@ -55,8 +55,23 @@ export class PixelArt {
 
   poly(r: Ramp, pts: Pt[]): number {
     const id = this.part(r);
-    for (let y = 0; y < this.h; y++)
-      for (let x = 0; x < this.w; x++) {
+    // 점들을 감싸는 사각형 안만 검사한다 (매 프레임 그리는 천이 가볍도록).
+    let x0 = this.w;
+    let y0 = this.h;
+    let x1 = 0;
+    let y1 = 0;
+    for (const [px, py] of pts) {
+      x0 = Math.min(x0, px);
+      y0 = Math.min(y0, py);
+      x1 = Math.max(x1, px);
+      y1 = Math.max(y1, py);
+    }
+    const ys = Math.max(0, Math.floor(y0));
+    const ye = Math.min(this.h, Math.ceil(y1) + 1);
+    const xs = Math.max(0, Math.floor(x0));
+    const xe = Math.min(this.w, Math.ceil(x1) + 1);
+    for (let y = ys; y < ye; y++)
+      for (let x = xs; x < xe; x++) {
         const px = x + 0.5;
         const py = y + 0.5;
         let inside = false;
@@ -94,6 +109,13 @@ export class PixelArt {
     return id;
   }
 
+  /** 여러 픽셀을 한 조각으로 칠한다 (원을 깎은 모양 등) */
+  pixels(r: Ramp, pts: Pt[]): number {
+    const id = this.part(r);
+    for (const [x, y] of pts) this.set(id, x, y);
+    return id;
+  }
+
   /** 명암 계산 없이 그대로 찍는 점 (눈빛, 보석, 룬) */
   dot(x: number, y: number, c: number): void {
     if (x < 0 || y < 0 || x >= this.w || y >= this.h) return;
@@ -117,6 +139,21 @@ export class PixelArt {
 
   /** 명암을 계산해 캔버스로 만든다 (사방 1픽셀 여백에 외곽선) */
   toCanvas(): HTMLCanvasElement {
+    const { W, H, px } = this.render();
+    const c = document.createElement('canvas');
+    c.width = W;
+    c.height = H;
+    this.write(c.getContext('2d')!, px, W, H);
+    return c;
+  }
+
+  /** 같은 크기(여백 포함)의 캔버스에 덮어 그린다 (매 프레임 다시 그리는 천에 쓴다). */
+  paint(ctx: CanvasRenderingContext2D): void {
+    const { W, H, px } = this.render();
+    this.write(ctx, px, W, H);
+  }
+
+  private render(): { W: number; H: number; px: Int32Array } {
     const { w, h } = this;
     const out = new Int32Array(w * h).fill(-1);
     const bbox = this.ramps.map(() => [w, h, -1, -1]);
@@ -180,18 +217,7 @@ export class PixelArt {
           break;
         }
       }
-    const c = document.createElement('canvas');
-    c.width = W;
-    c.height = H;
-    this.write(c.getContext('2d')!, lined, W, H);
-    return c;
-  }
-
-  /** 같은 크기(여백 포함)의 캔버스에 덮어 그린다 (매 프레임 다시 그리는 천에 쓴다). */
-  paint(ctx: CanvasRenderingContext2D): void {
-    const src = this.toCanvas();
-    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-    ctx.drawImage(src, 0, 0);
+    return { W, H, px: lined };
   }
 
   private write(ctx: CanvasRenderingContext2D, px: Int32Array, W: number, H: number): void {
