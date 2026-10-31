@@ -39,6 +39,8 @@ export interface GameContext {
   openMenu(): void;
   /** 전투가 끝났다. 결과 창을 띄우고, 확인하면 마을로 돌아간다. */
   onBattleEnd(outcome: BattleOutcome, hud: Hud, backToTown: () => void): void;
+  /** 튜토리얼을 끝냈거나 건너뛰었다. */
+  onTutorialEnd(): void;
 }
 
 export const ctx = {} as GameContext;

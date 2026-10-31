@@ -3,9 +3,9 @@ import { createAnimations, preloadAssets } from './assets2d';
 import { createClassSprites, createLegionSprites } from './classSprites';
 import { createFxArt } from './fxArt';
 
-/** 에셋을 불러오고 애니메이션을 만든 뒤, 첫 화면에서 시작하면 마을로 간다. */
+/** 에셋을 불러오고 애니메이션을 만든 뒤, 첫 화면에서 시작하면 첫 씬으로 간다. */
 export class BootScene extends Phaser.Scene {
-  constructor(private readonly onProgress: (ratio: number) => void, private readonly onDone: (enter: () => void) => void) {
+  constructor(private readonly onProgress: (ratio: number) => void, private readonly onDone: (enter: (scene: string, data?: object) => void) => void) {
     super('boot');
   }
 
@@ -19,6 +19,6 @@ export class BootScene extends Phaser.Scene {
     createClassSprites(this);
     createLegionSprites(this);
     createFxArt(this);
-    this.onDone(() => this.scene.start('town'));
+    this.onDone((scene, data) => this.scene.start(scene, data));
   }
 }

@@ -487,13 +487,13 @@ export class Hud {
     restartAnim(this.vignette, 'hit');
   }
 
-  showPause(onResume: () => void, onGiveUp: () => void): void {
+  showPause(onResume: () => void, onGiveUp: () => void, labels?: { text: string; giveUp: string }): void {
     const box = this.openModal('pause');
     el('h2', 'hud-modal-title', box, '일시정지');
-    el('p', 'hud-modal-text', box, '포기하면 페이즈 실패로 처리되며, 이번 전투에서 얻은 골드·경험치·재료를 모두 잃습니다.');
+    el('p', 'hud-modal-text', box, labels?.text ?? '포기하면 페이즈 실패로 처리되며, 이번 전투에서 얻은 골드·경험치·재료를 모두 잃습니다.');
     const btns = el('div', 'hud-modal-buttons', box);
     const resume = el('button', 'ui-btn primary', btns, '계속하기 (클릭)');
-    const giveUp = el('button', 'ui-btn danger', btns, '포기하고 마을로');
+    const giveUp = el('button', 'ui-btn danger', btns, labels?.giveUp ?? '포기하고 마을로');
     resume.addEventListener('click', () => {
       this.hidePause();
       onResume();

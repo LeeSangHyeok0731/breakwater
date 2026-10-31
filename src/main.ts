@@ -19,6 +19,7 @@ import { worldBossPhase } from './data/worldBoss';
 import { useWorldBossTry } from './ui/worldBossPanel';
 import { addExp } from './game/stats';
 import { TownScene } from './game/townScene';
+import { TUTORIAL_PHASE } from './game/tutorial';
 import { fitWidth, VIEW_H } from './game/world';
 import type { Hud } from './ui/hud';
 import { TownHud } from './ui/townHud';
@@ -66,6 +67,7 @@ const village = new VillageUI(uiRoot, () => save, {
   onStartPhase: startPhase,
   onStartLegion: startLegion,
   onStartWorldBoss: startWorldBoss,
+  onStartTutorial: startTutorial,
   onSaveChanged: () => {
     writeSave(save);
     input.setKeymap(save.keymap);
@@ -108,7 +110,9 @@ const game = new Phaser.Game({
       (enter) =>
         landing.ready(() => {
           input.endFrame();
-          enter();
+          // 세이브가 없거나 아직 튜토리얼을 안 했으면 튜토리얼부터 한다.
+          if (save.tutorialDone) enter('town');
+          else enter('battle', { phase: TUTORIAL_PHASE, tutorial: true });
         }),
     ),
     TownScene,
@@ -230,6 +234,10 @@ Object.assign(ctx, {
     village.open(['settings'], '메뉴');
   },
   onBattleEnd,
+  onTutorialEnd: () => {
+    save.tutorialDone = true;
+    writeSave(save);
+  },
 });
 
 /** 마을과 전투 기지를 오간다. */
@@ -259,6 +267,14 @@ function startWorldBoss(): void {
   input.endFrame();
   game.scene.stop('town');
   game.scene.start('battle', { phase: worldBossPhase(), worldBoss: true });
+}
+
+function startTutorial(): void {
+  village.hide();
+  input.enabled = true;
+  input.endFrame();
+  game.scene.stop('town');
+  game.scene.start('battle', { phase: TUTORIAL_PHASE, tutorial: true });
 }
 
 function startPhase(id: string): void {

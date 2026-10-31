@@ -30,6 +30,8 @@ export interface VillageCallbacks {
   onStartLegion(run: LegionRun): void;
   /** 월드 보스 도전 */
   onStartWorldBoss(): void;
+  /** 튜토리얼 다시 하기 */
+  onStartTutorial(): void;
   /** 장비창에 그릴 직업별 캐릭터 그림 */
   portrait(type: WeaponType): HTMLCanvasElement | null;
   /** 게임 텍스처를 캔버스로 복사해 온다 */
@@ -769,6 +771,9 @@ export class VillageUI {
       this.changed();
       this.toast('키 설정을 기본값으로 되돌렸습니다');
     });
+
+    const help = this.section('튜토리얼', '조작을 처음부터 다시 연습합니다');
+    button(el('div', 'v-actions', help), '튜토리얼 다시 하기', '', true, () => this.cb.onStartTutorial());
 
     const ds = this.section('세이브 데이터', '진행 상황은 브라우저에 자동 저장됩니다');
     const actions = el('div', 'v-actions', ds);

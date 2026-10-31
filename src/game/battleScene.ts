@@ -21,6 +21,7 @@ import { meleeLook, weaponIconUrl } from './weaponArt';
 import { Monster, monsterBodyHeight } from './monster2d';
 import { dev } from './dev';
 import { Player } from './player2d';
+import { Tutorial } from './tutorial';
 import { CRIT_DAMAGE, basicDamage, derive, enhanceMultiplier, expToNext, totalStats, type Stats } from './stats';
 import { buildLevel, FLOOR_Y, VIEW_H, type Level } from './world';
 
@@ -231,12 +232,17 @@ export class BattleScene extends Phaser.Scene {
   /** 월드 보스 전투인가, 흐른 시간 */
   worldBoss = false;
   private wbTime = 0;
+  /** 튜토리얼 전투면 진행자 */
+  private tutorial: Tutorial | null = null;
+  private isTutorial = false;
 
   constructor() {
     super('battle');
   }
 
-  init(data: { phase: PhaseDef; legion?: LegionRun; worldBoss?: boolean }): void {
+  init(data: { phase: PhaseDef; legion?: LegionRun; worldBoss?: boolean; tutorial?: boolean }): void {
+    this.isTutorial = !!data.tutorial;
+    this.tutorial = null;
     this.phase = data.phase;
     this.legion = data.legion ?? null;
     this.worldBoss = !!data.worldBoss;
@@ -318,12 +324,19 @@ export class BattleScene extends Phaser.Scene {
     this.hud = new Hud(ctx.uiRoot);
     ctx.townHud.hide();
     this.events.once('shutdown', () => this.cleanup());
-    this.announce(this.legion || this.worldBoss ? phase.name : `${phase.id} ${phase.name}`, 1.6);
+    this.announce(this.namedOnly ? phase.name : `${phase.id} ${phase.name}`, 1.6);
+    if (this.isTutorial) this.tutorial = new Tutorial(this, ctx.uiRoot);
+  }
+
+  /** 페이즈 번호 없이 이름만 보여 주는 전투 */
+  private get namedOnly(): boolean {
+    return !!this.legion || this.worldBoss || this.isTutorial;
   }
 
   private cleanup(): void {
     // this.anims는 게임 전체가 함께 쓰므로, 일시정지 중에 나가면 마을까지 멈춘 채로 남는다.
     this.anims.resumeAll();
+    this.tutorial?.destroy();
     this.hud.destroy();
     for (const m of this.monsters) m.destroy();
     this.player.destroy();
@@ -417,6 +430,7 @@ export class BattleScene extends Phaser.Scene {
     this.hud.showPause(
       () => this.togglePause(),
       () => this.giveUp(),
+      this.isTutorial ? { text: '튜토리얼을 건너뛰고 마을로 갑니다. 설정에서 언제든 다시 할 수 있습니다.', giveUp: '튜토리얼 건너뛰기' } : undefined,
     );
   }
 
@@ -560,6 +574,11 @@ export class BattleScene extends Phaser.Scene {
   private killMonster(m: Monster): void {
     m.kill();
     sfx.play(m.showsBossBar ? 'boom' : 'kill');
+    // 튜토리얼에는 보상이 없다.
+    if (this.isTutorial) {
+      this.pending.kills++;
+      return;
+    }
     const p = this.player;
     const mul = m.elite ? ELITE_MOD.reward : 1;
     this.pending.gold += m.def.gold * mul;
@@ -644,6 +663,12 @@ export class BattleScene extends Phaser.Scene {
     this.fx.shake(0.6, 120);
     sfx.play('hurt');
     if (p.hp <= 0) {
+      // 튜토리얼에서는 쓰러지지 않는다.
+      if (this.isTutorial) {
+        p.hp = p.derived.maxHp;
+        this.fx.text(p.x, headY, '회복', 'heal');
+        return;
+      }
       if (this.reviveLeft > 0) {
         this.revivePlayer();
         return;
@@ -792,6 +817,10 @@ export class BattleScene extends Phaser.Scene {
   private updateWaves(dt: number): void {
     if (this.state === 'done') return;
     this.stateTimer -= dt;
+    if (this.tutorial) {
+      this.tutorial.update(dt);
+      return;
+    }
     if (this.worldBoss) {
       this.updateWorldBoss(dt);
       return;
@@ -897,6 +926,11 @@ export class BattleScene extends Phaser.Scene {
     if (this.cleared || this.player.dead) return;
     this.cleared = true;
     this.state = 'done';
+    if (this.isTutorial) {
+      sfx.play('clear');
+      this.endTimer = 4;
+      return;
+    }
     if (this.worldBoss) {
       // 깬 줄까지의 보상이 모두 쌓인다.
       const r = totalReward(this.worldBossScore().bars);
@@ -914,6 +948,11 @@ export class BattleScene extends Phaser.Scene {
     this.announce('클리어!', 2.5);
     sfx.play('clear');
     this.endTimer = 2.5;
+  }
+
+  /** 튜토리얼 마지막 단계까지 끝냈다. */
+  completeTutorial(): void {
+    this.clear();
   }
 
   private fail(): void {
@@ -946,6 +985,13 @@ export class BattleScene extends Phaser.Scene {
   private finish(): void {
     if (this.ended) return;
     this.ended = true;
+    if (this.isTutorial) {
+      // 결과 창과 보상 없이 바로 마을로 간다.
+      ctx.onTutorialEnd();
+      this.cameras.main.fadeOut(250);
+      this.time.delayedCall(260, () => this.scene.start('town', { area: 'town' }));
+      return;
+    }
     const cleared = this.cleared && !this.player.dead;
     const outcome: BattleOutcome = {
       cleared,
@@ -1546,7 +1592,8 @@ export class BattleScene extends Phaser.Scene {
     } else if (this.worldBoss) {
       const left = Math.max(0, WORLD_BOSS_TIME - this.wbTime);
       waveText = this.state === 'intro' ? '준비' : `남은 시간 ${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')} · 총 피해 ${koNum(Math.round(this.worldBossScore().damage))}`;
-    } else if (this.phase.type === 'boss') waveText = '보스 페이즈';
+    } else if (this.isTutorial) waveText = '훈련 중';
+    else if (this.phase.type === 'boss') waveText = '보스 페이즈';
     else if (this.waveIndex < 0) waveText = '준비';
     else waveText = `웨이브 ${Math.min(this.waveIndex + 1, this.phase.waves.length)} / ${this.phase.waves.length}`;
     const barTarget = this.boss ?? this.monsters.find((m) => m.alive && m.def.miniboss) ?? null;
@@ -1579,7 +1626,7 @@ export class BattleScene extends Phaser.Scene {
         hpKey: keyLabel(keymap.item1),
         mpKey: keyLabel(keymap.item2),
       },
-      phaseName: this.legion || this.worldBoss ? this.phase.name : `${this.phase.id} ${this.phase.name}`,
+      phaseName: this.namedOnly ? this.phase.name : `${this.phase.id} ${this.phase.name}`,
       waveText,
       gold: this.pending.gold,
       kills: this.pending.kills,
