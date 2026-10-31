@@ -1037,3 +1037,123 @@
   color: #c8f0ff;
   text-shadow: 0 0 8px #4ab0ff, 0 1px 0 #000;
 }
+
+/* ───────── 월드 보스 ───────── */
+.hud-boss.stacked .hud-boss-num {
+  font-size: 18px;
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 0 6px rgba(0, 0, 0, 0.9), 0 1px 0 #000;
+}
+.hud-boss.stacked .hud-boss-bar {
+  height: 18px;
+  border-color: rgba(255, 220, 140, 0.6);
+}
+.hud-boss.stacked .hud-bar-fill {
+  transition: width 0.08s linear;
+  box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.25), inset 0 3px 0 rgba(255, 255, 255, 0.25);
+}
+.hud-wb-score {
+  text-align: center;
+  margin: 6px 0 10px;
+}
+.hud-wb-bars {
+  font-size: 30px;
+  font-weight: 900;
+  color: #ffd27a;
+  text-shadow: 0 0 10px rgba(255, 180, 60, 0.6), 0 2px 0 #2a1405;
+}
+.hud-wb-damage {
+  font-size: 14px;
+  color: #e8dcc8;
+  margin-top: 2px;
+}
+.hud-wb-best {
+  font-size: 13px;
+  font-weight: 800;
+  color: #8ff0ff;
+  margin-top: 4px;
+  animation: hud-pulse 0.8s ease-in-out infinite alternate;
+}
+.wb-panel {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 14px;
+}
+.wb-art {
+  background: radial-gradient(circle at 50% 60%, #2a3440 0%, #12141c 75%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 8px;
+  gap: 8px;
+}
+.wb-art canvas,
+.wb-art img {
+  image-rendering: pixelated;
+  width: 160px;
+}
+.wb-tries {
+  font-size: 15px;
+  font-weight: 800;
+  color: #ffd27a;
+}
+.wb-tries .dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin: 0 2px;
+  background: #ffcc61;
+  box-shadow: 0 0 6px #ffb040;
+}
+.wb-tries .dot.used {
+  background: #3a3440;
+  box-shadow: none;
+}
+.wb-best {
+  font-size: 13px;
+  color: #e8dcc8;
+  text-align: center;
+}
+.wb-best b {
+  font-size: 20px;
+  color: #fff;
+}
+.wb-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+.wb-tiers {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.wb-tier {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  gap: 8px;
+  align-items: center;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 13px;
+}
+.wb-tier.reached {
+  background: rgba(255, 204, 97, 0.12);
+  border: 1px solid rgba(255, 204, 97, 0.35);
+}
+.wb-tier .from {
+  font-weight: 900;
+  color: #ffd27a;
+}
+.wb-sum {
+  margin-top: 10px;
+  font-size: 13px;
+  color: #cfc4b0;
+  line-height: 1.6;
+}

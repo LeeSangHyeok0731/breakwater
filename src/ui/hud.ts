@@ -46,7 +46,7 @@ export interface HudState {
   waveText: string;
   gold: number;
   kills: number;
-  boss: { name: string; hp: number; maxHp: number; phase2: boolean } | null;
+  boss: { name: string; hp: number; maxHp: number; phase2: boolean; stack?: { left: number; ratio: number; color: string; under: string } } | null;
   dodgeReady: boolean;
   /** 군단장 전투: 침묵 스택, 남은 침묵 시간, 남은 부활 */
   legion?: { stacks: number; max: number; silence: number; revive: number; status?: string } | null;
@@ -62,6 +62,8 @@ export interface BattleResultView {
   levelsGained: number;
   /** 군단장 전투: 조각만 보여 주고 기지로 돌아간다 */
   legion?: boolean;
+  /** 월드 보스: 깬 줄과 총 피해, 최고 기록인가 */
+  worldBoss?: { bars: number; damage: string; best: boolean };
 }
 
 const SLOT_COUNT = 8;
@@ -79,7 +81,7 @@ function setText(e: HTMLElement, s: string): void {
   if (e.textContent !== s) e.textContent = s;
 }
 
-function setStyle(e: HTMLElement, prop: 'width' | 'left' | 'transform' | 'display' | 'color' | 'borderColor', v: string): void {
+function setStyle(e: HTMLElement, prop: 'width' | 'left' | 'transform' | 'display' | 'color' | 'borderColor' | 'background', v: string): void {
   if (e.style[prop] !== v) e.style[prop] = v;
 }
 
@@ -307,7 +309,19 @@ export class Hud {
     setText(this.phaseName, s.phaseName);
     setText(this.waveText, s.waveText);
 
-    if (s.boss) {
+    if (s.boss?.stack) {
+      // 겹친 체력바 (월드 보스): 지금 줄 색이 줄어들면 아래 줄 색이 드러난다.
+      const st = s.boss.stack;
+      setStyle(this.bossWrap, 'display', '');
+      setClass(this.bossWrap, 'stacked', true);
+      setText(this.bossName, s.boss.name);
+      setStyle(this.bossTag, 'display', 'none');
+      setText(this.bossText, `×${st.left}`);
+      setStyle(this.bossFill, 'width', pct(st.ratio));
+      setStyle(this.bossFill, 'background', st.color);
+      setStyle(this.bossLag, 'background', st.under);
+      setStyle(this.bossLag, 'width', '100%');
+    } else if (s.boss) {
       const b = s.boss;
       const r = b.maxHp > 0 ? b.hp / b.maxHp : 0;
       setStyle(this.bossWrap, 'display', '');
@@ -498,7 +512,13 @@ export class Hud {
     const box = this.openModal('result');
     box.classList.add(r.cleared ? 'cleared' : 'failed');
     el('div', 'hud-modal-sub', box, r.phaseName);
-    el('h2', 'hud-modal-title', box, r.legion ? (r.cleared ? '군단장 토벌 성공' : '토벌 실패') : r.cleared ? '페이즈 클리어' : '페이즈 실패');
+    el('h2', 'hud-modal-title', box, r.worldBoss ? '월드 보스 결과' : r.legion ? (r.cleared ? '군단장 토벌 성공' : '토벌 실패') : r.cleared ? '페이즈 클리어' : '페이즈 실패');
+    if (r.worldBoss) {
+      const wb = el('div', 'hud-wb-score', box);
+      el('div', 'hud-wb-bars', wb, `${r.worldBoss.bars}줄 돌파`);
+      el('div', 'hud-wb-damage', wb, `총 피해 ${r.worldBoss.damage}`);
+      if (r.worldBoss.best) el('div', 'hud-wb-best', wb, '최고 기록 갱신!');
+    }
 
     const list = el('div', 'hud-result-list' + (r.cleared ? '' : ' lost'), box);
     const row = (label: string, value: string, cls = ''): void => {
@@ -506,13 +526,11 @@ export class Hud {
       el('span', 'hud-result-label', e, label);
       el('span', 'hud-result-val', e, value);
     };
-    if (!r.legion) {
-      row('골드', `+${Math.floor(r.gold)}`, 'gold');
-      row('경험치', `+${Math.floor(r.exp)}`);
-    }
+    if (!r.legion) row('골드', `+${Math.floor(r.gold)}`, 'gold');
+    if (!r.legion && !r.worldBoss) row('경험치', `+${Math.floor(r.exp)}`);
     // 희망의 조각은 눈에 띄게 반짝인다.
     for (const m of r.materials) row(m.name, `x${m.count}`, m.name === '희망의 조각' ? 'hope' : '');
-    if (!r.legion) {
+    if (!r.legion && !r.worldBoss) {
       const kills = el('div', 'hud-result-row', box);
       el('span', 'hud-result-label', kills, '처치한 몬스터');
       el('span', 'hud-result-val', kills, String(r.kills));

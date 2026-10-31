@@ -8,6 +8,7 @@ import { Player } from './player2d';
 import { derive, totalStats } from './stats';
 import { buildLevel, FLOOR_Y, GROUND_Y, VIEW_H, VIEW_W_MAX, type Level } from './world';
 import { LEGION_UNLOCK_PHASE } from '../data/legion';
+import { makeStatueTexture } from './worldGolem';
 
 interface Station {
   id: StationId;
@@ -93,6 +94,9 @@ export class TownScene extends Phaser.Scene {
     this.addNpc('smith', '대장장이 브론', '강화 · 재료 교환', '대장장이와 대화', 340, 'npc-bearded');
     this.makeStationTextures();
     this.addProp('chest', '장비함', '무기 · 방어구 장착', '장비함 열기', 520, 'town-chest');
+    // 마을 입구의 고대 골렘 석상: 월드 보스 도전
+    makeStatueTexture(this, 'golem-statue');
+    this.addProp('golem', '고대 골렘 석상', '월드 보스 · 하루 3번', '석상 살펴보기', 60, 'golem-statue');
     this.addProp('board', '출정 게시판', '페이즈 선택 · 소탕', '게시판 보기', 820, 'quest-board');
     this.addNpc('shop', '잡화상 리나', '무기 · 장비 · 포션', '상인과 대화', 980, 'npc-woman');
     this.addNpc('trainer', '교관 메이린', '스탯 · 스킬 · 패시브', '교관과 대화', 1260, 'npc-oldman');

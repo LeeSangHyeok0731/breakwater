@@ -23,8 +23,12 @@ export interface PanelHost {
   section(title: string, note?: string): HTMLDivElement;
   /** 직업별 캐릭터 그림 (Phaser 텍스처에서 잘라 온다) */
   portrait(type: WeaponType): HTMLCanvasElement | null;
+  /** 게임 텍스처를 캔버스로 복사해 온다 (석상 그림 등) */
+  art?(key: string): HTMLCanvasElement | null;
   /** 군단장 출격 (전투 기지에서만) */
   startLegion?(run: LegionRun): void;
+  /** 월드 보스 도전 (마을 골렘 석상) */
+  startWorldBoss?(): void;
 }
 
 type StatKey = keyof Stats;
