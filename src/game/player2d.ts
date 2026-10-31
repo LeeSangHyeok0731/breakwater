@@ -56,6 +56,10 @@ export interface Buff {
   time: number;
 }
 
+/** 평타 연계 단계 수와, 다음 평타를 쳐야 하는 시간 [초안] */
+export const COMBO_MAX = 5;
+const COMBO_WINDOW = 1;
+
 /** 칼 휘두르기 대신 무기 그림이 움직이는 원거리 동작 */
 const RANGED_ACTIONS: ReadonlySet<ActionKind> = new Set(['shoot', 'volley', 'rapid', 'snipe', 'barrage', 'manaball', 'cast', 'laser']);
 
@@ -100,7 +104,9 @@ export class Player {
   buffs: Buff[] = [];
 
   action: PlayerAction | null = null;
-  comboStep = 0;
+  /** 평타 연계: 지금 몇 단인지 (0이면 연계 없음, 1~COMBO_MAX) */
+  combo = 0;
+  /** 이 시간 안에 다음 평타를 쳐야 연계가 이어진다 */
   comboTimer = 0;
   /** 강화 공격(T) 차징 시간. 차징 중이 아니면 -1 */
   charge = -1;
@@ -233,9 +239,23 @@ export class Player {
     this.action = { kind, t: 0, dur, hits, done: 0 };
   }
 
+  /** 평타 한 번: 연계를 한 단 올린다. 마지막 단 다음은 다시 1단. 몇 단인지 돌려준다. */
+  nextCombo(): number {
+    this.combo = this.comboTimer > 0 && this.combo < COMBO_MAX ? this.combo + 1 : 1;
+    this.comboTimer = COMBO_WINDOW;
+    return this.combo;
+  }
+
+  /** 구르기·스킬·무기 교체·공중/앉아 베기: 연계가 끊긴다. */
+  resetCombo(): void {
+    this.combo = 0;
+    this.comboTimer = 0;
+  }
+
   /** 직업 교체: 장착한 두 무기(직업)를 오간다. */
   swapWeapon(): void {
     this.active = 1 - this.active;
+    this.resetCombo();
     this.action = null;
     this.charge = -1;
     this.guarding = false;
@@ -286,7 +306,7 @@ export class Player {
     this.fireCd = Math.max(0, this.fireCd - dt);
     this.drawCd = Math.max(0, this.drawCd - dt);
     this.comboTimer = Math.max(0, this.comboTimer - dt);
-    if (this.comboTimer === 0) this.comboStep = 0;
+    if (this.comboTimer === 0) this.combo = 0;
     if (this.reloadTime > 0) {
       this.reloadTime -= dt;
       if (this.reloadTime <= 0) {
@@ -309,6 +329,7 @@ export class Player {
   }
 
   startDodge(): void {
+    this.resetCombo();
     this.dodgeTime = DODGE_TIME;
     this.dodgeCd = 0.7 * this.derived.passive.dodgeCdMul;
     this.invuln = DODGE_TIME + 0.06;
