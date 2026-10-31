@@ -38,7 +38,7 @@ const STATION_TABS: Record<StationId, Tab[]> = {
   board: ['phase'],
   smith: ['enhance', 'exchange'],
   shop: ['shop'],
-  trainer: ['skill'],
+  trainer: ['skill', 'equip'],
   chest: ['equip'],
   portal: [],
   legion: ['legion'],
