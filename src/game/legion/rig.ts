@@ -227,6 +227,8 @@ export class Rig {
   facing: 1 | -1 = 1;
   /** 무기가 빛난다 */
   glowing = false;
+  /** 무기 빛 색 */
+  glowColor = 0xffffff;
   /** 계산된 앞손 위치 (리그 좌표) */
   private hand: Pt = [0, 0];
   private lastX = 0;
@@ -379,7 +381,7 @@ export class Rig {
     const glow = this.imgs.get('glow');
     if (glow) {
       this.place('glow', armF.end, w);
-      glow.setVisible(this.glowing).setScale(1.12).setAlpha(0.45 + Math.sin(this.time * 18) * 0.2);
+      glow.setVisible(this.glowing).setScale(1.12).setTint(this.glowColor).setAlpha(0.45 + Math.sin(this.time * 18) * 0.2);
     }
     this.place('pauldronF', sF, lean + (boneRot(sF, armF.mid) - lean) * 0.3);
     // 뒷팔: 두 손으로 잡으면 손잡이 아래쪽, 아니면 자세의 뒷손 위치
@@ -400,7 +402,8 @@ export class Rig {
     }
     if (d.plume) {
       const at2 = rot(d.plume.at, headRot);
-      const target = headRot + d.plume.rest + Phaser.Math.Clamp(fwd * 0.003, -0.6, 0.8) + Math.sin(this.time * 3) * 0.08;
+      // 머리카락·장식은 머리 각도를 조금만 따르고 대체로 아래로 늘어진다.
+      const target = headRot * 0.35 + d.plume.rest + Phaser.Math.Clamp(fwd * 0.003, -0.6, 0.8) + Math.sin(this.time * 3) * 0.08;
       spring(this.plumeSpring, target, dt, 60, 8);
       this.place('plume', [neck[0] + at2[0], neck[1] + at2[1]], this.plumeSpring.a);
     }
@@ -409,7 +412,8 @@ export class Rig {
   /** 천을 마디마다 스프링으로 흔들고, 그 모양을 도트로 다시 그린다. */
   private drawCloth(c: Cloth, base: Pt, parentRot: number, fwd: number, vy: number, dt: number): void {
     const cd = c.def;
-    const blow = Phaser.Math.Clamp(fwd * 0.004 * cd.blow, -0.5, 1.1);
+    // 뒷걸음질할 때 앞으로 너무 휘면 몸 뒤에 가려지니 조금만 휜다.
+    const blow = Phaser.Math.Clamp(fwd * 0.004 * cd.blow, -0.12, 1.1);
     const lift = Phaser.Math.Clamp(-vy * 0.002 * cd.blow, -0.3, 0.5);
     const pts: Pt[] = [[0, 0]];
     const angs: number[] = [];
