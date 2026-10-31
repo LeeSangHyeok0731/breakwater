@@ -1,6 +1,7 @@
 import { combatPower, powerVerdict, recommendedPower } from '../game/power';
 import { koNum } from './format';
 import { renderEquipPanel, type PanelHost } from './equipPanel';
+import { renderWorldBossPanel } from './worldBossPanel';
 import { renderSkillPanel } from './skillPanel';
 import { renderArmoryPanel, renderLegionPanel, renderShardPanel } from './legionPanel';
 import type { LegionRun } from '../data/legion';
@@ -27,11 +28,15 @@ export interface VillageCallbacks {
   onClose(): void;
   /** 전투 기지에서 군단장에게 출격한다. */
   onStartLegion(run: LegionRun): void;
+  /** 월드 보스 도전 */
+  onStartWorldBoss(): void;
   /** 장비창에 그릴 직업별 캐릭터 그림 */
   portrait(type: WeaponType): HTMLCanvasElement | null;
+  /** 게임 텍스처를 캔버스로 복사해 온다 */
+  art(key: string): HTMLCanvasElement | null;
 }
 
-export type Tab = 'phase' | 'equip' | 'skill' | 'enhance' | 'exchange' | 'shop' | 'settings' | 'legion' | 'armory' | 'shards';
+export type Tab = 'phase' | 'equip' | 'skill' | 'enhance' | 'exchange' | 'shop' | 'settings' | 'legion' | 'armory' | 'shards' | 'worldboss';
 type ConfirmKey = 'statReset' | 'skillReset' | 'fullReset';
 
 const TABS: { id: Tab; label: string }[] = [
@@ -45,6 +50,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'legion', label: '군단장' },
   { id: 'armory', label: '무기고' },
   { id: 'shards', label: '조각 상인' },
+  { id: 'worldboss', label: '월드 보스' },
 ];
 
 const ACTION_LABELS: Record<Action, string> = {
@@ -271,6 +277,9 @@ export class VillageUI {
       case 'shards':
         renderShardPanel(this.host, save);
         break;
+      case 'worldboss':
+        renderWorldBossPanel(this.host, save);
+        break;
     }
     this.body.scrollTop = scroll;
   }
@@ -288,7 +297,9 @@ export class VillageUI {
       isConfirming: (key) => this.confirming === key,
       section: (title, note) => this.section(title, note),
       portrait: (type) => this.cb.portrait(type),
+      art: (key) => this.cb.art(key),
       startLegion: (run) => this.cb.onStartLegion(run),
+      startWorldBoss: () => this.cb.onStartWorldBoss(),
     };
   }
 

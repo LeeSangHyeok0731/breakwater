@@ -38,7 +38,10 @@ export type MonsterKind =
   // 군단장
   | 'silent_knight'
   | 'corrupted_elf'
-  | 'dark_lord';
+  | 'dark_lord'
+  | 'world_golem';
+
+import { WORLD_BOSS_HP } from './worldBoss';
 
 export interface MonsterDef {
   kind: MonsterKind;
@@ -714,6 +717,24 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
     gold: 0,
     exp: 0,
     mana: 30,
+    drops: [],
+  },
+  world_golem: {
+    kind: 'world_golem',
+    name: '고대 골렘',
+    // 월드 보스: 공격하지 않는다. 체력은 99줄을 모두 합친 값 (src/data/worldBoss.ts).
+    boss: true,
+    hp: WORLD_BOSS_HP + 1,
+    speed: 0,
+    damage: 0,
+    range: 0,
+    attackCd: 99,
+    radius: 3,
+    height: 8,
+    flying: false,
+    gold: 0,
+    exp: 0,
+    mana: 20,
     drops: [],
   },
 };

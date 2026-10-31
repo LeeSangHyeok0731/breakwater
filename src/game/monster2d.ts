@@ -10,10 +10,11 @@ import { CHAPTER5 } from './mobs/chapter5';
 import { silentKnight } from './legion/knight';
 import { corruptedElf } from './legion/elf';
 import { darkLord } from './legion/darklord';
+import { worldGolem } from './worldGolem';
 
 /** 챕터 2·3 몬스터의 행동 (몬스터 하나를 한 프레임 움직인다) */
 export type Behavior = (m: Monster, dt: number) => void;
-const BEHAVIORS: Partial<Record<MonsterKind, Behavior>> = { ...CHAPTER2, ...CHAPTER3, ...CHAPTER4, ...CHAPTER5, silent_knight: silentKnight, corrupted_elf: corruptedElf, dark_lord: darkLord };
+const BEHAVIORS: Partial<Record<MonsterKind, Behavior>> = { ...CHAPTER2, ...CHAPTER3, ...CHAPTER4, ...CHAPTER5, silent_knight: silentKnight, corrupted_elf: corruptedElf, dark_lord: darkLord, world_golem: worldGolem };
 
 export interface Look {
   walk: string;
@@ -63,6 +64,7 @@ const LOOKS: Record<MonsterKind, Look> = {
   silent_knight: { walk: 'knight:hero-run', attack: 'knight:hero-idle', idle: 'knight:hero-idle', facesLeft: false, body: [16, 44], scale: 2.2 },
   corrupted_elf: { walk: 'elf:hero-run', attack: 'elf:hero-idle', idle: 'elf:hero-idle', facesLeft: false, body: [16, 44], scale: 2.1 },
   dark_lord: { walk: 'darklord:hero-run', attack: 'darklord:hero-idle', idle: 'darklord:hero-idle', facesLeft: false, body: [16, 44], scale: 2.2 },
+  world_golem: { walk: 'demon-idle', attack: 'demon-idle', facesLeft: true, body: [44, 56], scale: 3 },
   void_king: { walk: 'vking-idle', attack: 'vking-attack', facesLeft: true, body: [70, 96], scale: 1.3 },
 };
 

@@ -15,9 +15,11 @@ export interface BattleOutcome {
   kills: number;
   /** 군단장 전투였으면 출격 정보 */
   legion?: LegionRun;
+  /** 월드 보스였으면 깬 줄과 총 피해 */
+  worldBoss?: { bars: number; damage: number };
 }
 
-export type StationId = 'board' | 'smith' | 'shop' | 'trainer' | 'chest' | 'portal' | 'legion' | 'armory' | 'shards';
+export type StationId = 'board' | 'smith' | 'shop' | 'trainer' | 'chest' | 'portal' | 'legion' | 'armory' | 'shards' | 'golem';
 
 /** 마을 또는 전투 기지 (같은 씬을 다르게 꾸민다) */
 export type Area = 'town' | 'base';

@@ -265,6 +265,10 @@ export class DevPanel {
       s.materials.hope_shard = (s.materials.hope_shard ?? 0) + 5;
       return '희망의 조각 +5';
     });
+    this.saveButton(lrow2, '월드 보스 횟수 초기화', (s) => {
+      s.worldBoss.used = 0;
+      return '월드 보스 오늘 횟수 3번으로';
+    });
     this.button(lrow2, '전투 기지로', () => {
       this.actions.travel('base');
       return '전투 기지로 이동';

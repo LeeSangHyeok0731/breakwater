@@ -7,6 +7,8 @@ import { MATERIALS } from '../data/items';
 import { ELITE_MOD, MONSTERS, type MonsterKind } from '../data/monsters';
 import type { PhaseDef } from '../data/phases';
 import { DIFFICULTY, LEGIONS, rewardMul, SILENCE_STACKS, SILENCE_TIME, type LegionRun } from '../data/legion';
+import { barProgress, totalReward, WORLD_BOSS_BARS, WORLD_BOSS_TIME } from '../data/worldBoss';
+import { koNum } from '../ui/format';
 import { SKILL_BY_ID, type SkillDef } from '../data/skills';
 import { CLASS_NAME, GRADES, WEAPONS, type WeaponType } from '../data/weapons';
 import { Hud, type HudSlot, type HudState } from '../ui/hud';
@@ -225,14 +227,19 @@ export class BattleScene extends Phaser.Scene {
   /** 군단장이 HUD에 띄우는 상태 (보호막 남은 횟수 등). 그로기보다 먼저 보인다. */
   legionNote = '';
   private reviveLeft = 0;
+  /** 월드 보스 전투인가, 흐른 시간 */
+  worldBoss = false;
+  private wbTime = 0;
 
   constructor() {
     super('battle');
   }
 
-  init(data: { phase: PhaseDef; legion?: LegionRun }): void {
+  init(data: { phase: PhaseDef; legion?: LegionRun; worldBoss?: boolean }): void {
     this.phase = data.phase;
     this.legion = data.legion ?? null;
+    this.worldBoss = !!data.worldBoss;
+    this.wbTime = 0;
     this.silenceStacks = 0;
     this.legionGroggy = 0;
     this.legionNote = '';
@@ -310,7 +317,7 @@ export class BattleScene extends Phaser.Scene {
     this.hud = new Hud(ctx.uiRoot);
     ctx.townHud.hide();
     this.events.once('shutdown', () => this.cleanup());
-    this.announce(this.legion ? phase.name : `${phase.id} ${phase.name}`, 1.6);
+    this.announce(this.legion || this.worldBoss ? phase.name : `${phase.id} ${phase.name}`, 1.6);
   }
 
   private cleanup(): void {
@@ -784,6 +791,10 @@ export class BattleScene extends Phaser.Scene {
   private updateWaves(dt: number): void {
     if (this.state === 'done') return;
     this.stateTimer -= dt;
+    if (this.worldBoss) {
+      this.updateWorldBoss(dt);
+      return;
+    }
     if (this.phase.mission) {
       this.updateMission(dt);
       return;
@@ -856,10 +867,45 @@ export class BattleScene extends Phaser.Scene {
     }
   }
 
+  /** 월드 보스: 맵 한가운데 골렘을 세우고 3분을 잰다. 시간이 다 되거나 99줄을 다 깨면 끝. */
+  private updateWorldBoss(dt: number): void {
+    if (this.state === 'intro') {
+      if (this.stateTimer > 0) return;
+      this.state = 'fight';
+      this.boss = this.spawnMonster('world_golem', false, this.phase.width / 2);
+      this.announce('3분 동안 최대한 많은 줄을 깨라!', 2.2);
+      sfx.play('wave');
+      return;
+    }
+    this.wbTime += dt;
+    if (this.wbTime >= WORLD_BOSS_TIME) {
+      this.announce('시간 종료!', 2);
+      this.clear();
+    }
+  }
+
+  /** 월드 보스에 준 피해와 깬 줄 */
+  private worldBossScore(): { damage: number; bars: number; left: number } {
+    const g = this.boss;
+    const damage = g ? Math.max(0, g.maxHp - Math.max(0, g.hp)) : 0;
+    const { broken, left } = barProgress(damage);
+    return { damage, bars: broken, left };
+  }
+
   private clear(): void {
     if (this.cleared || this.player.dead) return;
     this.cleared = true;
     this.state = 'done';
+    if (this.worldBoss) {
+      // 깬 줄까지의 보상이 모두 쌓인다.
+      const r = totalReward(this.worldBossScore().bars);
+      this.pending.gold = r.gold;
+      this.pending.materials = r.materials;
+      this.announce(this.worldBossScore().bars >= WORLD_BOSS_BARS ? '99줄 전부 돌파!' : '시간 종료!', 2.5);
+      sfx.play('clear');
+      this.endTimer = 2.5;
+      return;
+    }
     const r = this.phase.clearReward;
     this.pending.gold += r.gold;
     this.pending.exp += r.exp;
@@ -879,6 +925,16 @@ export class BattleScene extends Phaser.Scene {
 
   private giveUp(): void {
     if (this.ended) return;
+    // 월드 보스는 그만둬도 깬 줄까지 보상을 받는다.
+    if (this.worldBoss && this.state === 'fight') {
+      this.paused = false;
+      this.hud.hidePause();
+      this.physics.resume();
+      this.anims.resumeAll();
+      this.clear();
+      this.finish();
+      return;
+    }
     this.player.dead = true;
     this.state = 'done';
     this.paused = false;
@@ -903,6 +959,11 @@ export class BattleScene extends Phaser.Scene {
       // 군단장 보상: 조각 (하드는 희망의 조각을 낮은 확률로). 버프·디버프를 고를수록 줄어든다.
       outcome.legion = this.legion;
       outcome.materials = cleared ? legionReward(this.legion) : {};
+    }
+    if (this.worldBoss) {
+      const sc = this.worldBossScore();
+      outcome.worldBoss = { bars: sc.bars, damage: Math.round(sc.damage) };
+      outcome.sweepTickets = totalReward(sc.bars).sweepTickets;
     }
     const area = this.legion ? 'base' : 'town';
     ctx.onBattleEnd(outcome, this.hud, () => {
@@ -1474,6 +1535,9 @@ export class BattleScene extends Phaser.Scene {
       if (this.state === 'intro') waveText = '준비';
       else if (mission.kind === 'survive') waveText = `생존 ${Math.max(0, Math.ceil(mission.seconds - this.missionTime))}초 남음`;
       else waveText = `처치 ${Math.min(this.pending.kills, mission.target)} / ${mission.target}`;
+    } else if (this.worldBoss) {
+      const left = Math.max(0, WORLD_BOSS_TIME - this.wbTime);
+      waveText = this.state === 'intro' ? '준비' : `남은 시간 ${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')} · 총 피해 ${koNum(Math.round(this.worldBossScore().damage))}`;
     } else if (this.phase.type === 'boss') waveText = '보스 페이즈';
     else if (this.waveIndex < 0) waveText = '준비';
     else waveText = `웨이브 ${Math.min(this.waveIndex + 1, this.phase.waves.length)} / ${this.phase.waves.length}`;
@@ -1507,11 +1571,11 @@ export class BattleScene extends Phaser.Scene {
         hpKey: keyLabel(keymap.item1),
         mpKey: keyLabel(keymap.item2),
       },
-      phaseName: this.legion ? this.phase.name : `${this.phase.id} ${this.phase.name}`,
+      phaseName: this.legion || this.worldBoss ? this.phase.name : `${this.phase.id} ${this.phase.name}`,
       waveText,
       gold: this.pending.gold,
       kills: this.pending.kills,
-      boss: barTarget ? { name: barTarget.def.name, hp: Math.max(0, barTarget.hp), maxHp: barTarget.maxHp, phase2: barTarget.phase2 } : null,
+      boss: barTarget ? { name: barTarget.def.name, hp: Math.max(0, barTarget.hp), maxHp: barTarget.maxHp, phase2: barTarget.phase2, stack: this.worldBoss ? this.worldBossStack() : undefined } : null,
       legion: this.legion
         ? {
             stacks: this.silenceStacks,
@@ -1522,6 +1586,20 @@ export class BattleScene extends Phaser.Scene {
           }
         : null,
       dodgeReady: p.dodgeCd <= 0,
+    };
+  }
+
+  /** 겹친 체력바: 남은 줄, 지금 줄의 남은 비율과 색, 아래 줄 색 */
+  private worldBossStack(): { left: number; ratio: number; color: string; under: string } {
+    const sc = this.worldBossScore();
+    const css = (c: number): string => `#${c.toString(16).padStart(6, '0')}`;
+    const palette = [0xe53935, 0xff8a1a, 0xf6c445, 0x5ac85a, 0x3fa8ff, 0x9a6aff];
+    const done = sc.bars >= WORLD_BOSS_BARS;
+    return {
+      left: WORLD_BOSS_BARS - sc.bars,
+      ratio: done ? 0 : sc.left,
+      color: css(palette[sc.bars % palette.length]),
+      under: sc.bars + 1 >= WORLD_BOSS_BARS ? '#1a1214' : css(palette[(sc.bars + 1) % palette.length]),
     };
   }
 
