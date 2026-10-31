@@ -308,7 +308,38 @@ const ELF_LOOK: ClassLook = {
   },
 };
 
-const LEGION_LOOKS: Record<string, ClassLook> = { knight: KNIGHT_LOOK, elf: ELF_LOOK };
+/** 암흑의 군주: 칠흑 로브, 낡은 금장, 잿빛 피부, 검은 머리, 뒤로 휜 뿔과 금관, 보랏빛 눈 */
+const DARKLORD_LOOK: ClassLook = {
+  cape: [0x2a1a3a, 0x140a20, 0x120a1e],
+  trim: [0xd8b04a, 0x8a6a2a, 0x5a3a1a],
+  extra: [
+    [0xffd9b9, 0xb8b0c0],
+    [0xffc98b, 0x9a90a8],
+    [0xe1924d, 0x6a6080],
+    [0xaf9785, 0x2a2234],
+    [0x966495, 0x1a1424],
+    [0x671915, 0x1a0a2a],
+    [0x691a17, 0x1a0a2a],
+  ],
+  hat: (d, cx, top) => {
+    // 뒤로 휘어 솟은 뿔
+    line(d, cx - 3, top + 1, cx - 7, top - 4, (i) => (i < 2 ? 0x4a4058 : 0x8a8098));
+    line(d, cx + 2, top + 1, cx + 1, top - 4, (i) => (i < 2 ? 0x4a4058 : 0x8a8098));
+    d.px(cx - 8, top - 5, OUTLINE);
+    d.px(cx + 1, top - 5, OUTLINE);
+    // 가시 금관
+    rect(d, cx - 4, top, cx + 3, top, 0xd8b04a);
+    d.px(cx - 4, top - 1, 0xd8b04a);
+    d.px(cx - 1, top - 1, 0xffe08a);
+    d.px(cx + 3, top - 1, 0xd8b04a);
+    d.px(cx - 1, top + 1, 0xb04aff);
+    // 보랏빛으로 타는 눈
+    d.px(cx + 1, top + 4, 0xd090ff);
+    d.px(cx + 3, top + 4, 0xd090ff);
+  },
+};
+
+const LEGION_LOOKS: Record<string, ClassLook> = { knight: KNIGHT_LOOK, elf: ELF_LOOK, darklord: DARKLORD_LOOK };
 
 /** 군단장 그림: knight:hero-run 처럼 '군단장:원본' 키로 텍스처와 애니메이션을 만든다. */
 export function createLegionSprites(scene: Phaser.Scene): void {
