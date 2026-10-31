@@ -96,12 +96,17 @@ export function updatePlayerCombat(b: BattleScene, dt: number): void {
           p.startAction('cleave', 0.45, [0.15]);
         }
       } else if (free && attack) {
-        if (!p.grounded) p.startAction('airSlash', 0.32, [0.1]);
-        else if (p.crouching) p.startAction('crouchSlash', 0.28, [0.08]);
-        else {
-          p.startAction('slash', 0.32, [0.11]);
-          p.comboStep++;
-          p.comboTimer = 0.8;
+        if (!p.grounded) {
+          p.resetCombo();
+          p.startAction('airSlash', 0.32, [0.1]);
+        } else if (p.crouching) {
+          p.resetCombo();
+          p.startAction('crouchSlash', 0.28, [0.08]);
+        } else {
+          const n = p.nextCombo();
+          comboPop(b, n);
+          const [dur, hits] = SLASH_TIMING[n - 1];
+          p.startAction('slash', dur, hits);
         }
       } else if (free && input.pressed('special')) {
         if (type === 'sword') p.startAction('thrust', 0.5, [0.18]);
@@ -113,7 +118,10 @@ export function updatePlayerCombat(b: BattleScene, dt: number): void {
         p.charge += dt;
         if (!input.isDown('special')) releaseOrb(b);
       } else if (free && input.pressed('special')) p.charge = 0;
-      else if (free && attack) p.startAction('manaball', 0.36, [0.08]);
+      else if (free && attack) {
+        comboPop(b, p.nextCombo());
+        p.startAction('manaball', 0.36, [0.08]);
+      }
       break;
     case 'bow':
       if (p.charge >= 0) {
@@ -124,15 +132,20 @@ export function updatePlayerCombat(b: BattleScene, dt: number): void {
           fireArrow(b, c);
         }
       } else if (free && p.drawCd <= 0 && input.pressed('special')) p.charge = 0;
-      else if (free && p.drawCd <= 0 && attack) fireArrow(b, 0);
+      else if (free && p.drawCd <= 0 && attack) {
+        comboPop(b, p.nextCombo());
+        fireArrow(b, 0);
+      }
       break;
     case 'gun':
       if (free && attack && p.fireCd <= 0 && p.reloadTime <= 0) {
         if (p.weapon.ammo > 0) {
           p.weapon.ammo--;
           p.fireCd = 0.24;
-          gunShot(b, 1, 0);
-          p.startAction('shoot', 0.14);
+          const n = p.nextCombo();
+          comboPop(b, n);
+          gunCombo(b, n);
+          p.startAction('shoot', n >= 4 ? 0.22 : 0.14);
           if (p.weapon.ammo === 0) startReload(b);
         } else startReload(b);
       }
@@ -170,14 +183,9 @@ function performHit(b: BattleScene, kind: ActionKind, index: number): void {
   const f = p.facing;
   if (SWINGS.has(kind)) sfx.play('slash');
   switch (kind) {
-    case 'slash': {
-      const second = p.comboStep % 2 === 0;
-      // 칼끝까지 닿도록 넉넉하게: 몸 앞 72px
-      b.fx.slash(p.x + f * 18, p.y - 2, f, 40, color, !second);
-      swingFx(b, p.x + f * 40, p.y - 2);
-      box(b, 0, 72, 48, 2, base * (second ? 0.9 : 1.0) * mul, { basic: true, knock: 90 });
+    case 'slash':
+      comboSlash(b, p.combo || 1, index, base * mul, color);
       break;
-    }
     case 'airSlash':
       b.fx.slash(p.x + f * 14, p.y - 4, f, 40, color, true);
       swingFx(b, p.x + f * 36, p.y - 4);
@@ -304,12 +312,9 @@ function performHit(b: BattleScene, kind: ActionKind, index: number): void {
       if (index === 0) performIai(b);
       else iaiAftershock(b, index);
       break;
-    case 'manaball': {
-      sfx.play('magic');
-      const m = p.shotPoint();
-      b.spawnPlayerBolt({ x: m.x, y: m.y, vx: f * 300, vy: 0, damage: base, kind: 'orb', size: 1, basic: true });
+    case 'manaball':
+      manaCombo(b, p.combo || 1, base);
       break;
-    }
     case 'volley': {
       sfx.play('arrow');
       const m = p.muzzle();
@@ -413,20 +418,189 @@ function fireArrow(b: BattleScene, c: number): void {
     b.fx.spark(m.x, m.y, 0xffe08a, 2);
   }
   const s = p.shotPoint();
-  b.spawnPlayerBolt({
-    x: s.x,
-    y: s.y,
-    vx: p.facing * (360 + 160 * c),
-    vy: 0,
-    damage: b.weaponBase() * (1 + 2.5 * c),
-    kind: 'arrow',
-    color: c > 0.95 ? 0xffe08a : shotColor(p.weapon.def),
-    size: 1 + c * 0.6,
-    basic: true,
-    pierce: c > 0.6,
-  });
+  if (c === 0) arrowCombo(b, p.combo || 1);
+  else
+    b.spawnPlayerBolt({
+      x: s.x,
+      y: s.y,
+      vx: p.facing * (360 + 160 * c),
+      vy: 0,
+      damage: b.weaponBase() * (1 + 2.5 * c),
+      kind: 'arrow',
+      color: c > 0.95 ? 0xffe08a : shotColor(p.weapon.def),
+      size: 1 + c * 0.6,
+      basic: true,
+      pierce: c > 0.6,
+    });
   p.drawCd = p.hasBuff('haste') ? 0.3 : 0.6;
+  // 연계 2단은 다음 화살을 조금 빨리 걸 수 있다.
+  if (c === 0 && p.combo === 2) p.drawCd *= 0.75;
   p.startAction('shoot', 0.2);
+}
+
+// ───────── 평타 연계 [초안] ─────────
+// 평타를 이어 치면 1 → 5단으로 강해지고, 5단 다음은 다시 1단이다.
+// 검·도는 더 많이·넓게 베고, 활은 한 번에 여러 발, 총은 연발·산탄, 스태프는 여러 번 쏜다.
+
+/** 검·도 평타 단계별 [동작 시간, 타격 시점들] */
+const SLASH_TIMING: [number, number[]][] = [
+  [0.32, [0.11]],
+  [0.32, [0.11]],
+  [0.38, [0.09, 0.21]],
+  [0.42, [0.15]],
+  [0.6, [0.1, 0.23, 0.38]],
+];
+
+/** 연계 단계를 머리 위에 띄운다. 마지막 단은 크게. */
+function comboPop(b: BattleScene, n: number): void {
+  if (n < 2) return;
+  const p = b.player;
+  b.fx.text(p.x, p.body.top - 10, `${n}연계`, n >= 5 ? 'crit' : 'info');
+  if (n >= 5) {
+    b.fx.ring(p.x, p.y, 26, 0xffe08a, 260);
+    b.fx.spark(p.x, p.body.top - 4, 0xffe08a, 2);
+  }
+}
+
+/** 검·도 평타: 1 베기 → 2 역베기 → 3 두 번 → 4 크게 → 5 회전 세 번 */
+function comboSlash(b: BattleScene, n: number, index: number, dmg: number, color: number): void {
+  const p = b.player;
+  const f = p.facing;
+  switch (n) {
+    case 1:
+      b.fx.slash(p.x + f * 18, p.y - 2, f, 40, color, true);
+      swingFx(b, p.x + f * 40, p.y - 2);
+      box(b, 0, 72, 48, 2, dmg, { basic: true, knock: 90 });
+      break;
+    case 2:
+      // 역베기: 아래에서 위로, 조금 더 넓게
+      b.fx.slash(p.x + f * 18, p.y - 2, f, 44, color, false, { up: true });
+      swingFx(b, p.x + f * 44, p.y - 4);
+      box(b, 0, 80, 54, 4, dmg, { basic: true, knock: 90 });
+      break;
+    case 3:
+      // 두 번 연달아
+      b.fx.slash(p.x + f * 18, p.y - 2, f, 42, color, index === 0, { up: index === 1, speed: 1.3 });
+      swingFx(b, p.x + f * 44, p.y - 2);
+      p.body.setVelocityX(f * 60);
+      box(b, 0, 84, 56, 2, dmg * 0.7, { basic: true, knock: index === 1 ? 100 : 30 });
+      break;
+    case 4:
+      // 크게 휘두르기: 한 걸음 내디디며 넓게
+      p.body.setVelocityX(f * 140);
+      b.fx.slash(p.x + f * 20, p.y - 4, f, 56, color, true);
+      b.fx.slash(p.x + f * 16, p.y - 2, f, 44, 0xffffff, false, { speed: 1.3 });
+      swingFx(b, p.x + f * 56, p.y - 4);
+      b.fx.shake(0.4, 90);
+      box(b, 0, 100, 66, 4, dmg * 1.3, { basic: true, knock: 150 });
+      break;
+    default: {
+      // 마무리: 회전하며 세 번, 가장 넓고 멀리. 마지막은 터진다.
+      const last = index === 2;
+      p.body.setVelocityX(f * (last ? 180 : 70));
+      b.fx.slash(p.x + f * 16, p.y - 4, f, 50 + index * 8, last ? 0xffe08a : color, index !== 1, { up: index === 1, speed: 1.4 });
+      if (index === 1) b.fx.slash(p.x - f * 10, p.y - 4, (-f) as 1 | -1, 40, color, true, { speed: 1.4 });
+      swingFx(b, p.x + f * 60, p.y - 4);
+      box(b, index === 1 ? -40 : 0, index === 1 ? 160 : 120, 76, 6, dmg * 0.8, { basic: true, knock: last ? 220 : 40 });
+      if (last) {
+        b.fx.slash(p.x + f * 30, p.y - 4, f, 70, 0xffffff, true, { squash: 0.6 });
+        b.fx.ring(p.x + f * 50, p.feet, 80, 0xffe08a, 320);
+        b.fx.burst(p.x + f * 60, p.y - 4, 0xffe08a, 16, 180, 380);
+        b.fx.shake(0.9, 160);
+        b.fx.stop(0.06);
+      }
+      break;
+    }
+  }
+}
+
+/** 활 평타: 단계마다 한 번에 쏘는 화살이 늘고, 5단은 관통하는 금빛 부채꼴 */
+function arrowCombo(b: BattleScene, n: number): void {
+  const p = b.player;
+  const s = p.shotPoint();
+  const count = [1, 1, 2, 3, 5][n - 1];
+  const each = [1, 1, 0.8, 0.75, 0.7][n - 1];
+  const spread = n >= 5 ? 0.09 : 0.06;
+  const finale = n >= 5;
+  for (let i = 0; i < count; i++) {
+    const a = (i - (count - 1) / 2) * spread;
+    const speed = finale ? 500 : 380;
+    b.spawnPlayerBolt({
+      x: s.x,
+      y: s.y,
+      vx: p.facing * Math.cos(a) * speed,
+      vy: Math.sin(a) * speed,
+      damage: b.weaponBase() * each,
+      kind: 'arrow',
+      color: finale ? 0xffe08a : shotColor(p.weapon.def),
+      size: finale ? 1.3 : 1,
+      basic: true,
+      pierce: finale,
+    });
+  }
+  if (count > 1) {
+    const m = p.muzzle();
+    b.fx.spark(m.x, m.y, finale ? 0xffe08a : 0xffffff, finale ? 2 : 1);
+    if (finale) b.fx.shake(0.4, 90);
+  }
+}
+
+/** 총 평타: 1·2 한 발 → 3 두 발 → 4 세 발 → 5 산탄 다섯 발. 탄창은 한 발만 쓴다. */
+function gunCombo(b: BattleScene, n: number): void {
+  const p = b.player;
+  if (n <= 2) {
+    gunShot(b, 1, 0);
+    return;
+  }
+  if (n === 5) {
+    // 산탄: 부채꼴로 다섯 발, 반동으로 살짝 밀린다.
+    for (let i = 0; i < 5; i++) gunShot(b, 0.9, 0.16);
+    p.body.setVelocityX(-p.facing * 120);
+    b.fx.shake(0.8, 120);
+    const m = p.muzzle();
+    b.fx.muzzle(m.x, m.y, p.facing, 2);
+    b.fx.burst(m.x, m.y, 0xffe08a, 10, 160, 260);
+    return;
+  }
+  const shots = n === 3 ? 2 : 3;
+  gunShot(b, 0.85, 0.02);
+  for (let i = 1; i < shots; i++)
+    b.time.delayedCall(i * 60, () => {
+      if (b.player.weapon.def.type === 'gun' && !b.player.dead) gunShot(b, 0.85, 0.03);
+    });
+}
+
+/** 스태프 평타: 단계마다 연달아 쏘는 마력구가 늘고, 5단의 마지막은 커다란 구체 */
+function manaCombo(b: BattleScene, n: number, base: number): void {
+  // 5단: 다섯 발을 연달아 쏜 뒤 커다란 구체 하나
+  const count = [1, 1, 2, 3, 6][n - 1];
+  const each = [1, 1, 0.75, 0.7, 0.6][n - 1];
+  for (let i = 0; i < count; i++) {
+    const fire = (): void => {
+      const p = b.player;
+      if (p.dead || p.weapon.def.type !== 'staff') return;
+      const big = n >= 5 && i === count - 1;
+      const m = p.shotPoint();
+      sfx.play('magic', big ? 1.5 : 1);
+      if (big) {
+        b.fx.spark(m.x, m.y, 0x7fe8ff, 2);
+        b.fx.burst(m.x, m.y, 0xbff6ff, 12, 140, 320);
+      }
+      b.spawnPlayerBolt({
+        x: m.x,
+        y: m.y + (big ? 0 : (i % 2 ? -5 : 5) * (count > 1 ? 1 : 0)),
+        vx: p.facing * (big ? 260 : 320),
+        vy: 0,
+        damage: base * (big ? 2 : each),
+        kind: 'orb',
+        size: big ? 2 : 1,
+        basic: true,
+        aoe: big ? 50 : 0,
+      });
+    };
+    if (i === 0) fire();
+    else b.time.delayedCall(i * 90, fire);
+  }
 }
 
 function startReload(b: BattleScene): void {
@@ -562,6 +736,7 @@ function tryCast(b: BattleScene, skill: SkillDef | null, slot: number): void {
   if (p.action && CHANNELS.has(p.action.kind)) return;
   p.mp -= skill.mana;
   p.cooldowns.set(skill.id, skill.cooldown * (1 - p.derived.cdReduce));
+  p.resetCombo();
   p.charge = -1;
   p.guarding = false;
   if (skill.weapon === 'staff') sfx.play('magic', 1.2);
