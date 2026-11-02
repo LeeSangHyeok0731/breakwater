@@ -1,0 +1,598 @@
+/* ===== 출정: 이야기책 ===== */
+.village-panel.book-wide {
+  width: min(1180px, 96vw);
+  max-height: 92vh;
+}
+
+/* ───────── 책장 ───────── */
+.sb-shelf {
+  padding: 10px 6px 4px;
+}
+
+.sb-shelf-row {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 16px;
+  align-items: end;
+  padding: 0 12px;
+}
+
+.sb-cover {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: min(400px, 56vh);
+  padding: 16px 12px 12px;
+  color: #f6d68e;
+  font-family: var(--body-font);
+  text-align: center;
+  cursor: pointer;
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.45) 0 9px, rgba(255, 255, 255, 0.1) 9px 11px, transparent 11px),
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.07) 0 2px, transparent 2px 4px),
+    var(--book);
+  border: 3px solid #120b07;
+  outline: 2px solid #d8ae5a;
+  outline-offset: -8px;
+  box-shadow: 6px 0 0 #e8d8ae, 8px 0 0 #120b07;
+  transition: transform 0.12s steps(3);
+}
+
+.sb-cover:hover:not(:disabled),
+.sb-cover.cursor:not(:disabled) {
+  transform: translateY(-12px);
+  outline-color: #fff0b8;
+  filter: brightness(1.15);
+}
+
+.sb-cover.complete {
+  outline-color: #ffd34d;
+}
+
+.sb-cover.locked {
+  cursor: not-allowed;
+  color: #8f8578;
+  background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.1) 0 2px, transparent 2px 4px), #2b2724;
+  outline-color: #5b544b;
+}
+
+.sb-cover.locked.cursor {
+  transform: translateY(-6px);
+  outline-color: #a89c8a;
+}
+
+.sb-cover-no {
+  margin-top: 8px;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.sb-cover-title {
+  min-height: 2.3em;
+  margin-top: 4px;
+  font-family: var(--title-font);
+  font-size: 22px;
+  line-height: 1.15;
+  text-shadow: 0 2px 0 #1a0e08;
+}
+
+.sb-cover-emblem {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sb-cover-art {
+  max-width: 86%;
+  max-height: 100%;
+  image-rendering: pixelated;
+  /* 표지에 금박으로 새긴 보스 실루엣 */
+  filter: brightness(0) invert(0.72) sepia(1) saturate(1.5) hue-rotate(-6deg) drop-shadow(0 2px 0 rgba(0, 0, 0, 0.6));
+}
+
+.sb-cover-lock {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  font-family: var(--title-font);
+  font-size: 26px;
+  letter-spacing: 0.2em;
+}
+
+.sb-cover-tag {
+  min-height: 4.2em;
+  padding: 0 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #ead9b4;
+}
+
+.sb-cover.locked .sb-cover-tag {
+  color: #8f8578;
+}
+
+.sb-cover-progress {
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.sb-plank {
+  height: 16px;
+  margin-top: -1px;
+  background: linear-gradient(180deg, #7a5532 0 4px, #4a2f1a 4px 12px, #24160c 12px);
+  border: 2px solid #120b07;
+}
+
+.sb-hint {
+  margin: 10px 0 0;
+  font-size: 13px;
+  text-align: center;
+  color: var(--ink-dim);
+}
+
+/* ───────── 펼친 책 ───────── */
+.sb-book {
+  position: relative;
+  padding: 10px 44px 10px 10px;
+  background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.07) 0 2px, transparent 2px 4px), var(--book);
+  border: 3px solid #120b07;
+  perspective: 1800px;
+}
+
+.sb-spread {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 14px minmax(0, 1fr);
+  height: min(560px, 68vh);
+  border: 2px solid #120b07;
+  transform-style: preserve-3d;
+}
+
+.sb-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 14px 18px;
+  overflow-y: auto;
+  color: #33210f;
+  background:
+    repeating-linear-gradient(0deg, rgba(120, 85, 40, 0.05) 0 1px, transparent 1px 4px),
+    #eadbb4;
+  scrollbar-color: #a4845a transparent;
+  scrollbar-width: thin;
+}
+
+.sb-page.left {
+  box-shadow: inset -14px 0 14px -10px rgba(70, 40, 10, 0.45);
+}
+
+.sb-page.right {
+  box-shadow: inset 14px 0 14px -10px rgba(70, 40, 10, 0.45);
+}
+
+.sb-gutter {
+  background: linear-gradient(90deg, #8a6c44, #3f2a15 45% 55%, #8a6c44);
+}
+
+.sb-heading {
+  flex: none;
+  margin: 0 0 8px;
+  padding-bottom: 5px;
+  font-family: var(--title-font);
+  font-size: 20px;
+  font-weight: 400;
+  color: #6b2a18;
+  border-bottom: 2px solid #a4845a;
+}
+
+.sb-sealed {
+  margin: auto;
+  font-size: 15px;
+  text-align: center;
+  color: #80694a;
+}
+
+/* 왼쪽 면: 몬스터 */
+.sb-mon-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.sb-mon {
+  display: flex;
+  gap: 10px;
+  padding: 7px 8px;
+  background: rgba(120, 85, 40, 0.11);
+  border-left: 4px solid #a4845a;
+}
+
+.sb-mon.elite {
+  border-left-color: #d9791e;
+}
+
+.sb-mon.mini {
+  border-left-color: #7a45b0;
+}
+
+.sb-mon.boss {
+  background: rgba(150, 30, 20, 0.14);
+  border-left-color: #b3271b;
+}
+
+.sb-mon-art {
+  flex: none;
+  width: 68px;
+  height: 68px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: #b9a27c;
+  border: 2px solid #5a3f25;
+}
+
+.sb-mon-art img {
+  max-width: 62px;
+  max-height: 62px;
+  image-rendering: pixelated;
+}
+
+.sb-mon-art img.elite {
+  filter: sepia(0.5) saturate(2.4) hue-rotate(-15deg);
+}
+
+.sb-mon-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.sb-mon-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+
+.sb-mon-name {
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.sb-mon-count {
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 700;
+  color: #6b2a18;
+}
+
+.sb-tag {
+  padding: 0 5px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 17px;
+  color: #fff4d8;
+  background: #6d5a42;
+}
+
+.sb-tag.boss {
+  background: #b3271b;
+}
+
+.sb-tag.mini {
+  background: #7a45b0;
+}
+
+.sb-tag.elite {
+  background: #d9791e;
+}
+
+.sb-mon-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 12px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #5a3f25;
+}
+
+.sb-mon-note,
+.sb-mon-drop {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.sb-mon-drop {
+  color: #80694a;
+}
+
+/* 오른쪽 면: 이야기와 웨이브 */
+.sb-story-head {
+  flex: none;
+  padding-bottom: 5px;
+  border-bottom: 2px solid #a4845a;
+}
+
+.sb-story-id {
+  font-size: 12px;
+  font-weight: 700;
+  color: #80694a;
+}
+
+.sb-story-title {
+  margin: 0;
+  font-family: var(--title-font);
+  font-size: 25px;
+  font-weight: 400;
+  line-height: 1.2;
+  color: #6b2a18;
+}
+
+.sb-story-desc {
+  flex: none;
+  margin: 8px 0;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.sb-story-desc::first-letter {
+  font-family: var(--title-font);
+  font-size: 1.7em;
+  color: #6b2a18;
+}
+
+.sb-waves {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sb-wave {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  border-bottom: 1px dashed #b89c70;
+}
+
+.sb-wave-no {
+  flex: none;
+  width: 76px;
+  font-size: 13px;
+  font-weight: 900;
+  color: #6b2a18;
+}
+
+.sb-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.sb-chip {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: #b9a27c;
+  border: 2px solid #5a3f25;
+}
+
+.sb-chip.elite {
+  border-color: #d9791e;
+}
+
+.sb-chip img {
+  max-width: 36px;
+  max-height: 36px;
+  image-rendering: pixelated;
+}
+
+.sb-chip-n {
+  position: absolute;
+  right: 1px;
+  bottom: 0;
+  font-size: 12px;
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 1px 0 0 #000, -1px 0 0 #000, 0 1px 0 #000, 0 -1px 0 #000;
+}
+
+.sb-foot {
+  flex: none;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 2px solid #a4845a;
+}
+
+.sb-power {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.sb-muted {
+  font-weight: 500;
+  color: #80694a;
+}
+
+.sb-reward {
+  margin: 4px 0 8px;
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.sb-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* 페이즈 책갈피 */
+.sb-marks {
+  position: absolute;
+  top: 18px;
+  right: 3px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.sb-mark {
+  width: 40px;
+  height: 46px;
+  padding: 0;
+  font-family: var(--title-font);
+  font-size: 13px;
+  color: #f6e7c3;
+  cursor: pointer;
+  background: #8a6a32;
+  border: 2px solid #120b07;
+  border-left: 0;
+  transition: width 0.08s steps(2);
+}
+
+.sb-mark.cleared {
+  background: #4d7a3f;
+}
+
+.sb-mark.boss {
+  background: #a3281c;
+}
+
+.sb-mark.locked {
+  color: #8f8578;
+  background: #39332d;
+}
+
+.sb-mark.on {
+  width: 44px;
+  color: #33210f;
+  background: #f6d68e;
+}
+
+.sb-back {
+  position: absolute;
+  bottom: 12px;
+  right: 3px;
+  width: 40px;
+  padding: 5px 0;
+  font-size: 11px;
+  line-height: 1.25;
+  color: #f6e7c3;
+  cursor: pointer;
+  background: #2a1d14;
+  border: 2px solid #120b07;
+  border-left: 0;
+}
+
+.sb-back:hover,
+.sb-mark:hover:not(.on) {
+  filter: brightness(1.25);
+}
+
+/* 책이 펼쳐진다: 표지가 왼쪽으로 넘어간다 */
+.sb-flap {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 50%;
+  background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.1) 0 2px, transparent 2px 4px), var(--book);
+  outline: 2px solid #d8ae5a;
+  outline-offset: -8px;
+  transform-origin: left center;
+  animation: sb-flap 0.65s cubic-bezier(0.4, 0, 0.3, 1) forwards;
+  backface-visibility: hidden;
+  pointer-events: none;
+}
+
+@keyframes sb-flap {
+  to {
+    transform: rotateY(-180deg);
+  }
+}
+
+.sb-book.opening {
+  animation: sb-rise 0.25s steps(5);
+}
+
+.sb-book.opening .sb-page {
+  animation: sb-ink 0.65s ease-out;
+}
+
+@keyframes sb-rise {
+  from {
+    transform: translateY(16px) scale(0.96);
+  }
+}
+
+@keyframes sb-ink {
+  0%,
+  45% {
+    filter: brightness(0.55);
+  }
+}
+
+/* 책갈피를 옮기면 책장이 넘어간다 */
+.sb-book.turn-next .sb-page.right {
+  transform-origin: left center;
+  animation: sb-turn-next 0.26s ease-out;
+}
+
+.sb-book.turn-prev .sb-page.left {
+  transform-origin: right center;
+  animation: sb-turn-prev 0.26s ease-out;
+}
+
+@keyframes sb-turn-next {
+  from {
+    transform: rotateY(-55deg);
+    filter: brightness(0.7);
+  }
+}
+
+@keyframes sb-turn-prev {
+  from {
+    transform: rotateY(55deg);
+    filter: brightness(0.7);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sb-flap {
+    display: none;
+  }
+
+  .sb-book,
+  .sb-page,
+  .sb-cover {
+    animation: none !important;
+    transition: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .sb-shelf-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sb-spread {
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+  }
+
+  .sb-gutter {
+    display: none;
+  }
+}

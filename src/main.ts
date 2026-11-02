@@ -20,6 +20,7 @@ import { useWorldBossTry } from './ui/worldBossPanel';
 import { addExp } from './game/stats';
 import { TownScene } from './game/townScene';
 import { TUTORIAL_PHASE } from './game/tutorial';
+import { monsterArt } from './game/monsterArt';
 import { fitWidth, VIEW_H } from './game/world';
 import type { Hud } from './ui/hud';
 import { TownHud } from './ui/townHud';
@@ -77,6 +78,7 @@ const village = new VillageUI(uiRoot, () => save, {
   onImport: (s) => replaceSave(s),
   onReset: () => replaceSave(newSave()),
   portrait: heroPortrait,
+  monsterArt: (kind) => monsterArt(game, kind),
   art: (key: string) => {
     if (!game.textures.exists(key)) return null;
     const src = game.textures.get(key).getSourceImage() as HTMLCanvasElement | HTMLImageElement;

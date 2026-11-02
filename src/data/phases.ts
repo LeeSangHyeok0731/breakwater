@@ -729,13 +729,13 @@ export const PHASES: PhaseDef[] = [
   },
 ];
 
-/** 게시판에 보여 줄 챕터 이름 */
-export const CHAPTER_NAME: Record<number, string> = {
-  1: '챕터 1 · 버려진 묘지',
-  2: '챕터 2 · 버려진 대성당',
-  3: '챕터 3 · 마왕성',
-  4: '챕터 4 · 저주받은 마을',
-  5: '챕터 5 · 공허의 문',
+/** 이야기책 표지: 제목, 표지 글, 표지 색, 표지에 새기는 보스 */
+export const CHAPTER_BOOK: Record<number, { title: string; tagline: string; color: string; boss: MonsterKind }> = {
+  1: { title: '버려진 묘지', tagline: '묻힌 자들이 깨어난 밤, 첫 번째 파도가 밀려왔다.', color: '#5a2f3c', boss: 'golem_lord' },
+  2: { title: '버려진 대성당', tagline: '기도가 끊긴 성소에서 천사가 날개를 더럽혔다.', color: '#2f4a6b', boss: 'fallen_angel' },
+  3: { title: '마왕성', tagline: '파도의 근원을 찾아 불타는 성문 앞에 섰다.', color: '#7a3320', boss: 'abyss_lord' },
+  4: { title: '저주받은 마을', tagline: '종이 울리지 않는 마을에 밤의 여왕이 군림한다.', color: '#35513d', boss: 'night_queen' },
+  5: { title: '공허의 문', tagline: '모든 파도가 시작된 곳, 세계의 끝에 문이 열렸다.', color: '#44306e', boss: 'void_king' },
 };
 
 export const PHASE_BY_ID: Record<string, PhaseDef> = Object.fromEntries(PHASES.map((p) => [p.id, p]));
