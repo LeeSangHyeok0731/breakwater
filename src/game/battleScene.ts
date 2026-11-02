@@ -5,7 +5,7 @@ import { skillSlotIds, type SaveData } from '../core/save';
 import { gearBonus, POTION_LIMIT_PER_PHASE } from '../data/gear';
 import { MATERIALS } from '../data/items';
 import { ELITE_MOD, MONSTERS, type MonsterKind } from '../data/monsters';
-import type { PhaseDef } from '../data/phases';
+import { MOB_COUNT_MUL, type PhaseDef } from '../data/phases';
 import { DIFFICULTY, LEGIONS, rewardMul, SILENCE_STACKS, SILENCE_TIME, type LegionRun } from '../data/legion';
 import { barProgress, totalReward, WORLD_BOSS_BARS, WORLD_BOSS_TIME } from '../data/worldBoss';
 import { koNum } from '../ui/format';
@@ -591,13 +591,15 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
     const p = this.player;
-    const mul = m.elite ? ELITE_MOD.reward : 1;
+    // 일반 몬스터는 수가 늘어난 만큼 한 마리의 몫을 나눠, 페이즈 전체 보상을 그대로 둔다.
+    const share = m.elite || m.showsBossBar || this.legion || this.worldBoss ? 1 : 1 / MOB_COUNT_MUL;
+    const mul = (m.elite ? ELITE_MOD.reward : 1) * share;
     this.pending.gold += m.def.gold * mul;
     this.pending.exp += m.def.exp * mul;
     this.pending.kills++;
     p.mp = Math.min(p.derived.maxMp, p.mp + m.def.mana * (m.elite ? 5 : 1));
     for (const d of m.def.drops) {
-      if (Math.random() < (m.elite ? Math.min(1, d.chance * 2) : d.chance)) this.addMaterial(d.id, m.elite ? 2 : 1, m.x, m.body.top);
+      if (Math.random() < (m.elite ? Math.min(1, d.chance * 2) : d.chance) * share) this.addMaterial(d.id, m.elite ? 2 : 1, m.x, m.body.top);
     }
     if (m.elite) this.addMaterial('elite_sigil', 1, m.x, m.body.top);
     if (m.def.kind === 'poison_zombie' || m.def.kind === 'plague_wolf') this.addField({ x: m.x - 34, w: 68, life: 4, tickEvery: 0.5, damage: 0, color: 0x8acc2a, poison: true } as FieldSpec & { poison: boolean });
@@ -850,7 +852,7 @@ export class BattleScene extends Phaser.Scene {
         const next = this.spawnQueue.shift()!;
         const m = this.spawnMonster(next.kind, next.elite);
         if (m.boss) this.boss = m;
-        this.spawnTimer = 0.35;
+        this.spawnTimer = 0.35 / MOB_COUNT_MUL;
       }
       return;
     }
@@ -889,8 +891,8 @@ export class BattleScene extends Phaser.Scene {
     }
     this.missionTime += dt;
     const alive = this.monsters.filter((m) => m.alive).length;
-    const interval = Math.max(0.5, 1.7 - this.missionTime * 0.012);
-    if (alive < 18) {
+    const interval = Math.max(0.5, 1.7 - this.missionTime * 0.012) / MOB_COUNT_MUL;
+    if (alive < 18 * MOB_COUNT_MUL) {
       this.spawnAcc += dt;
       while (this.spawnAcc >= interval) {
         this.spawnAcc -= interval;
@@ -997,8 +999,8 @@ export class BattleScene extends Phaser.Scene {
     const outcome: BattleOutcome = {
       cleared,
       phase: this.phase,
-      gold: cleared ? this.pending.gold : 0,
-      exp: cleared ? this.pending.exp : 0,
+      gold: cleared ? Math.round(this.pending.gold) : 0,
+      exp: cleared ? Math.round(this.pending.exp) : 0,
       materials: cleared ? this.pending.materials : {},
       sweepTickets: cleared ? this.phase.clearReward.sweepTickets : 0,
       kills: this.pending.kills,

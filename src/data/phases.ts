@@ -1,4 +1,4 @@
-import type { MonsterKind } from './monsters';
+import { MONSTERS, type MonsterKind } from './monsters';
 
 export interface SpawnGroup {
   kind: MonsterKind;
@@ -39,7 +39,7 @@ export interface PhaseDef {
   clearReward: { gold: number; exp: number; materials: Record<string, number>; sweepTickets: number };
 }
 
-export const PHASES: PhaseDef[] = [
+const BASE_PHASES: PhaseDef[] = [
   {
     id: '1-1',
     name: '버려진 묘지 외곽',
@@ -728,6 +728,26 @@ export const PHASES: PhaseDef[] = [
     clearReward: { gold: 7000, exp: 6000, materials: { abyss_shard: 10, elite_sigil: 5, lord_heart: 1 }, sweepTickets: 3 },
   },
 ];
+
+/** 등장 몬스터 수 배율 [초안]. 보스·미니보스·정예는 그대로 둔다. */
+export const MOB_COUNT_MUL = 3;
+
+const isCommon = (kind: MonsterKind, elite?: boolean): boolean => !elite && !MONSTERS[kind].boss && !MONSTERS[kind].miniboss;
+
+function withMoreMonsters(p: PhaseDef): PhaseDef {
+  const target = p.mission?.kind === 'kills' ? p.mission.target : 0;
+  return {
+    ...p,
+    // 처치 목표가 늘면 설명의 숫자도 함께 바뀐다.
+    desc: target ? p.desc.replace(`${target}마리`, `${target * MOB_COUNT_MUL}마리`) : p.desc,
+    waves: p.waves.map((wave) => wave.map((g) => (isCommon(g.kind, g.elite) ? { ...g, count: g.count * MOB_COUNT_MUL } : g))),
+    mission: p.mission?.kind === 'kills' ? { kind: 'kills', target: target * MOB_COUNT_MUL } : p.mission,
+    // 특별 스테이지는 나오는 속도가 빨라지므로, 강한 몬스터의 비중을 줄여 그 수를 유지한다.
+    spawnPool: p.spawnPool?.map((s) => (isCommon(s.kind, s.elite) ? s : { ...s, weight: s.weight / MOB_COUNT_MUL })),
+  };
+}
+
+export const PHASES: PhaseDef[] = BASE_PHASES.map(withMoreMonsters);
 
 /** 이야기책 표지: 제목, 표지 글, 표지 색, 표지에 새기는 보스 */
 export const CHAPTER_BOOK: Record<number, { title: string; tagline: string; color: string; boss: MonsterKind }> = {
