@@ -315,7 +315,8 @@ export class Hud {
       setStyle(this.bossWrap, 'display', '');
       setClass(this.bossWrap, 'stacked', true);
       setText(this.bossName, s.boss.name);
-      setStyle(this.bossTag, 'display', 'none');
+      setStyle(this.bossTag, 'display', s.boss.phase2 ? '' : 'none');
+      setClass(this.bossWrap, 'enraged', s.boss.phase2);
       setText(this.bossText, `×${st.left}`);
       setStyle(this.bossFill, 'width', pct(st.ratio));
       setStyle(this.bossFill, 'background', st.color);
@@ -325,6 +326,10 @@ export class Hud {
       const b = s.boss;
       const r = b.maxHp > 0 ? b.hp / b.maxHp : 0;
       setStyle(this.bossWrap, 'display', '');
+      // 앞서 겹친 체력바를 그렸다면 색을 되돌린다.
+      setClass(this.bossWrap, 'stacked', false);
+      setStyle(this.bossFill, 'background', '');
+      setStyle(this.bossLag, 'background', '');
       setText(this.bossName, b.name);
       setStyle(this.bossTag, 'display', b.phase2 ? '' : 'none');
       setClass(this.bossWrap, 'enraged', b.phase2);

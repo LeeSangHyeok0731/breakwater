@@ -12,6 +12,7 @@ import { corruptedElf } from './legion/elf';
 import { darkLord } from './legion/darklord';
 import { worldGolem } from './worldGolem';
 import { SCARECROW_ANIM } from './scarecrow';
+import { hpStack, isStacked } from './hpStack';
 
 /** 챕터 2·3 몬스터의 행동 (몬스터 하나를 한 프레임 움직인다) */
 export type Behavior = (m: Monster, dt: number) => void;
@@ -141,6 +142,8 @@ export class Monster {
   private bar: Phaser.GameObjects.Rectangle | null = null;
   private barBg: Phaser.GameObjects.Rectangle | null = null;
   private barW = 26;
+  /** 겹친 체력바의 남은 줄 수 */
+  private barCount: Phaser.GameObjects.Text | null = null;
 
   constructor(
     readonly scene: BattleScene,
@@ -244,6 +247,7 @@ export class Monster {
     this.dying = 0.35;
     this.bar?.setVisible(false);
     this.barBg?.setVisible(false);
+    this.barCount?.setVisible(false);
     this.body.enable = false;
     this.scene.fx.death(this.x, this.body.bottom, this.showsBossBar ? 2 : this.elite ? 1.3 : 1);
     this.scene.tweens.add({ targets: this.sprite, alpha: 0, duration: 300 });
@@ -255,6 +259,7 @@ export class Monster {
     this.zone.destroy();
     this.bar?.destroy();
     this.barBg?.destroy();
+    this.barCount?.destroy();
   }
 
   update(dt: number): void {
@@ -346,8 +351,23 @@ export class Monster {
       const top = this.body.top - 6;
       this.barBg.setPosition(this.x - this.barW / 2 - 1, top);
       this.bar.setPosition(this.x - this.barW / 2, top);
-      this.bar.width = this.barW * Math.max(0, this.hp / this.maxHp);
+      if (isStacked(this.maxHp)) this.syncStackedBar(top);
+      else this.bar.width = this.barW * Math.max(0, this.hp / this.maxHp);
     }
+  }
+
+  /** 체력이 많은 일반 몬스터: 머리 위 바도 줄을 겹치고 남은 줄 수를 적는다. */
+  private syncStackedBar(top: number): void {
+    const bar = this.bar!;
+    const st = hpStack(this.hp);
+    bar.width = this.barW * st.ratio;
+    bar.setFillStyle(st.color);
+    this.barBg!.setFillStyle(st.under);
+    this.barCount ??= this.scene.add
+      .text(0, 0, '', { fontFamily: '"Black Han Sans", "Malgun Gothic", sans-serif', fontSize: '11px', color: '#ffffff', stroke: '#1a0a0a', strokeThickness: 3, resolution: 3 })
+      .setOrigin(0, 0.5)
+      .setDepth(DEPTH.text - 1);
+    this.barCount.setText(`×${st.left}`).setPosition(this.x + this.barW / 2 + 3, top).setVisible(bar.visible);
   }
 
   toPlayer(): { dx: number; dy: number; dist: number } {

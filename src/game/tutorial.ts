@@ -28,7 +28,6 @@ export const TUTORIAL_PHASE: PhaseDef = {
 const MOVE_GOAL = 160;
 const STEP_PAUSE = 0.7;
 const FIGHT_COUNT = 3;
-const TARGET_HP = 1e7;
 /** 직업 체험장 */
 const TRIAL_CLASSES: WeaponType[] = ['sword', 'dao', 'bow', 'gun', 'staff'];
 const SCARECROW_XS = [360, 520, 680];
@@ -79,7 +78,7 @@ const STEPS: Step[] = [
   },
   {
     title: '기본 공격',
-    text: ['표적 앞에서 ', { key: 'attack' }, ' 키를 연달아 눌러 5연계까지 이어 가세요.'],
+    text: ['허수아비 앞에서 ', { key: 'attack' }, ' 키를 연달아 눌러 5연계까지 이어 가세요.'],
     start: (t) => t.spawnTarget(),
     done: (t) => t.targetHit() && t.b.player.combo >= COMBO_MAX,
     progress: (t) => `${t.b.player.combo} / ${COMBO_MAX}`,
@@ -184,7 +183,6 @@ export class Tutorial {
     this.lastX = p.x;
     // 싸움 전까지는 마나 걱정 없이 연습한다.
     if (!this.fightStarted) p.mp = p.derived.maxMp;
-    this.holdTarget();
 
     if (this.pause > 0) {
       this.pause -= dt;
@@ -310,22 +308,12 @@ export class Tutorial {
     const w = this.b.level.width;
     // 앞쪽에 자리가 없으면 뒤쪽에 세운다.
     const x = p.x + 130 < w - 60 ? p.x + 130 : p.x - 130;
-    this.target = this.b.spawnMonster('zombie', false, x);
-    this.target.hp = TARGET_HP;
-  }
-
-  /** 표적은 맞기만 하고 움직이거나 때리지 않는다. */
-  private holdTarget(): void {
-    const m = this.target;
-    if (!m?.alive) return;
-    m.attackTimer = 99;
-    m.state = 'recover';
-    m.stateTime = 99;
-    m.body.setVelocityX(0);
+    ensureScarecrow(this.b);
+    this.target = this.b.spawnMonster('scarecrow', false, x);
   }
 
   targetHit(): boolean {
-    return !!this.target && this.target.hp < TARGET_HP;
+    return !!this.target && this.target.hitCount > 0;
   }
 
   removeTarget(): void {

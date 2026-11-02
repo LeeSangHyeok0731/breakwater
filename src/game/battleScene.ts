@@ -22,6 +22,7 @@ import { Monster, monsterBodyHeight } from './monster2d';
 import { dev } from './dev';
 import { Player } from './player2d';
 import { Tutorial } from './tutorial';
+import { hpStack, isStacked, STACK_COLORS } from './hpStack';
 import { CRIT_DAMAGE, basicDamage, derive, enhanceMultiplier, expToNext, totalStats, type Stats } from './stats';
 import { buildLevel, FLOOR_Y, VIEW_H, type Level } from './world';
 
@@ -1625,7 +1626,7 @@ export class BattleScene extends Phaser.Scene {
       waveText,
       gold: this.pending.gold,
       kills: this.pending.kills,
-      boss: barTarget ? { name: barTarget.def.name, hp: Math.max(0, barTarget.hp), maxHp: barTarget.maxHp, phase2: barTarget.phase2, stack: this.worldBoss ? this.worldBossStack() : undefined } : null,
+      boss: barTarget ? { name: barTarget.def.name, hp: Math.max(0, barTarget.hp), maxHp: barTarget.maxHp, phase2: barTarget.phase2, stack: this.worldBoss ? this.worldBossStack() : isStacked(barTarget.maxHp) ? this.bossStack(barTarget) : undefined } : null,
       legion: this.legion
         ? {
             stacks: this.silenceStacks,
@@ -1640,10 +1641,17 @@ export class BattleScene extends Phaser.Scene {
   }
 
   /** 겹친 체력바: 남은 줄, 지금 줄의 남은 비율과 색, 아래 줄 색 */
+  /** 체력이 많은 보스·미니보스의 겹친 체력바 */
+  private bossStack(m: Monster): { left: number; ratio: number; color: string; under: string } {
+    const st = hpStack(Math.max(0, m.hp));
+    const css = (c: number): string => `#${c.toString(16).padStart(6, '0')}`;
+    return { left: st.left, ratio: st.ratio, color: css(st.color), under: css(st.under) };
+  }
+
   private worldBossStack(): { left: number; ratio: number; color: string; under: string } {
     const sc = this.worldBossScore();
     const css = (c: number): string => `#${c.toString(16).padStart(6, '0')}`;
-    const palette = [0xe53935, 0xff8a1a, 0xf6c445, 0x5ac85a, 0x3fa8ff, 0x9a6aff];
+    const palette = STACK_COLORS;
     const done = sc.bars >= WORLD_BOSS_BARS;
     return {
       left: WORLD_BOSS_BARS - sc.bars,
