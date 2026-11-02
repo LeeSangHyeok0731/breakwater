@@ -1,10 +1,14 @@
 import { keyLabel, type Action } from '../core/input';
 import { sfx } from '../core/audio';
 import type { PhaseDef } from '../data/phases';
+import { SKILL_BY_ID, SKILL_SLOTS, SKILL_TIER_NAME, SKILLS, skillsFor, type SkillDef } from '../data/skills';
+import { CLASS_NAME, WEAPONS, type WeaponDef, type WeaponType } from '../data/weapons';
 import '../ui/tutorial.css';
 import type { BattleScene } from './battleScene';
+import { ctx } from './context';
 import type { Monster } from './monster2d';
 import { COMBO_MAX } from './player2d';
+import { ensureScarecrow } from './scarecrow';
 
 /** 튜토리얼 전용 맵. 웨이브와 보상은 없고, 단계 진행은 Tutorial이 맡는다. */
 export const TUTORIAL_PHASE: PhaseDef = {
@@ -25,6 +29,26 @@ const MOVE_GOAL = 160;
 const STEP_PAUSE = 0.7;
 const FIGHT_COUNT = 3;
 const TARGET_HP = 1e7;
+/** 직업 체험장 */
+const TRIAL_CLASSES: WeaponType[] = ['sword', 'dao', 'bow', 'gun', 'staff'];
+const SCARECROW_XS = [360, 520, 680];
+
+/** 그 직업의 가장 기본 무기 */
+function trialWeapon(type: WeaponType): WeaponDef {
+  return Object.values(WEAPONS).find((w) => w.type === type && w.grade === 'common')!;
+}
+
+/** 직업의 모든 스킬을 슬롯 수만큼씩 나눈 장들 */
+function skillPages(type: WeaponType): (SkillDef | null)[][] {
+  const skills = skillsFor(type);
+  const pages: (SkillDef | null)[][] = [];
+  for (let i = 0; i < skills.length; i += SKILL_SLOTS) {
+    const page: (SkillDef | null)[] = skills.slice(i, i + SKILL_SLOTS);
+    while (page.length < SKILL_SLOTS) page.push(null);
+    pages.push(page);
+  }
+  return pages;
+}
 
 /** 글 조각: 문자열은 그대로, { key }는 현재 키 설정의 키캡으로 그린다. */
 type Part = string | { key: Action };
@@ -106,7 +130,12 @@ export class Tutorial {
   private pause = 0;
   private lastX: number;
   private target: Monster | null = null;
-  private finished = false;
+  /** 직업 체험장에 들어왔는가 */
+  inTrial = false;
+  private readonly pages = TRIAL_CLASSES.map(skillPages);
+  private readonly pageIndex = TRIAL_CLASSES.map(() => 0);
+  private readonly triedSkills = new Set<string>();
+  private trialClass = -1;
 
   private readonly panel: HTMLDivElement;
   private readonly dots: HTMLDivElement;
@@ -115,7 +144,7 @@ export class Tutorial {
   private readonly progress: HTMLDivElement;
   private readonly steps: Step[];
 
-  constructor(readonly b: BattleScene, parent: HTMLElement) {
+  constructor(readonly b: BattleScene, parent: HTMLElement, trialOnly = false) {
     this.steps = STEPS;
     this.lastX = b.player.x;
     this.panel = document.createElement('div');
@@ -125,6 +154,7 @@ export class Tutorial {
       <div class="tut-title"></div>
       <div class="tut-text"></div>
       <div class="tut-progress"></div>
+      <div class="tut-desc"></div>
       <div class="tut-skip"></div>`;
     parent.appendChild(this.panel);
     this.dots = this.panel.querySelector('.tut-dots')!;
@@ -133,11 +163,22 @@ export class Tutorial {
     this.progress = this.panel.querySelector('.tut-progress')!;
     this.fillParts(this.panel.querySelector('.tut-skip')!, [{ key: 'menu' }, ' 건너뛰기']);
     for (let i = 0; i < this.steps.length; i++) this.dots.appendChild(document.createElement('span'));
-    this.next();
+    if (trialOnly) this.startTrial();
+    else this.next();
+  }
+
+  /** 일시정지 창의 안내와 나가기 버튼 글 */
+  pauseLabels(): { text: string; giveUp: string } {
+    return this.inTrial
+      ? { text: `체험장을 나가 마을로 갑니다. 첫 전투는 게시판 앞에서 ${keyLabel(this.b.save.keymap.interact)} 키로 고릅니다. 체험장은 설정에서 다시 올 수 있습니다.`, giveUp: '체험장 나가기' }
+      : { text: '튜토리얼을 건너뛰고 마을로 갑니다. 설정에서 언제든 다시 할 수 있습니다.', giveUp: '튜토리얼 건너뛰기' };
   }
 
   update(dt: number): void {
-    if (this.finished) return;
+    if (this.inTrial) {
+      this.updateTrial();
+      return;
+    }
     const p = this.b.player;
     this.moved += Math.abs(p.x - this.lastX);
     this.lastX = p.x;
@@ -170,7 +211,7 @@ export class Tutorial {
     }
     const step = this.steps[this.index];
     if (!step) {
-      this.finish();
+      this.startTrial();
       return;
     }
     this.panel.classList.remove('done');
@@ -180,14 +221,74 @@ export class Tutorial {
     step.start?.(this);
   }
 
-  private finish(): void {
-    this.finished = true;
+  /** 훈련을 마치면 들어오는 곳: 모든 직업과 스킬을 허수아비에게 자유롭게 써 본다. 세이브는 건드리지 않는다. */
+  private startTrial(): void {
+    this.inTrial = true;
+    // 여기까지 왔으면 튜토리얼은 끝난 것이다 (이대로 창을 닫아도 다시 하지 않는다).
+    ctx.onTutorialEnd();
+    const b = this.b;
+    const p = b.player;
+    b.setBeam(false);
+    p.action = null;
+    p.charge = -1;
+    p.resetCombo();
+    p.weapons = TRIAL_CLASSES.map((type, i) => {
+      const def = trialWeapon(type);
+      return { def, enhance: 0, slots: this.pages[i][0], ammo: def.magazine ?? 0, magazine: def.magazine ?? 0 };
+    });
+    p.active = 0;
+    p.cooldowns.clear();
+    // 낮은 레벨의 최대 마나로는 궁극기(마나 120)를 못 쓴다.
+    p.derived.maxMp = Math.max(p.derived.maxMp, ...SKILLS.map((s) => s.mana));
+
+    ensureScarecrow(b);
+    for (const x of SCARECROW_XS) b.spawnMonster('scarecrow', false, x);
+    sfx.play('wave');
+
     this.panel.classList.remove('done');
-    this.panel.classList.add('complete');
-    this.title.textContent = '훈련 완료';
-    this.fillParts(this.text, ['마을의 게시판 앞에서 ', { key: 'interact' }, ' 키를 눌러 첫 전투를 고르세요.']);
-    this.panel.querySelector('.tut-skip')?.remove();
-    this.b.completeTutorial();
+    this.panel.classList.add('complete', 'trial');
+    this.dots.replaceChildren();
+    this.panel.querySelector('.tut-desc')!.textContent = '';
+    this.fillParts(this.panel.querySelector('.tut-skip')!, [{ key: 'menu' }, ' 나가기']);
+  }
+
+  private updateTrial(): void {
+    const b = this.b;
+    const p = b.player;
+    p.hp = p.derived.maxHp;
+    p.mp = p.derived.maxMp;
+
+    const i = p.active;
+    if (b.keys.pressed('guard') && this.pages[i].length > 1) {
+      this.pageIndex[i] = (this.pageIndex[i] + 1) % this.pages[i].length;
+      p.weapon.slots = this.pages[i][this.pageIndex[i]];
+      sfx.play('parry');
+      this.trialClass = -1;
+    }
+    if (i !== this.trialClass) {
+      this.trialClass = i;
+      this.title.textContent = `${CLASS_NAME[TRIAL_CLASSES[i]]} 체험 (${i + 1} / ${TRIAL_CLASSES.length})`;
+      const paged = this.pages[i].length > 1;
+      this.fillParts(this.text, [
+        { key: 'swap' }, ' 다음 직업',
+        ...(paged ? (['  ·  ', { key: 'guard' }, ` 다음 스킬 장 (${this.pageIndex[i] + 1} / ${this.pages[i].length})`] as Part[]) : []),
+        '  ·  재사용 시간과 마나 소모 없음',
+      ]);
+    }
+
+    // 방금 쓴 스킬을 기록하고 설명을 보여 준 뒤, 바로 다시 쓸 수 있게 한다.
+    for (const [id, cd] of p.cooldowns) {
+      if (cd <= 0) continue;
+      this.triedSkills.add(id);
+      this.showSkill(SKILL_BY_ID[id]);
+      p.cooldowns.set(id, 0);
+    }
+    this.progress.textContent = `써 본 스킬 ${this.triedSkills.size} / ${SKILLS.length}`;
+  }
+
+  private showSkill(skill: SkillDef): void {
+    const tier = skill.tier ? `[${SKILL_TIER_NAME[skill.tier]}] ` : '';
+    this.panel.querySelector('.tut-desc')!.textContent = `${tier}${skill.name} — ${skill.desc}`;
   }
 
   private fillParts(el: Element, parts: Part[]): void {

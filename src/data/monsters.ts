@@ -39,7 +39,9 @@ export type MonsterKind =
   | 'silent_knight'
   | 'corrupted_elf'
   | 'dark_lord'
-  | 'world_golem';
+  | 'world_golem'
+  // 직업 체험장
+  | 'scarecrow';
 
 import { WORLD_BOSS_HP } from './worldBoss';
 
@@ -735,6 +737,23 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
     gold: 0,
     exp: 0,
     mana: 20,
+    drops: [],
+  },
+  scarecrow: {
+    kind: 'scarecrow',
+    name: '허수아비',
+    // 직업 체험장 표적: 움직이지 않고, 맞아도 쓰러지지 않는다 (Monster.onHit).
+    hp: 9999,
+    speed: 0,
+    damage: 0,
+    range: 0,
+    attackCd: 99,
+    radius: 1,
+    height: 2,
+    flying: false,
+    gold: 0,
+    exp: 0,
+    mana: 0,
     drops: [],
   },
 };

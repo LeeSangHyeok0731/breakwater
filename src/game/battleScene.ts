@@ -235,13 +235,16 @@ export class BattleScene extends Phaser.Scene {
   /** 튜토리얼 전투면 진행자 */
   private tutorial: Tutorial | null = null;
   private isTutorial = false;
+  /** 훈련 단계 없이 직업 체험장부터 시작한다 */
+  private trialOnly = false;
 
   constructor() {
     super('battle');
   }
 
-  init(data: { phase: PhaseDef; legion?: LegionRun; worldBoss?: boolean; tutorial?: boolean }): void {
+  init(data: { phase: PhaseDef; legion?: LegionRun; worldBoss?: boolean; tutorial?: boolean; trialOnly?: boolean }): void {
     this.isTutorial = !!data.tutorial;
+    this.trialOnly = !!data.trialOnly;
     this.tutorial = null;
     this.phase = data.phase;
     this.legion = data.legion ?? null;
@@ -325,7 +328,7 @@ export class BattleScene extends Phaser.Scene {
     ctx.townHud.hide();
     this.events.once('shutdown', () => this.cleanup());
     this.announce(this.namedOnly ? phase.name : `${phase.id} ${phase.name}`, 1.6);
-    if (this.isTutorial) this.tutorial = new Tutorial(this, ctx.uiRoot);
+    if (this.isTutorial) this.tutorial = new Tutorial(this, ctx.uiRoot, this.trialOnly);
   }
 
   /** 페이즈 번호 없이 이름만 보여 주는 전투 */
@@ -430,7 +433,7 @@ export class BattleScene extends Phaser.Scene {
     this.hud.showPause(
       () => this.togglePause(),
       () => this.giveUp(),
-      this.isTutorial ? { text: '튜토리얼을 건너뛰고 마을로 갑니다. 설정에서 언제든 다시 할 수 있습니다.', giveUp: '튜토리얼 건너뛰기' } : undefined,
+      this.tutorial?.pauseLabels(),
     );
   }
 
@@ -926,11 +929,6 @@ export class BattleScene extends Phaser.Scene {
     if (this.cleared || this.player.dead) return;
     this.cleared = true;
     this.state = 'done';
-    if (this.isTutorial) {
-      sfx.play('clear');
-      this.endTimer = 4;
-      return;
-    }
     if (this.worldBoss) {
       // 깬 줄까지의 보상이 모두 쌓인다.
       const r = totalReward(this.worldBossScore().bars);
@@ -948,11 +946,6 @@ export class BattleScene extends Phaser.Scene {
     this.announce('클리어!', 2.5);
     sfx.play('clear');
     this.endTimer = 2.5;
-  }
-
-  /** 튜토리얼 마지막 단계까지 끝냈다. */
-  completeTutorial(): void {
-    this.clear();
   }
 
   private fail(): void {
@@ -1023,6 +1016,8 @@ export class BattleScene extends Phaser.Scene {
 
   /** 포션은 세이브에서 바로 빠진다 (실패해도 돌려받지 않는다). */
   private usePotions(dt: number): void {
+    // 튜토리얼과 체험장에서는 가진 포션을 쓰지 않는다.
+    if (this.isTutorial) return;
     this.potionCd = Math.max(0, this.potionCd - dt);
     const p = this.player;
     for (const [action, id] of [
@@ -1575,7 +1570,7 @@ export class BattleScene extends Phaser.Scene {
   private hudState(): HudState {
     const p = this.player;
     const w = p.weapon;
-    const other = p.weapons[1 - p.active];
+    const other = p.weapons[(p.active + 1) % p.weapons.length];
     const keymap = this.save.keymap;
     const slots: HudSlot[] = w.slots.map((s, i) => {
       const key = keyLabel(keymap[SLOT_ACTIONS[i]]);
@@ -1592,7 +1587,7 @@ export class BattleScene extends Phaser.Scene {
     } else if (this.worldBoss) {
       const left = Math.max(0, WORLD_BOSS_TIME - this.wbTime);
       waveText = this.state === 'intro' ? '준비' : `남은 시간 ${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')} · 총 피해 ${koNum(Math.round(this.worldBossScore().damage))}`;
-    } else if (this.isTutorial) waveText = '훈련 중';
+    } else if (this.isTutorial) waveText = this.tutorial?.inTrial ? '직업 체험' : '훈련 중';
     else if (this.phase.type === 'boss') waveText = '보스 페이즈';
     else if (this.waveIndex < 0) waveText = '준비';
     else waveText = `웨이브 ${Math.min(this.waveIndex + 1, this.phase.waves.length)} / ${this.phase.waves.length}`;

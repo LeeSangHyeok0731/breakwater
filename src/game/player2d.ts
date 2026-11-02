@@ -252,9 +252,9 @@ export class Player {
     this.comboTimer = 0;
   }
 
-  /** 직업 교체: 장착한 두 무기(직업)를 오간다. */
+  /** 직업 교체: 장착한 무기(직업)를 차례로 오간다. 평소에는 2개, 체험장에서는 5개다. */
   swapWeapon(): void {
-    this.active = 1 - this.active;
+    this.active = (this.active + 1) % this.weapons.length;
     this.resetCombo();
     this.action = null;
     this.charge = -1;

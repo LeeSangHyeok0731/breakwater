@@ -81,6 +81,22 @@
   color: #ffc95a;
 }
 
+.tut-desc {
+  display: none;
+  margin-bottom: 4px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #c4e8e0;
+}
+
+.tut-panel.trial .tut-desc {
+  display: block;
+}
+
+.tut-panel.trial .tut-dots {
+  display: none;
+}
+
 .tut-skip {
   font-size: 12px;
   color: #76aaa4;
