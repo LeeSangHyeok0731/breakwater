@@ -1,6 +1,6 @@
-import { combatPower, powerVerdict, recommendedPower } from '../game/power';
-import { koNum } from './format';
+import type { MonsterKind } from '../data/monsters';
 import { renderEquipPanel, type PanelHost } from './equipPanel';
+import { StoryBooks } from './storyBook';
 import { renderWorldBossPanel } from './worldBossPanel';
 import { renderSkillPanel } from './skillPanel';
 import { renderArmoryPanel, renderLegionPanel, renderShardPanel } from './legionPanel';
@@ -9,7 +9,7 @@ import { exportSave, importSave, type SaveData } from '../core/save';
 import { DEFAULT_KEYMAP, keyLabel, type Action } from '../core/input';
 import { weaponIconUrl } from '../game/weaponArt';
 import { addExp, enhanceMultiplier, expToNext } from '../game/stats';
-import { CHAPTER_NAME, PHASES, SWEEP_RATE, SWEEP_TICKET_PRICE, type PhaseDef } from '../data/phases';
+import { SWEEP_RATE, SWEEP_TICKET_PRICE, type PhaseDef } from '../data/phases';
 import type { WeaponType } from '../data/weapons';
 import { enhanceCost, GRADES, MAX_ENHANCE, WEAPON_TYPE_NAME, WEAPONS, type WeaponDef } from '../data/weapons';
 import { MATERIALS } from '../data/items';
@@ -38,6 +38,8 @@ export interface VillageCallbacks {
   portrait(type: WeaponType): HTMLCanvasElement | null;
   /** 게임 텍스처를 캔버스로 복사해 온다 */
   art(key: string): HTMLCanvasElement | null;
+  /** 이야기책에 그릴 몬스터 그림 */
+  monsterArt(kind: MonsterKind): HTMLCanvasElement | null;
 }
 
 export type Tab = 'phase' | 'equip' | 'skill' | 'enhance' | 'exchange' | 'shop' | 'settings' | 'legion' | 'armory' | 'shards' | 'worldboss';
@@ -115,12 +117,6 @@ function fmt(n: number): string {
   return Math.floor(n).toLocaleString('ko-KR');
 }
 
-function phaseKindText(p: PhaseDef): string {
-  if (p.mission?.kind === 'survive') return `${p.mission.seconds}초 생존`;
-  if (p.mission?.kind === 'kills') return `${p.mission.target}마리 처치`;
-  return p.type === 'boss' ? '보스전' : `웨이브 ${p.waves.length}개`;
-}
-
 function materialName(id: string): string {
   return MATERIALS[id]?.name ?? id;
 }
@@ -128,6 +124,8 @@ function materialName(id: string): string {
 /** 마을 화면. 3D 배경 위에 패널로 표시된다. 화면 전체를 매번 다시 그려도 될 만큼 가볍다. */
 export class VillageUI {
   private wrap: HTMLDivElement;
+  private panel: HTMLDivElement;
+  private books: StoryBooks;
   private headerEl: HTMLDivElement;
   private tabBar: HTMLDivElement;
   private body: HTMLDivElement;
@@ -155,6 +153,14 @@ export class VillageUI {
   ) {
     this.wrap = el('div', 'village', root);
     const panel = el('div', 'village-panel', this.wrap);
+    this.panel = panel;
+    this.books = new StoryBooks({
+      getSave: this.getSave,
+      monsterArt: (kind) => this.cb.monsterArt(kind),
+      startPhase: (id) => this.cb.onStartPhase(id),
+      sweep: (p) => this.sweep(p),
+      redraw: () => this.refresh(),
+    });
     const close = el('button', 'village-close', panel, '×');
     close.title = '닫기';
     close.addEventListener('click', () => this.close());
@@ -195,6 +201,7 @@ export class VillageUI {
     this.tab = tabs[0];
     this.title = title;
     this.importError = '';
+    if (tabs.includes('phase')) this.books.reset(this.getSave());
     this.show();
     this.body.scrollTop = 0;
   }
@@ -225,6 +232,11 @@ export class VillageUI {
   private handleKey(e: KeyboardEvent): void {
     if (!this.visible || this.rebinding || e.repeat) return;
     const km = this.getSave().keymap;
+    // 출정 창: 책장과 펼친 책이 먼저 키를 받는다 (펼친 책에서 Esc는 책장으로 돌아간다).
+    if (this.tab === 'phase' && this.books.handleKey(e.code, km)) {
+      e.preventDefault();
+      return;
+    }
     // 장비창·스킬창은 연 키를 다시 눌러도 닫힌다.
     const toggle = this.allowed.length === 1 && ((this.tab === 'equip' && e.code === km.inventory) || (this.tab === 'skill' && e.code === km.skills));
     if (e.code === 'Escape' || e.code === km.interact || toggle) {
@@ -249,11 +261,12 @@ export class VillageUI {
       b.style.display = this.allowed.includes(b.dataset.tab as Tab) ? '' : 'none';
     }
     this.tabBar.style.display = this.allowed.length > 1 ? '' : 'none';
+    this.panel.classList.toggle('book-wide', this.tab === 'phase');
     const scroll = this.body.scrollTop;
     this.body.replaceChildren();
     switch (this.tab) {
       case 'phase':
-        this.renderPhases(save);
+        this.books.render(this.body, save);
         break;
       case 'equip':
         renderEquipPanel(this.host, save);
@@ -380,70 +393,6 @@ export class VillageUI {
   }
 
   // ---- 출정 ----
-
-  private renderPhases(save: SaveData): void {
-    // 챕터마다 섹션을 따로 둔다.
-    const chapters = [...new Set(PHASES.map((p) => p.chapter))];
-    for (const ch of chapters) {
-      const list = PHASES.filter((p) => p.chapter === ch);
-      const first = list[0];
-      const open = !first.requires || save.cleared.includes(first.requires);
-      const done = list.filter((p) => save.cleared.includes(p.id)).length;
-      const s = this.section(CHAPTER_NAME[ch] ?? `챕터 ${ch}`, open ? `${done} / ${list.length} 클리어` : '잠김');
-      s.classList.add('v-chapter');
-      if (!open) {
-        // 아직 열리지 않은 챕터는 카드 대신 한 줄로 알린다.
-        s.classList.add('locked');
-        const req = PHASES.find((q) => q.id === first.requires);
-        el('p', 'v-lock', s, `${first.requires} ${req ? req.name : ''}을(를) 클리어하면 열립니다.`);
-        continue;
-      }
-      for (const p of list) this.phaseCard(s, save, p);
-    }
-    el('p', 'v-muted v-note', this.body, `소탕: 클리어한 페이즈를 소탕권 1장으로 즉시 완료하고 클리어 보상의 ${Math.round(SWEEP_RATE * 100)}%를 받습니다. (소탕권 보상 제외)`);
-  }
-
-  private phaseCard(s: HTMLElement, save: SaveData, p: PhaseDef): void {
-    const locked = !!p.requires && !save.cleared.includes(p.requires);
-    const cleared = save.cleared.includes(p.id);
-    const card = el('div', `v-card phase${locked ? ' locked' : ''}`, s);
-    const head = el('div', 'v-card-head', card);
-    el('span', 'v-phase-id', head, p.id);
-    el('span', 'v-card-title', head, p.name);
-    if (p.type === 'boss') el('span', 'v-badge boss', head, '보스');
-    if (p.type === 'special') el('span', 'v-badge special', head, '특별');
-    if (cleared) el('span', 'v-badge clear', head, '클리어');
-    // 권장 전투력과 내 전투력을 비교한 판정. 입장은 막지 않는다.
-    const need = recommendedPower(p.id);
-    const mine = combatPower(save);
-    const power = el('div', 'v-power', card);
-    el('span', 'v-power-label', power, '권장 전투력');
-    el('span', 'v-power-num', power, koNum(need));
-    if (!locked) {
-      const v = powerVerdict(mine, need);
-      el('span', `v-power-verdict ${v.cls}`, power, v.label);
-      el('span', 'v-muted', power, `내 전투력 ${koNum(mine)}`);
-    }
-    el('p', 'v-desc', card, p.desc);
-
-    const info = el('div', 'v-meta', card);
-    el('span', '', info, phaseKindText(p));
-    el('span', '', info, `보상: 골드 ${fmt(p.clearReward.gold)} · 경험치 ${fmt(p.clearReward.exp)}`);
-    const mats = Object.entries(p.clearReward.materials).map(([id, n]) => `${materialName(id)} x${n}`);
-    if (p.clearReward.sweepTickets > 0) mats.push(`소탕권 x${p.clearReward.sweepTickets}`);
-    if (mats.length) el('span', '', info, mats.join(', '));
-
-    const actions = el('div', 'v-actions', card);
-    if (locked) {
-      const req = PHASES.find((q) => q.id === p.requires);
-      el('span', 'v-lock', actions, `잠김: ${p.requires} ${req ? req.name : ''} 클리어 필요`);
-    } else {
-      button(actions, '도전', 'primary', true, () => this.cb.onStartPhase(p.id));
-      if (cleared) {
-        button(actions, '소탕 (소탕권 1)', '', save.sweepTickets >= 1, () => this.sweep(p));
-      }
-    }
-  }
 
   private sweep(p: PhaseDef): void {
     const save = this.getSave();

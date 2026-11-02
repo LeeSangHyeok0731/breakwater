@@ -71,6 +71,10 @@ const LOOKS: Record<MonsterKind, Look> = {
   scarecrow: { walk: SCARECROW_ANIM, facesLeft: false, body: [24, 50] },
 };
 
+export function monsterLook(kind: MonsterKind): Look {
+  return LOOKS[kind];
+}
+
 /** 몬스터 판정 몸통의 키 (px, 엘리트는 1.3배) */
 export function monsterBodyHeight(kind: MonsterKind, elite: boolean): number {
   const look = LOOKS[kind];
