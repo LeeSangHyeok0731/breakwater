@@ -88,6 +88,10 @@ const ACTION_LABELS: Record<Action, string> = {
 };
 
 const CONFIRM_TIMEOUT = 4000;
+/** 알림 카드: 최대 수, 간격(px, CSS와 같다), 떠 있는 시간(ms) */
+const TOAST_MAX = 8;
+const TOAST_GAP = 6;
+const TOAST_LIFE = 4000;
 
 /** 무기 아이콘 (테두리는 등급 색) */
 function weaponIcon(parent: HTMLElement, def: WeaponDef): HTMLImageElement {
@@ -129,6 +133,7 @@ export class VillageUI {
   private headerEl: HTMLDivElement;
   private tabBar: HTMLDivElement;
   private body: HTMLDivElement;
+  /** 알림 카드 묶음: 새 카드가 아래에 붙고, 있던 카드는 위로 밀린다 */
   private toastEl: HTMLDivElement;
   private fileInput: HTMLInputElement;
 
@@ -140,7 +145,6 @@ export class VillageUI {
   private onKey = (e: KeyboardEvent): void => this.handleKey(e);
   private confirming: ConfirmKey | null = null;
   private confirmTimer = 0;
-  private toastTimer = 0;
   private importError = '';
   /** 키 변경 대기 중인 동작 */
   private rebinding: Action | null = null;
@@ -167,7 +171,7 @@ export class VillageUI {
     this.headerEl = el('div', 'village-header', panel);
     this.tabBar = el('div', 'village-tabs', panel);
     this.body = el('div', 'village-body', panel);
-    this.toastEl = el('div', 'village-toast', this.wrap);
+    this.toastEl = el('div', 'village-toasts', this.wrap);
 
     this.fileInput = el('input', '', this.wrap);
     this.fileInput.type = 'file';
@@ -249,7 +253,6 @@ export class VillageUI {
     window.removeEventListener('keydown', this.onKey);
     this.stopRebind();
     window.clearTimeout(this.confirmTimer);
-    window.clearTimeout(this.toastTimer);
     this.wrap.remove();
   }
 
@@ -328,12 +331,19 @@ export class VillageUI {
   }
 
   private toast(text: string, kind: 'ok' | 'warn' = 'ok'): void {
-    this.toastEl.textContent = text;
-    this.toastEl.className = `village-toast show ${kind}`;
-    window.clearTimeout(this.toastTimer);
-    this.toastTimer = window.setTimeout(() => {
-      this.toastEl.className = 'village-toast';
-    }, 2600);
+    const card = el('div', `village-toast show ${kind}`, this.toastEl, text);
+    while (this.toastEl.childElementCount > TOAST_MAX) this.toastEl.firstElementChild?.remove();
+    // 있던 카드는 새 카드 높이만큼 부드럽게 올라가고, 새 카드는 아래에서 나타난다.
+    const push = card.offsetHeight + TOAST_GAP;
+    for (const old of Array.from(this.toastEl.children)) {
+      if (old !== card) old.animate([{ transform: `translateY(${push}px)` }, { transform: 'none' }], { duration: 180, easing: 'ease-out' });
+    }
+    card.animate([{ opacity: 0, transform: 'translateY(10px)' }, { opacity: 1, transform: 'none' }], { duration: 180, easing: 'ease-out' });
+    window.setTimeout(() => {
+      card.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 250 });
+      // 탭이 가려지면 애니메이션 끝 신호가 오지 않으므로 타이머로 지운다.
+      window.setTimeout(() => card.remove(), 250);
+    }, TOAST_LIFE);
   }
 
   /** 첫 클릭은 확인 상태로 바꾸고, 두 번째 클릭에 true 를 돌려준다. */
