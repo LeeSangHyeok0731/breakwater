@@ -9,6 +9,7 @@ export type Action =
   | 'dodge'
   | 'guard'
   | 'swap'
+  | 'skillPage'
   | 'slot1'
   | 'slot2'
   | 'slot3'
@@ -38,6 +39,7 @@ export const DEFAULT_KEYMAP: Keymap = {
   dodge: 'ShiftLeft',
   guard: 'KeyC',
   swap: 'Tab',
+  skillPage: 'KeyV',
   slot1: 'KeyQ',
   slot2: 'KeyW',
   slot3: 'KeyE',

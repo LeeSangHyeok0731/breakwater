@@ -68,6 +68,7 @@ const ACTION_LABELS: Record<Action, string> = {
   dodge: '구르기',
   guard: '가드 (근접)',
   swap: '직업 교체',
+  skillPage: '스킬 장 넘기기',
   slot1: '스킬 슬롯 1',
   slot2: '스킬 슬롯 2',
   slot3: '스킬 슬롯 3',

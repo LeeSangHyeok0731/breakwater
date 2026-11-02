@@ -10,7 +10,7 @@ import { DIFFICULTY, LEGIONS, rewardMul, SILENCE_STACKS, SILENCE_TIME, type Legi
 import { barProgress, totalReward, WORLD_BOSS_BARS, WORLD_BOSS_TIME } from '../data/worldBoss';
 import { koNum } from '../ui/format';
 import { column, impactBurst, PAL, rays, shockwave, tint } from './vfx';
-import { SKILL_BY_ID, type SkillDef } from '../data/skills';
+import { chunkSkills, SKILL_BY_ID, SKILL_SLOTS, skillsFor, type SkillDef } from '../data/skills';
 import { CLASS_NAME, GRADES, WEAPONS, type WeaponType } from '../data/weapons';
 import { Hud, type HudSlot, type HudState } from '../ui/hud';
 import { updatePlayerCombat } from './combat2d';
@@ -168,8 +168,15 @@ const BUFF_COLOR: Record<string, number> = {
 /** 장착 무기의 스킬 슬롯: 배운 스킬을 목록 순서대로 최대 8개 채운다. */
 export function buildSlots(save: SaveData, type: WeaponType): (SkillDef | null)[] {
   const slots: (SkillDef | null)[] = skillSlotIds(save, type).map((id) => SKILL_BY_ID[id] ?? null);
-  while (slots.length < 8) slots.push(null);
+  while (slots.length < SKILL_SLOTS) slots.push(null);
   return slots;
+}
+
+/** 첫 장은 고른 세트, 다음 장부터는 세트에 없는 배운 스킬이다. */
+export function buildPages(save: SaveData, type: WeaponType): (SkillDef | null)[][] {
+  const first = buildSlots(save, type);
+  const rest = skillsFor(type).filter((s) => save.learnedSkills.includes(s.id) && !first.includes(s));
+  return [first, ...chunkSkills(rest)];
 }
 
 /** 군단장 보상: 조각 (최소~최대 × 보상 배율), 하드는 희망의 조각을 낮은 확률로 */
@@ -291,7 +298,7 @@ export class BattleScene extends Phaser.Scene {
     const weapons = uids.map((uid) => {
       const owned = this.save.weapons.find((w) => w.uid === uid) ?? this.save.weapons[0];
       const def = WEAPONS[owned.defId];
-      return { def, enhance: owned.enhance, slots: buildSlots(this.save, def.type) };
+      return { def, enhance: owned.enhance, pages: buildPages(this.save, def.type) };
     });
     const derived = derive(this.stats, this.save.passives, gearBonus(this.save.gear.equipped, this.save.gear.enhance));
     const mods = this.legion?.mods ?? [];
@@ -1611,6 +1618,7 @@ export class BattleScene extends Phaser.Scene {
       otherWeaponIcon: weaponIconUrl(other.def),
       otherWeaponName: `${CLASS_NAME[other.def.type]} · ${other.def.name}${other.enhance > 0 ? ` +${other.enhance}` : ''}`,
       swapKey: keyLabel(keymap.swap),
+      skillPage: w.pages.length > 1 ? { key: keyLabel(keymap.skillPage), text: `${w.page + 1} / ${w.pages.length}` } : null,
       slots,
       buffs: p.buffs.map((b) => ({ name: b.name, time: b.time })),
       charge: p.charge >= 0 ? Math.min(1, p.charge / (w.def.type === 'dao' ? 1 : 1.2)) : -1,

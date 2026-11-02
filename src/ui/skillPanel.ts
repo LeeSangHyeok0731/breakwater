@@ -184,7 +184,7 @@ function iconCell(host: PanelHost, parent: HTMLElement, url: string, pick: Pick,
 function renderDetail(host: PanelHost, box: HTMLElement, save: SaveData, pick: Pick | null): void {
   box.replaceChildren();
   if (!pick) {
-    el('p', 'eq-detail-empty', box, '아이콘에 마우스를 올리면 설명이 나옵니다. 배운 스킬을 아래 슬롯으로 끌어다 놓으면 그 키에 들어갑니다.');
+    el('p', 'eq-detail-empty', box, '아이콘에 마우스를 올리면 설명이 나옵니다. 배운 스킬을 아래 슬롯으로 끌어다 놓으면 그 키에 들어갑니다. 슬롯에 없는 배운 스킬은 전투 중에 스킬 장을 넘겨 쓸 수 있습니다.');
     return;
   }
   const head = el('div', 'eq-detail-head', box);

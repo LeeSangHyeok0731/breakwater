@@ -1083,3 +1083,26 @@ body::after {
     background-position: -40% 0;
   }
 }
+
+/* 스킬 장 표시: 슬롯 줄 왼쪽 바깥에 붙는다 */
+.hud-slots {
+  position: relative;
+}
+
+.hud-slot-page {
+  position: absolute;
+  right: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.hud-slot-page-num {
+  font-size: 12px;
+  font-weight: 700;
+  color: #f6d68e;
+}

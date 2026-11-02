@@ -1,13 +1,13 @@
 import { keyLabel, type Action } from '../core/input';
 import { sfx } from '../core/audio';
 import type { PhaseDef } from '../data/phases';
-import { SKILL_BY_ID, SKILL_SLOTS, SKILL_TIER_NAME, SKILLS, skillsFor, type SkillDef } from '../data/skills';
+import { chunkSkills, SKILL_BY_ID, SKILL_TIER_NAME, SKILLS, skillsFor, type SkillDef } from '../data/skills';
 import { CLASS_NAME, WEAPONS, type WeaponDef, type WeaponType } from '../data/weapons';
 import '../ui/tutorial.css';
 import type { BattleScene } from './battleScene';
 import { ctx } from './context';
 import type { Monster } from './monster2d';
-import { COMBO_MAX } from './player2d';
+import { COMBO_MAX, equipWeapons } from './player2d';
 import { ensureScarecrow } from './scarecrow';
 
 /** 튜토리얼 전용 맵. 웨이브와 보상은 없고, 단계 진행은 Tutorial이 맡는다. */
@@ -37,17 +37,6 @@ function trialWeapon(type: WeaponType): WeaponDef {
   return Object.values(WEAPONS).find((w) => w.type === type && w.grade === 'common')!;
 }
 
-/** 직업의 모든 스킬을 슬롯 수만큼씩 나눈 장들 */
-function skillPages(type: WeaponType): (SkillDef | null)[][] {
-  const skills = skillsFor(type);
-  const pages: (SkillDef | null)[][] = [];
-  for (let i = 0; i < skills.length; i += SKILL_SLOTS) {
-    const page: (SkillDef | null)[] = skills.slice(i, i + SKILL_SLOTS);
-    while (page.length < SKILL_SLOTS) page.push(null);
-    pages.push(page);
-  }
-  return pages;
-}
 
 /** 글 조각: 문자열은 그대로, { key }는 현재 키 설정의 키캡으로 그린다. */
 type Part = string | { key: Action };
@@ -131,10 +120,9 @@ export class Tutorial {
   private target: Monster | null = null;
   /** 직업 체험장에 들어왔는가 */
   inTrial = false;
-  private readonly pages = TRIAL_CLASSES.map(skillPages);
-  private readonly pageIndex = TRIAL_CLASSES.map(() => 0);
   private readonly triedSkills = new Set<string>();
-  private trialClass = -1;
+  /** 안내를 마지막으로 그린 직업과 스킬 장 */
+  private trialShown = '';
 
   private readonly panel: HTMLDivElement;
   private readonly dots: HTMLDivElement;
@@ -230,10 +218,7 @@ export class Tutorial {
     p.action = null;
     p.charge = -1;
     p.resetCombo();
-    p.weapons = TRIAL_CLASSES.map((type, i) => {
-      const def = trialWeapon(type);
-      return { def, enhance: 0, slots: this.pages[i][0], ammo: def.magazine ?? 0, magazine: def.magazine ?? 0 };
-    });
+    p.weapons = equipWeapons(TRIAL_CLASSES.map((type) => ({ def: trialWeapon(type), enhance: 0, pages: chunkSkills(skillsFor(type)) })));
     p.active = 0;
     p.cooldowns.clear();
     // 낮은 레벨의 최대 마나로는 궁극기(마나 120)를 못 쓴다.
@@ -257,19 +242,14 @@ export class Tutorial {
     p.mp = p.derived.maxMp;
 
     const i = p.active;
-    if (b.keys.pressed('guard') && this.pages[i].length > 1) {
-      this.pageIndex[i] = (this.pageIndex[i] + 1) % this.pages[i].length;
-      p.weapon.slots = this.pages[i][this.pageIndex[i]];
-      sfx.play('parry');
-      this.trialClass = -1;
-    }
-    if (i !== this.trialClass) {
-      this.trialClass = i;
+    const w = p.weapon;
+    const shown = `${i}:${w.page}`;
+    if (shown !== this.trialShown) {
+      this.trialShown = shown;
       this.title.textContent = `${CLASS_NAME[TRIAL_CLASSES[i]]} 체험 (${i + 1} / ${TRIAL_CLASSES.length})`;
-      const paged = this.pages[i].length > 1;
       this.fillParts(this.text, [
         { key: 'swap' }, ' 다음 직업',
-        ...(paged ? (['  ·  ', { key: 'guard' }, ` 다음 스킬 장 (${this.pageIndex[i] + 1} / ${this.pages[i].length})`] as Part[]) : []),
+        ...(w.pages.length > 1 ? (['  ·  ', { key: 'skillPage' }, ` 다음 스킬 장 (${w.page + 1} / ${w.pages.length})`] as Part[]) : []),
         '  ·  재사용 시간과 마나 소모 없음',
       ]);
     }

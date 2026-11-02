@@ -31,6 +31,8 @@ export interface HudState {
   otherWeaponName: string;
   otherWeaponIcon: string;
   swapKey: string;
+  /** 스킬 장이 2장 이상일 때 넘기는 키와 지금 장 */
+  skillPage: { key: string; text: string } | null;
   /** 항상 8개 */
   slots: HudSlot[];
   buffs: { name: string; time: number }[];
@@ -175,6 +177,9 @@ export class Hud {
   private otherWeapon: HTMLSpanElement;
   private otherIcon: HTMLImageElement;
   private swapKey: HTMLSpanElement;
+  private pageWrap: HTMLDivElement;
+  private pageKey: HTMLSpanElement;
+  private pageText: HTMLSpanElement;
 
   private banner: HTMLDivElement;
   private modal: HTMLDivElement | null = null;
@@ -254,6 +259,9 @@ export class Hud {
     const bc = el('div', 'hud-bottomcenter', w);
     this.toastWrap = el('div', 'hud-toasts', bc);
     const slotRow = el('div', 'hud-slots', bc);
+    this.pageWrap = el('div', 'hud-slot-page', slotRow);
+    this.pageKey = el('span', 'hud-key', this.pageWrap);
+    this.pageText = el('span', 'hud-slot-page-num', this.pageWrap);
     for (let i = 0; i < SLOT_COUNT; i++) {
       const root = el('div', 'hud-slot', slotRow);
       const cdFill = el('div', 'hud-slot-cd', root);
@@ -452,6 +460,11 @@ export class Hud {
     if (this.otherIcon.getAttribute('src') !== s.otherWeaponIcon) this.otherIcon.src = s.otherWeaponIcon;
     setText(this.otherWeapon, s.otherWeaponName);
     setText(this.swapKey, s.swapKey);
+    setStyle(this.pageWrap, 'display', s.skillPage ? '' : 'none');
+    if (s.skillPage) {
+      setText(this.pageKey, s.skillPage.key);
+      setText(this.pageText, s.skillPage.text);
+    }
     if (s.ammo) {
       setStyle(this.ammoEl, 'display', '');
       setText(this.ammoEl, s.ammo);
@@ -570,6 +583,7 @@ export class Hud {
       ['구르기', k('dodge')],
       ['가드 (근접)', `${k('guard')} 누르고 있기`],
       ['직업 교체', k('swap')],
+      ['스킬 장 넘기기 (슬롯보다 스킬이 많을 때)', k('skillPage')],
       ['스킬', [k('slot1'), k('slot2'), k('slot3'), k('slot4'), k('slot5'), k('slot6'), k('slot7'), k('slot8')].join(' ')],
       ['일시정지', 'Esc'],
     ];
