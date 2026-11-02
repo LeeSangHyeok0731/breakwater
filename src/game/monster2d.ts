@@ -11,6 +11,8 @@ import { silentKnight } from './legion/knight';
 import { corruptedElf } from './legion/elf';
 import { darkLord } from './legion/darklord';
 import { worldGolem } from './worldGolem';
+import { SCARECROW_ANIM } from './scarecrow';
+import { hpStack, isStacked } from './hpStack';
 
 /** 챕터 2·3 몬스터의 행동 (몬스터 하나를 한 프레임 움직인다) */
 export type Behavior = (m: Monster, dt: number) => void;
@@ -66,6 +68,7 @@ const LOOKS: Record<MonsterKind, Look> = {
   dark_lord: { walk: 'darklord:hero-run', attack: 'darklord:hero-idle', idle: 'darklord:hero-idle', facesLeft: false, body: [16, 44], scale: 2.2 },
   world_golem: { walk: 'demon-idle', attack: 'demon-idle', facesLeft: true, body: [44, 56], scale: 3 },
   void_king: { walk: 'vking-idle', attack: 'vking-attack', facesLeft: true, body: [70, 96], scale: 1.3 },
+  scarecrow: { walk: SCARECROW_ANIM, facesLeft: false, body: [24, 50] },
 };
 
 /** 몬스터 판정 몸통의 키 (px, 엘리트는 1.3배) */
@@ -139,6 +142,8 @@ export class Monster {
   private bar: Phaser.GameObjects.Rectangle | null = null;
   private barBg: Phaser.GameObjects.Rectangle | null = null;
   private barW = 26;
+  /** 겹친 체력바의 남은 줄 수 */
+  private barCount: Phaser.GameObjects.Text | null = null;
 
   constructor(
     readonly scene: BattleScene,
@@ -178,7 +183,7 @@ export class Monster {
       scene.tweens.add({ targets: this.sprite, alpha: 1, duration: 400 });
     }
 
-    if (!this.def.boss && !this.def.miniboss) {
+    if (!this.def.boss && !this.def.miniboss && kind !== 'scarecrow') {
       this.barW = elite ? 36 : 26;
       this.barBg = scene.add.rectangle(x, y, this.barW + 2, 4, 0x140a0a).setOrigin(0, 0.5).setDepth(DEPTH.text - 1).setVisible(elite);
       this.bar = scene.add
@@ -217,6 +222,14 @@ export class Monster {
   onHit(fromX: number, knock: number): void {
     this.hitCount++;
     this.scene.fx.flash(this.sprite, 0xffffff, 70);
+    if (this.def.kind === 'scarecrow') {
+      // 허수아비: 체력이 바로 차서 쓰러지지 않고, 밀리는 대신 맞은 쪽으로 흔들린다.
+      this.hp = this.maxHp;
+      if (!this.scene.tweens.isTweening(this.sprite)) {
+        this.scene.tweens.add({ targets: this.sprite, angle: this.x >= fromX ? 7 : -7, duration: 70, yoyo: true, repeat: 1, ease: 'Sine.easeOut' });
+      }
+      return;
+    }
     this.bar?.setVisible(true);
     this.barBg?.setVisible(true);
     if (knock > 0 && !this.showsBossBar) {
@@ -234,6 +247,7 @@ export class Monster {
     this.dying = 0.35;
     this.bar?.setVisible(false);
     this.barBg?.setVisible(false);
+    this.barCount?.setVisible(false);
     this.body.enable = false;
     this.scene.fx.death(this.x, this.body.bottom, this.showsBossBar ? 2 : this.elite ? 1.3 : 1);
     this.scene.tweens.add({ targets: this.sprite, alpha: 0, duration: 300 });
@@ -245,6 +259,7 @@ export class Monster {
     this.zone.destroy();
     this.bar?.destroy();
     this.barBg?.destroy();
+    this.barCount?.destroy();
   }
 
   update(dt: number): void {
@@ -336,8 +351,23 @@ export class Monster {
       const top = this.body.top - 6;
       this.barBg.setPosition(this.x - this.barW / 2 - 1, top);
       this.bar.setPosition(this.x - this.barW / 2, top);
-      this.bar.width = this.barW * Math.max(0, this.hp / this.maxHp);
+      if (isStacked(this.maxHp)) this.syncStackedBar(top);
+      else this.bar.width = this.barW * Math.max(0, this.hp / this.maxHp);
     }
+  }
+
+  /** 체력이 많은 일반 몬스터: 머리 위 바도 줄을 겹치고 남은 줄 수를 적는다. */
+  private syncStackedBar(top: number): void {
+    const bar = this.bar!;
+    const st = hpStack(this.hp);
+    bar.width = this.barW * st.ratio;
+    bar.setFillStyle(st.color);
+    this.barBg!.setFillStyle(st.under);
+    this.barCount ??= this.scene.add
+      .text(0, 0, '', { fontFamily: '"Black Han Sans", "Malgun Gothic", sans-serif', fontSize: '11px', color: '#ffffff', stroke: '#1a0a0a', strokeThickness: 3, resolution: 3 })
+      .setOrigin(0, 0.5)
+      .setDepth(DEPTH.text - 1);
+    this.barCount.setText(`×${st.left}`).setPosition(this.x + this.barW / 2 + 3, top).setVisible(bar.visible);
   }
 
   toPlayer(): { dx: number; dy: number; dist: number } {

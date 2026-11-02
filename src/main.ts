@@ -67,7 +67,8 @@ const village = new VillageUI(uiRoot, () => save, {
   onStartPhase: startPhase,
   onStartLegion: startLegion,
   onStartWorldBoss: startWorldBoss,
-  onStartTutorial: startTutorial,
+  onStartTutorial: () => startTutorial(),
+  onStartTrial: () => startTutorial(true),
   onSaveChanged: () => {
     writeSave(save);
     input.setKeymap(save.keymap);
@@ -269,12 +270,12 @@ function startWorldBoss(): void {
   game.scene.start('battle', { phase: worldBossPhase(), worldBoss: true });
 }
 
-function startTutorial(): void {
+function startTutorial(trialOnly = false): void {
   village.hide();
   input.enabled = true;
   input.endFrame();
   game.scene.stop('town');
-  game.scene.start('battle', { phase: TUTORIAL_PHASE, tutorial: true });
+  game.scene.start('battle', { phase: TUTORIAL_PHASE, tutorial: true, trialOnly });
 }
 
 function startPhase(id: string): void {

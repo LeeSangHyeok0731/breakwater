@@ -63,6 +63,7 @@ export function updatePlayerCombat(b: BattleScene, dt: number): void {
     p.swapWeapon();
     b.hud.flashWeapon();
   }
+  if (input.pressed('skillPage') && p.nextSkillPage()) sfx.play('parry', 0.5);
   if (input.pressed('dodge') && p.dodgeCd <= 0 && p.dodgeTime <= 0) {
     p.startDodge();
     sfx.play('dodge');

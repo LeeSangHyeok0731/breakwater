@@ -32,6 +32,8 @@ export interface VillageCallbacks {
   onStartWorldBoss(): void;
   /** 튜토리얼 다시 하기 */
   onStartTutorial(): void;
+  /** 직업 체험장으로 바로 가기 */
+  onStartTrial(): void;
   /** 장비창에 그릴 직업별 캐릭터 그림 */
   portrait(type: WeaponType): HTMLCanvasElement | null;
   /** 게임 텍스처를 캔버스로 복사해 온다 */
@@ -66,6 +68,7 @@ const ACTION_LABELS: Record<Action, string> = {
   dodge: '구르기',
   guard: '가드 (근접)',
   swap: '직업 교체',
+  skillPage: '스킬 장 넘기기',
   slot1: '스킬 슬롯 1',
   slot2: '스킬 슬롯 2',
   slot3: '스킬 슬롯 3',
@@ -772,8 +775,10 @@ export class VillageUI {
       this.toast('키 설정을 기본값으로 되돌렸습니다');
     });
 
-    const help = this.section('튜토리얼', '조작을 처음부터 다시 연습합니다');
-    button(el('div', 'v-actions', help), '튜토리얼 다시 하기', '', true, () => this.cb.onStartTutorial());
+    const help = this.section('튜토리얼', '조작을 다시 연습하거나, 허수아비에게 모든 직업과 스킬을 써 봅니다');
+    const helpActions = el('div', 'v-actions', help);
+    button(helpActions, '튜토리얼 다시 하기', '', true, () => this.cb.onStartTutorial());
+    button(helpActions, '직업 체험장', '', true, () => this.cb.onStartTrial());
 
     const ds = this.section('세이브 데이터', '진행 상황은 브라우저에 자동 저장됩니다');
     const actions = el('div', 'v-actions', ds);

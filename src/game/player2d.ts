@@ -12,9 +12,18 @@ import type { Derived } from './stats';
 export interface EquippedWeapon {
   def: WeaponDef;
   enhance: number;
+  /** 지금 장의 스킬 (슬롯 순서) */
   slots: (SkillDef | null)[];
+  /** 스킬 장들. 슬롯보다 스킬이 많으면 2장 이상이다. */
+  pages: (SkillDef | null)[][];
+  page: number;
   ammo: number;
   magazine: number;
+}
+
+/** 무기를 손에 든 상태로 만든다: 첫 스킬 장을 펴고 탄창을 채운다. */
+export function equipWeapons(weapons: { def: WeaponDef; enhance: number; pages: (SkillDef | null)[][] }[]): EquippedWeapon[] {
+  return weapons.map((w) => ({ ...w, slots: w.pages[0], page: 0, ammo: w.def.magazine ?? 0, magazine: w.def.magazine ?? 0 }));
 }
 
 export type ActionKind =
@@ -168,12 +177,12 @@ export class Player {
     x: number,
     y: number,
     derived: Derived,
-    weapons: { def: WeaponDef; enhance: number; slots: (SkillDef | null)[] }[],
+    weapons: { def: WeaponDef; enhance: number; pages: (SkillDef | null)[][] }[],
   ) {
     this.derived = derived;
     this.hp = derived.maxHp;
     this.mp = derived.maxMp;
-    this.weapons = weapons.map((w) => ({ ...w, ammo: w.def.magazine ?? 0, magazine: w.def.magazine ?? 0 }));
+    this.weapons = equipWeapons(weapons);
 
     this.zone = scene.add.zone(x, y, 14, 34);
     scene.physics.add.existing(this.zone);
@@ -252,9 +261,9 @@ export class Player {
     this.comboTimer = 0;
   }
 
-  /** 직업 교체: 장착한 두 무기(직업)를 오간다. */
+  /** 직업 교체: 장착한 무기(직업)를 차례로 오간다. 평소에는 2개, 체험장에서는 5개다. */
   swapWeapon(): void {
-    this.active = 1 - this.active;
+    this.active = (this.active + 1) % this.weapons.length;
     this.resetCombo();
     this.action = null;
     this.charge = -1;
@@ -265,6 +274,15 @@ export class Player {
     this.swapFlash = 0.12;
     this.aimHold = 0;
     this.swapPuff();
+  }
+
+  /** 다음 스킬 장을 편다. 장이 하나뿐이면 false. 쓰고 있는 스킬은 끊기지 않고, 재사용 시간도 그대로 이어진다. */
+  nextSkillPage(): boolean {
+    const w = this.weapon;
+    if (w.pages.length < 2) return false;
+    w.page = (w.page + 1) % w.pages.length;
+    w.slots = w.pages[w.page];
+    return true;
   }
 
   /** 활·총·스태프를 겨누는 중 (조준 자세로 무기를 손에 든다) */

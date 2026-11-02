@@ -131,7 +131,7 @@ export class TownScene extends Phaser.Scene {
     const weapons = save.equipped.map((uid) => {
       const owned = save.weapons.find((w) => w.uid === uid) ?? save.weapons[0];
       const def = WEAPONS[owned.defId];
-      return { def, enhance: owned.enhance, slots: buildSlots(save, def.type) };
+      return { def, enhance: owned.enhance, pages: [buildSlots(save, def.type)] };
     });
     this.player = new Player(this, x, FLOOR_Y - 40, derive(stats, save.passives, gearBonus(save.gear.equipped, save.gear.enhance)), weapons);
     this.physics.add.collider(this.player.zone, solids);

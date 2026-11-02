@@ -477,3 +477,14 @@ export const STARTER_SKILLS = [
 export function skillsFor(type: WeaponType): SkillDef[] {
   return SKILLS.filter((s) => s.weapon === type);
 }
+
+/** 스킬들을 슬롯 수만큼씩 장으로 나눈다. 모자란 칸은 null이다. */
+export function chunkSkills(skills: SkillDef[]): (SkillDef | null)[][] {
+  const pages: (SkillDef | null)[][] = [];
+  for (let i = 0; i < skills.length; i += SKILL_SLOTS) {
+    const page: (SkillDef | null)[] = skills.slice(i, i + SKILL_SLOTS);
+    while (page.length < SKILL_SLOTS) page.push(null);
+    pages.push(page);
+  }
+  return pages;
+}
