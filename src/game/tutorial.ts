@@ -62,7 +62,7 @@ const STEPS: Step[] = [
   },
   {
     title: '점프',
-    text: [{ key: 'jump' }, ' 키로 뛰고, 공중에서 한 번 더 눌러 더블 점프하세요.'],
+    text: [{ key: 'jump' }, ' 키로 뛰고, 공중에서 한 번 더 누르면 더블 점프입니다. 좌우 키를 누른 채면 그쪽으로 강하게, ', { key: 'up' }, ' 키를 누른 채면 위로 뜁니다.'],
     done: (t) => !t.b.player.grounded && t.b.player.airJumps === 0,
   },
   {

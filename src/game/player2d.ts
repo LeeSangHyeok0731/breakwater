@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { sfx } from '../core/audio';
 import type { Input } from '../core/input';
 import type { SkillDef } from '../data/skills';
 import { MELEE_TYPES, type WeaponDef } from '../data/weapons';
@@ -93,6 +94,10 @@ export const PX_PER_M = 24;
 const JUMP_V = -390;
 const DODGE_SPEED = 300;
 const DODGE_TIME = 0.24;
+/** 방향 더블 점프 [초안]: 가로 속도, 세로 속도, 잔상이 남는 시간 */
+const AIR_DASH_VX = 460;
+const AIR_DASH_VY = -220;
+const AIR_DASH_TRAIL = 0.28;
 
 export class Player {
   readonly body: Phaser.Physics.Arcade.Body;
@@ -145,6 +150,8 @@ export class Player {
   dropTimer = 0;
   /** 공중에서 남은 추가 점프 횟수 (더블 점프) */
   airJumps = 1;
+  /** 방향 더블 점프의 잔상이 남은 시간 */
+  private airDashTime = 0;
   dead = false;
 
   private lastAnimAction: PlayerAction | null = null;
@@ -411,7 +418,8 @@ export class Player {
         next = vx * (1 - k(0.02));
       }
       // 구르기 직후처럼 이동 속도보다 빠르면 서서히 줄인다.
-      if (Math.abs(next) > speed) next -= (next - Math.sign(next) * speed) * k(0.08);
+      // 방향 더블 점프로 튀어 나가는 동안은 줄이지 않는다.
+      if (Math.abs(next) > speed && this.airDashTime <= 0) next -= (next - Math.sign(next) * speed) * k(0.08);
       body.setVelocityX(next);
     }
 
@@ -428,12 +436,28 @@ export class Player {
       } else if (this.airJumps > 0) {
         // 더블 점프: 공중에서 한 번 더
         this.airJumps--;
-        body.setVelocityY(JUMP_V * 0.9);
-        // 공중에서 방향을 바꾸는 유일한 수단: 누르고 있는 쪽으로 다시 뛴다.
-        if (wish !== 0) body.setVelocityX(wish * this.moveSpeed());
+        if (wish !== 0 && !input.isDown('up')) {
+          // 방향키만 누르고 있으면 그쪽으로 강하게 튀어 나간다.
+          body.setVelocity(wish * Math.max(AIR_DASH_VX, this.moveSpeed()), AIR_DASH_VY);
+          this.airDashTime = AIR_DASH_TRAIL;
+          sfx.play('dodge', 0.8);
+        } else {
+          // 방향키를 안 눌렀거나 ↑를 누르면 위로 뛴다. 공중에서 방향을 바꾸는 수단이기도 하다.
+          body.setVelocityY(JUMP_V * 0.9);
+          if (wish !== 0) body.setVelocityX(wish * this.moveSpeed());
+        }
         this.jumpPuff();
         // 점프 동작을 처음부터 다시 보여 준다.
         if (this.sprite.anims.currentAnim?.key === classAnimKey(this.weapon.def.type, 'hero-jump')) this.sprite.anims.restart();
+      }
+    }
+
+    if (this.airDashTime > 0) {
+      this.airDashTime = this.grounded ? 0 : this.airDashTime - dt;
+      this.afterimageTimer -= dt;
+      if (this.afterimageTimer <= 0) {
+        this.afterimageTimer = 0.04;
+        this.afterimage();
       }
     }
   }
