@@ -191,12 +191,12 @@ function performHit(b: BattleScene, kind: ActionKind, index: number): void {
     case 'airSlash':
       b.fx.slash(p.x + f * 14, p.y - 4, f, 40, color, true);
       swingFx(b, p.x + f * 36, p.y - 4);
-      box(b, -8, 76, 76, 6, base * 1.0 * mul, { basic: true, knock: 70 });
+      box(b, -8, swordReach(p, 76), 76, 6, base * 1.0 * mul, { basic: true, knock: 70 });
       break;
     case 'crouchSlash':
       b.fx.slash(p.x + f * 18, p.y + 10, f, 34, color);
       swingFx(b, p.x + f * 36, p.y + 10);
-      box(b, 0, 70, 24, -10, base * 0.9 * mul, { basic: true, knock: 60 });
+      box(b, 0, swordReach(p, 70), 24, -10, base * 0.9 * mul, { basic: true, knock: 60 });
       break;
     case 'thrust':
       // 찌르기: 칼끝에서 빛이 앞으로 꿰뚫고 나간다.
@@ -485,6 +485,13 @@ function fireArrow(b: BattleScene, c: number): void {
 // 평타를 이어 치면 1 → 5단으로 강해지고, 5단 다음은 다시 1단이다.
 // 검·도는 더 많이·넓게 베고, 활은 한 번에 여러 발, 총은 연발·산탄, 스태프는 여러 번 쏜다.
 
+/** 검사 평타의 사거리 배율 [초안] */
+const SWORD_REACH = 1.25;
+
+function swordReach(p: BattleScene['player'], v: number): number {
+  return p.weapon.def.type === 'sword' ? v * SWORD_REACH : v;
+}
+
 /** 검·도 평타 단계별 [동작 시간, 타격 시점들] */
 const SLASH_TIMING: [number, number[]][] = [
   [0.32, [0.11]],
@@ -505,50 +512,58 @@ function comboPop(b: BattleScene, n: number): void {
   }
 }
 
-/** 검·도 평타: 1 베기 → 2 역베기 → 3 두 번 → 4 크게 → 5 회전 세 번 */
+/** 검·도 평타: 1 베기 → 2 역베기 → 3 두 번 → 4 크게 → 5 회전 세 번 (검사는 마지막에 관통 검기) */
 function comboSlash(b: BattleScene, n: number, index: number, dmg: number, color: number): void {
   const p = b.player;
   const f = p.facing;
+  const sword = p.weapon.def.type === 'sword';
+  // 검사는 더 멀리 닿는다. 그림도 판정에 맞춰 함께 커진다.
+  const r = (v: number): number => swordReach(p, v);
   switch (n) {
     case 1:
-      b.fx.slash(p.x + f * 18, p.y - 2, f, 40, color, true);
-      swingFx(b, p.x + f * 40, p.y - 2);
-      box(b, 0, 72, 48, 2, dmg, { basic: true, knock: 90 });
+      b.fx.slash(p.x + f * r(18), p.y - 2, f, r(40), color, true);
+      swingFx(b, p.x + f * r(40), p.y - 2);
+      box(b, 0, r(72), 48, 2, dmg, { basic: true, knock: 90 });
       break;
     case 2:
       // 역베기: 아래에서 위로, 조금 더 넓게
-      b.fx.slash(p.x + f * 18, p.y - 2, f, 44, color, false, { up: true });
-      swingFx(b, p.x + f * 44, p.y - 4);
-      box(b, 0, 80, 54, 4, dmg, { basic: true, knock: 90 });
+      b.fx.slash(p.x + f * r(18), p.y - 2, f, r(44), color, false, { up: true });
+      swingFx(b, p.x + f * r(44), p.y - 4);
+      box(b, 0, r(80), 54, 4, dmg, { basic: true, knock: 90 });
       break;
     case 3:
       // 두 번 연달아
-      b.fx.slash(p.x + f * 18, p.y - 2, f, 42, color, index === 0, { up: index === 1, speed: 1.3 });
-      swingFx(b, p.x + f * 44, p.y - 2);
+      b.fx.slash(p.x + f * r(18), p.y - 2, f, r(42), color, index === 0, { up: index === 1, speed: 1.3 });
+      swingFx(b, p.x + f * r(44), p.y - 2);
       p.body.setVelocityX(f * 60);
-      box(b, 0, 84, 56, 2, dmg * 0.7, { basic: true, knock: index === 1 ? 100 : 30 });
+      box(b, 0, r(84), 56, 2, dmg * 0.7, { basic: true, knock: index === 1 ? 100 : 30 });
       break;
     case 4:
       // 크게 휘두르기: 한 걸음 내디디며 넓게
       p.body.setVelocityX(f * 140);
-      b.fx.slash(p.x + f * 20, p.y - 4, f, 56, color, true);
-      b.fx.slash(p.x + f * 16, p.y - 2, f, 44, 0xffffff, false, { speed: 1.3 });
-      swingFx(b, p.x + f * 56, p.y - 4);
+      b.fx.slash(p.x + f * r(20), p.y - 4, f, r(56), color, true);
+      b.fx.slash(p.x + f * r(16), p.y - 2, f, r(44), 0xffffff, false, { speed: 1.3 });
+      swingFx(b, p.x + f * r(56), p.y - 4);
       b.fx.shake(0.4, 90);
-      box(b, 0, 100, 66, 4, dmg * 1.3, { basic: true, knock: 150 });
+      box(b, 0, r(100), 66, 4, dmg * 1.3, { basic: true, knock: 150 });
       break;
     default: {
       // 마무리: 회전하며 세 번, 가장 넓고 멀리. 마지막은 터진다.
       const last = index === 2;
       p.body.setVelocityX(f * (last ? 180 : 70));
-      b.fx.slash(p.x + f * 16, p.y - 4, f, 50 + index * 8, last ? 0xffe08a : color, index !== 1, { up: index === 1, speed: 1.4 });
-      if (index === 1) b.fx.slash(p.x - f * 10, p.y - 4, (-f) as 1 | -1, 40, color, true, { speed: 1.4 });
-      swingFx(b, p.x + f * 60, p.y - 4);
-      box(b, index === 1 ? -40 : 0, index === 1 ? 160 : 120, 76, 6, dmg * 0.8, { basic: true, knock: last ? 220 : 40 });
+      b.fx.slash(p.x + f * r(16), p.y - 4, f, r(50 + index * 8), last ? 0xffe08a : color, index !== 1, { up: index === 1, speed: 1.4 });
+      if (index === 1) b.fx.slash(p.x - f * r(10), p.y - 4, (-f) as 1 | -1, r(40), color, true, { speed: 1.4 });
+      swingFx(b, p.x + f * r(60), p.y - 4);
+      box(b, r(index === 1 ? -40 : 0), r(index === 1 ? 160 : 120), 76, 6, dmg * 0.8, { basic: true, knock: last ? 220 : 40 });
       if (last) {
-        b.fx.slash(p.x + f * 30, p.y - 4, f, 70, 0xffffff, true, { squash: 0.6 });
-        b.fx.ring(p.x + f * 50, p.feet, 80, 0xffe08a, 320);
-        b.fx.burst(p.x + f * 60, p.y - 4, 0xffe08a, 16, 180, 380);
+        b.fx.slash(p.x + f * r(30), p.y - 4, f, r(70), 0xffffff, true, { squash: 0.6 });
+        b.fx.ring(p.x + f * r(50), p.feet, r(80), 0xffe08a, 320);
+        b.fx.burst(p.x + f * r(60), p.y - 4, 0xffe08a, 16, 180, 380);
+        // 검사의 마무리: 적을 꿰뚫고 날아가는 큰 검기
+        if (sword) {
+          b.spawnPlayerBolt({ x: p.x + f * 20, y: p.y - 4, vx: f * 380, vy: 0, damage: dmg, basic: true, kind: 'wave', pierce: true, life: 0.75, size: 2.4, color });
+          crescent(b, p.x + f * 14, p.y - 4, f, 70, PAL.gold, { from: -1.3, to: 1.3, ms: 240 });
+        }
         b.fx.shake(0.9, 160);
         b.fx.stop(0.06);
       }
