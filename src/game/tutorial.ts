@@ -1,7 +1,7 @@
 import { keyLabel, type Action } from '../core/input';
 import { sfx } from '../core/audio';
 import type { PhaseDef } from '../data/phases';
-import { chunkSkills, SKILL_BY_ID, SKILL_TIER_NAME, SKILLS, skillsFor, type SkillDef } from '../data/skills';
+import { chunkSkills, SKILL_BY_ID, SKILL_TIER_NAME, SKILLS, skillsFor, SKY_MAX_BLADES, SKY_STACKS_PER_BLADE, type SkillDef } from '../data/skills';
 import { CLASS_NAME, WEAPONS, type WeaponDef, type WeaponType } from '../data/weapons';
 import '../ui/tutorial.css';
 import type { BattleScene } from './battleScene';
@@ -240,6 +240,8 @@ export class Tutorial {
     const p = b.player;
     p.hp = p.derived.maxHp;
     p.mp = p.derived.maxMp;
+    // 체험장에서는 천공 섬광을 언제나 30자루로 써 본다.
+    b.skyStacks = SKY_MAX_BLADES * SKY_STACKS_PER_BLADE;
 
     const i = p.active;
     const w = p.weapon;

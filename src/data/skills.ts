@@ -19,6 +19,11 @@ export const SKILL_TIER_NAME: Record<2 | 3, string> = { 2: '상급', 3: '궁극'
 /** 무기 하나의 스킬 슬롯 수 (Q W E A S D F G) */
 export const SKILL_SLOTS = 8;
 
+/** 천공 섬광 [초안]: 스킬 id (옛 세이브를 위해 만검귀종 때의 id를 그대로 쓴다), 마나검 한 자루에 드는 처치·타격 수, 최대 자루 */
+export const SKY_FLASH_ID = 'sword_thousand_blades';
+export const SKY_STACKS_PER_BLADE = 10;
+export const SKY_MAX_BLADES = 30;
+
 export const SKILLS: SkillDef[] = [
   {
     id: 'sword_whirl',
@@ -315,14 +320,14 @@ export const SKILLS: SkillDef[] = [
   },
   {
     id: 'sword_thousand_blades',
-    name: '만검귀종',
-    short: '만검',
+    name: '천공 섬광',
+    short: '섬광',
     weapon: 'sword',
     tier: 3,
     mana: 120,
     cooldown: 60,
     reqLevel: 10,
-    desc: '하늘이 갈라지며 영검 30자루가 화면 전체에 쏟아진다. 검이 꽂힐 때마다 주변 적에게 힘의 300% 피해.',
+    desc: '공중으로 날아올라, 이번 전투에서 쌓은 처치·타격 10회당 마나검 한 자루(최대 30자루)를 소환한다. 검마다 몬스터를 조준해 탄검강을 4번 쏘고 사라진다. 탄검강은 한 발에 힘의 40% 피해를 주고 직선의 적을 꿰뚫는다. 쓰면 쌓은 처치·타격이 모두 사라진다. 한 자루도 없으면 쓸 수 없다.',
   },
   {
     id: 'dao_moon_storm',

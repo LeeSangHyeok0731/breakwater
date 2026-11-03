@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { SLOT_ACTIONS } from '../core/input';
 import { sfx } from '../core/audio';
-import type { SkillDef } from '../data/skills';
+import { SKY_FLASH_ID, type SkillDef } from '../data/skills';
 import type { BattleScene, HitOpts } from './battleScene';
 import { DEPTH } from './fx';
 import type { ActionKind } from './player2d';
@@ -57,7 +57,7 @@ let iaiPath: { x0: number; len: number; y: number } | null = null;
 export function updatePlayerCombat(b: BattleScene, dt: number): void {
   const p = b.player;
   const input = b.keys;
-  if (p.dead) return;
+  if (p.dead || p.hoverTime > 0) return;
 
   if (input.pressed('swap') && p.swapCd <= 0 && p.dodgeTime <= 0 && !(p.action && CHANNELS.has(p.action.kind))) {
     p.swapWeapon();
@@ -818,6 +818,11 @@ function tryCast(b: BattleScene, skill: SkillDef | null, slot: number): void {
     return;
   }
   if (p.action && CHANNELS.has(p.action.kind)) return;
+  if (skill.id === SKY_FLASH_ID && b.skyBladeCount() < 1) {
+    b.hud.notify('마나검이 없습니다. 몬스터를 더 공격하세요');
+    b.hud.flashSlot(slot);
+    return;
+  }
   p.mp -= skill.mana;
   p.cooldowns.set(skill.id, skill.cooldown * (1 - p.derived.cdReduce));
   p.resetCombo();

@@ -150,6 +150,9 @@ export class Player {
   dropTimer = 0;
   /** 공중에서 남은 추가 점프 횟수 (더블 점프) */
   airJumps = 1;
+  /** 공중에 떠서 스킬을 쓰는 남은 시간 (천공 섬광). 이동·공격을 할 수 없다. */
+  hoverTime = 0;
+  private hoverY = 0;
   /** 방향 더블 점프의 잔상이 남은 시간 */
   private airDashTime = 0;
   dead = false;
@@ -316,7 +319,24 @@ export class Player {
     return (this.derived.moveSpeed + 5 * bonus) * PX_PER_M * (this.slowTime > 0 ? 0.6 : 1);
   }
 
+  /** 공중의 y까지 날아올라 정해진 시간 동안 머문다. 그동안은 맞지 않는다. */
+  startHover(y: number, time: number): void {
+    this.hoverY = y;
+    this.hoverTime = time;
+    this.invuln = Math.max(this.invuln, time + 0.2);
+    this.action = null;
+    this.charge = -1;
+    this.guarding = false;
+    this.dodgeTime = 0;
+    this.resetCombo();
+    this.body.setAllowGravity(false);
+  }
+
   updateTimers(dt: number): void {
+    if (this.hoverTime > 0) {
+      this.hoverTime -= dt;
+      if (this.hoverTime <= 0) this.body.setAllowGravity(true);
+    }
     this.silenceTime = Math.max(0, this.silenceTime - dt);
     this.parryCd = Math.max(0, this.parryCd - dt);
     this.dodgeCd = Math.max(0, this.dodgeCd - dt);
@@ -372,7 +392,12 @@ export class Player {
   updateMovement(dt: number, input: Input): void {
     const body = this.body;
     if (this.dead) {
+      body.setAllowGravity(true);
       body.setVelocityX(body.velocity.x * 0.9);
+      return;
+    }
+    if (this.hoverTime > 0) {
+      body.setVelocity(0, this.y > this.hoverY + 2 ? Math.max(-420, (this.hoverY - this.y) * 8) : 0);
       return;
     }
     if (this.dodgeTime > 0) {
