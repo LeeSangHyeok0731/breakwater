@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { SLOT_ACTIONS } from '../core/input';
 import { sfx } from '../core/audio';
-import { SKY_FLASH_ID, type SkillDef } from '../data/skills';
+import { SKY_FLASH_ID, skyShotMana, type SkillDef } from '../data/skills';
 import type { BattleScene, HitOpts } from './battleScene';
 import { DEPTH } from './fx';
 import type { ActionKind } from './player2d';
@@ -812,7 +812,9 @@ function tryCast(b: BattleScene, skill: SkillDef | null, slot: number): void {
     return;
   }
   if ((p.cooldowns.get(skill.id) ?? 0) > 0) return;
-  if (p.mp < skill.mana) {
+  // 천공 섬광은 최대 마나에 따라 커지는 한 발 마나만큼은 있어야 쓸 수 있다.
+  const need = skill.id === SKY_FLASH_ID ? skyShotMana(p.derived.maxMp) : skill.mana;
+  if (p.mp < need) {
     b.hud.notify('마나가 부족합니다');
     b.hud.flashSlot(slot);
     return;

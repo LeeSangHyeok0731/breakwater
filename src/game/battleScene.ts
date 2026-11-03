@@ -10,7 +10,7 @@ import { DIFFICULTY, LEGIONS, rewardMul, SILENCE_STACKS, SILENCE_TIME, type Legi
 import { barProgress, totalReward, WORLD_BOSS_BARS, WORLD_BOSS_TIME } from '../data/worldBoss';
 import { koNum } from '../ui/format';
 import { column, impactBurst, PAL, rays, shockwave, tint } from './vfx';
-import { chunkSkills, SKILL_BY_ID, SKILL_SLOTS, skillsFor, SKY_FLASH_ID, SKY_MAX_BLADES, SKY_STACKS_PER_BLADE, type SkillDef } from '../data/skills';
+import { chunkSkills, SKILL_BY_ID, SKILL_SLOTS, skillsFor, SKY_FLASH_ID, SKY_MAX_BLADES, SKY_STACKS_PER_BLADE, skyShotMana, type SkillDef } from '../data/skills';
 import { CLASS_NAME, GRADES, WEAPONS, type WeaponType } from '../data/weapons';
 import { Hud, type HudSlot, type HudState } from '../ui/hud';
 import { updatePlayerCombat } from './combat2d';
@@ -1595,7 +1595,8 @@ export class BattleScene extends Phaser.Scene {
       const cdLeft = p.cooldowns.get(s.id) ?? 0;
       // 천공 섬광 칸에는 지금 소환할 수 있는 마나검 수를 적는다.
       const blades = s.id === SKY_FLASH_ID ? this.skyBladeCount() : -1;
-      return { key, short: blades >= 0 ? `${blades}검` : s.short, name: s.name, mana: s.mana, cdLeft, cdRatio: cdLeft / (s.cooldown * (1 - p.derived.cdReduce)), usable: cdLeft <= 0 && p.mp >= s.mana && blades !== 0, empty: false };
+      const mana = blades >= 0 ? skyShotMana(p.derived.maxMp) : s.mana;
+      return { key, short: blades >= 0 ? `${blades}검` : s.short, name: s.name, mana, cdLeft, cdRatio: cdLeft / (s.cooldown * (1 - p.derived.cdReduce)), usable: cdLeft <= 0 && p.mp >= mana && blades !== 0, empty: false };
     });
     const mission = this.phase.mission;
     let waveText: string;

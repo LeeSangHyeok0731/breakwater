@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { sfx } from '../core/audio';
-import { SKY_SHOT_MANA } from '../data/skills';
+import { skyShotMana, skyShotStr } from '../data/skills';
 import type { BattleScene } from './battleScene';
 import { DEPTH } from './fx';
 import type { Monster } from './monster2d';
@@ -125,10 +125,9 @@ const crossJudgment: Cast = (b) => {
   });
 };
 
-/** 천공 섬광 [초안]: 소환까지 걸리는 시간, 모든 검이 한 번씩 쏘는 최대 시간(ms), 한 발의 힘 계수 */
+/** 천공 섬광 [초안]: 소환까지 걸리는 시간, 모든 검이 한 번씩 쏘는 최대 시간(ms) */
 const SKY_SUMMON_MS = 700;
 const SKY_ROUND_MS = 640;
-const SKY_SHOT_STR = 0.8;
 /** 공중에 머무는 몸 높이 (땅 기준 px) */
 const SKY_HOVER = 110;
 
@@ -137,7 +136,9 @@ const skyFlash: Cast = (b) => {
   const p = b.player;
   const count = b.takeSkyBlades();
   // 시전 순간의 마나로 발사 수를 정한다. 시전 중에는 마나가 차지 않는다.
-  const shots = Math.floor(p.mp / SKY_SHOT_MANA);
+  const cost = skyShotMana(p.derived.maxMp);
+  const damage = b.skillBase({ str: skyShotStr(p.derived.maxMp) });
+  const shots = Math.floor(p.mp / cost);
   const gapMs = Math.min(SKY_ROUND_MS, count * 60) / count;
   const lastShot = SKY_SUMMON_MS + shots * gapMs;
   const hoverY = Math.min(p.y, FLOOR_Y - SKY_HOVER);
@@ -159,8 +160,8 @@ const skyFlash: Cast = (b) => {
   }
   for (let n = 0; n < shots; n++) {
     later(b, SKY_SUMMON_MS + n * gapMs, () => {
-      p.mp = Math.max(0, p.mp - SKY_SHOT_MANA);
-      skyShot(b, swords[n % swords.length], n === shots - 1);
+      p.mp = Math.max(0, p.mp - cost);
+      skyShot(b, swords[n % swords.length], damage, n === shots - 1);
     });
   }
   later(b, lastShot + 120, () => {
@@ -211,7 +212,7 @@ function skySword(b: BattleScene, x: number, y: number, lifeMs: number): SkySwor
 }
 
 /** 탄검강 한 발: 몬스터를 조준해 칼끝에서 쏜다. 몬스터가 없으면 앞쪽 땅을 때린다. */
-function skyShot(b: BattleScene, { sword, glow, x, y }: SkySword, last: boolean): void {
+function skyShot(b: BattleScene, { sword, glow, x, y }: SkySword, damage: number, last: boolean): void {
   const targets = onScreen(b);
   const m = targets.length ? targets[Math.floor(Math.random() * targets.length)] : null;
   const v = view(b);
@@ -226,7 +227,7 @@ function skyShot(b: BattleScene, { sword, glow, x, y }: SkySword, last: boolean)
   b.fx.tracer(x, y, x + Math.cos(ang) * far, y + Math.sin(ang) * far, last ? 0xdff4ff : 0x7fc4ff, 3, 130);
   flare(b, tx, ty, 16, PAL.sky, 140);
   b.fx.spark(tx, ty, 0xbfe8ff, 1);
-  b.hitscan(x, y, ang, far, b.skillBase({ str: SKY_SHOT_STR }), { pierce: true, color: 0x9fd8ff, width: 0, quiet: true });
+  b.hitscan(x, y, ang, far, damage, { pierce: true, color: 0x9fd8ff, width: 0, quiet: true });
   sfx.play('magic', 0.45);
 }
 

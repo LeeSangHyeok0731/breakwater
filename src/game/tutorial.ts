@@ -27,7 +27,7 @@ export const TUTORIAL_PHASE: PhaseDef = {
 
 const MOVE_GOAL = 160;
 const STEP_PAUSE = 0.7;
-/** 체험장의 최소 최대 마나: 천공 섬광 120발 */
+/** 체험장의 최소 최대 마나: 천공 섬광이 한 발 마나 10, 힘의 약 197%로 60발 */
 const TRIAL_MIN_MP = 600;
 const FIGHT_COUNT = 3;
 /** 직업 체험장 */
