@@ -23,6 +23,8 @@ export const SKILL_SLOTS = 8;
 export const SKY_FLASH_ID = 'sword_thousand_blades';
 export const SKY_STACKS_PER_BLADE = 10;
 export const SKY_MAX_BLADES = 30;
+/** 탄검강 한 발에 드는 마나 */
+export const SKY_SHOT_MANA = 5;
 
 export const SKILLS: SkillDef[] = [
   {
@@ -324,10 +326,10 @@ export const SKILLS: SkillDef[] = [
     short: '섬광',
     weapon: 'sword',
     tier: 3,
-    mana: 120,
+    mana: SKY_SHOT_MANA,
     cooldown: 60,
     reqLevel: 10,
-    desc: '공중으로 날아올라, 이번 전투에서 쌓은 처치·타격 10회당 마나검 한 자루(최대 30자루)를 소환한다. 검마다 몬스터를 조준해 탄검강을 4번 쏘고 사라진다. 탄검강은 한 발에 힘의 40% 피해를 주고 직선의 적을 꿰뚫는다. 쓰면 쌓은 처치·타격이 모두 사라진다. 한 자루도 없으면 쓸 수 없다.',
+    desc: '공중으로 날아올라, 이번 전투에서 쌓은 처치·타격 10회당 마나검 한 자루(최대 30자루)를 소환한다. 검들이 번갈아 몬스터를 조준해 탄검강을 쏘며, 한 발마다 마나 5를 써서 마나가 바닥날 때까지 이어진다. 탄검강은 한 발에 힘의 80% 피해를 주고 직선의 적을 꿰뚫는다. 검이 많을수록 빠르게 쏜다. 시전 중에는 마나가 차지 않고, 쓰면 쌓은 처치·타격이 모두 사라진다. 한 자루도 없으면 쓸 수 없다.',
   },
   {
     id: 'dao_moon_storm',

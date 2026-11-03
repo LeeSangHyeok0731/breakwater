@@ -27,6 +27,8 @@ export const TUTORIAL_PHASE: PhaseDef = {
 
 const MOVE_GOAL = 160;
 const STEP_PAUSE = 0.7;
+/** 체험장의 최소 최대 마나: 천공 섬광 120발 */
+const TRIAL_MIN_MP = 600;
 const FIGHT_COUNT = 3;
 /** 직업 체험장 */
 const TRIAL_CLASSES: WeaponType[] = ['sword', 'dao', 'bow', 'gun', 'staff'];
@@ -221,8 +223,8 @@ export class Tutorial {
     p.weapons = equipWeapons(TRIAL_CLASSES.map((type) => ({ def: trialWeapon(type), enhance: 0, pages: chunkSkills(skillsFor(type)) })));
     p.active = 0;
     p.cooldowns.clear();
-    // 낮은 레벨의 최대 마나로는 궁극기(마나 120)를 못 쓴다.
-    p.derived.maxMp = Math.max(p.derived.maxMp, ...SKILLS.map((s) => s.mana));
+    // 낮은 레벨의 최대 마나로는 궁극기를 못 쓰고, 천공 섬광도 금방 끝난다.
+    p.derived.maxMp = Math.max(p.derived.maxMp, TRIAL_MIN_MP, ...SKILLS.map((s) => s.mana));
 
     ensureScarecrow(b);
     for (const x of SCARECROW_XS) b.spawnMonster('scarecrow', false, x);

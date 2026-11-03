@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { sfx } from '../core/audio';
+import { SKY_SHOT_MANA } from '../data/skills';
 import type { BattleScene } from './battleScene';
 import { DEPTH } from './fx';
 import type { Monster } from './monster2d';
@@ -124,20 +125,21 @@ const crossJudgment: Cast = (b) => {
   });
 };
 
-/** 천공 섬광 [초안]: 소환까지 걸리는 시간, 자루당 탄검강 수, 한 바퀴의 최대 시간(ms), 한 발의 힘 계수 */
+/** 천공 섬광 [초안]: 소환까지 걸리는 시간, 모든 검이 한 번씩 쏘는 최대 시간(ms), 한 발의 힘 계수 */
 const SKY_SUMMON_MS = 700;
-const SKY_SHOTS = 4;
 const SKY_ROUND_MS = 640;
-const SKY_SHOT_STR = 0.4;
+const SKY_SHOT_STR = 0.8;
 /** 공중에 머무는 몸 높이 (땅 기준 px) */
 const SKY_HOVER = 110;
 
-/** 천공 섬광: 날아올라 마나검을 펼치고, 검마다 몬스터를 조준해 탄검강을 쏜다. */
+/** 천공 섬광: 날아올라 마나검을 펼치고, 마나가 바닥날 때까지 검들이 번갈아 탄검강을 쏜다. */
 const skyFlash: Cast = (b) => {
   const p = b.player;
   const count = b.takeSkyBlades();
-  const roundMs = Math.min(SKY_ROUND_MS, count * 60);
-  const lastShot = SKY_SUMMON_MS + SKY_SHOTS * roundMs;
+  // 시전 순간의 마나로 발사 수를 정한다. 시전 중에는 마나가 차지 않는다.
+  const shots = Math.floor(p.mp / SKY_SHOT_MANA);
+  const gapMs = Math.min(SKY_ROUND_MS, count * 60) / count;
+  const lastShot = SKY_SUMMON_MS + shots * gapMs;
   const hoverY = Math.min(p.y, FLOOR_Y - SKY_HOVER);
   p.startHover(hoverY, (lastShot + 300) / 1000);
   b.fx.dim(0x000818, 0.5, lastShot + 300);
@@ -145,6 +147,7 @@ const skyFlash: Cast = (b) => {
   shockwave(b, p.x, p.feet, 170, PAL.sky, 500, 1, 6);
   sfx.play('magic', 1.2);
 
+  const swords: SkySword[] = [];
   for (let i = 0; i < count; i++) {
     // 몸 위쪽 부채꼴에 세 줄로 펼친다.
     const row = i % 3;
@@ -152,9 +155,16 @@ const skyFlash: Cast = (b) => {
     const x = p.x + Math.cos(ang) * (46 + row * 20);
     const y = hoverY - 4 + Math.sin(ang) * (40 + row * 18);
     const appear = 120 + (i * 480) / count;
-    later(b, appear, () => skySword(b, x, y, SKY_SUMMON_MS - appear + (i * roundMs) / count, roundMs, SKY_SUMMON_MS + SKY_SHOTS * roundMs + 400 - appear));
+    later(b, appear, () => swords.push(skySword(b, x, y, lastShot + 400 - appear)));
+  }
+  for (let n = 0; n < shots; n++) {
+    later(b, SKY_SUMMON_MS + n * gapMs, () => {
+      p.mp = Math.max(0, p.mp - SKY_SHOT_MANA);
+      skyShot(b, swords[n % swords.length], n === shots - 1);
+    });
   }
   later(b, lastShot + 120, () => {
+    for (const s of swords) s.vanish();
     b.fx.flashScreen(0xdff4ff, 0.3, 260);
     b.fx.shake(1.4, 240);
     const v = view(b);
@@ -163,8 +173,16 @@ const skyFlash: Cast = (b) => {
   });
 };
 
-/** 마나검 한 자루: 나타나 검강을 두르고, 탄검강을 다 쏘면 사라진다. */
-function skySword(b: BattleScene, x: number, y: number, firstShot: number, roundMs: number, lifeMs: number): void {
+interface SkySword {
+  sword: Phaser.GameObjects.Image;
+  glow: Phaser.GameObjects.Image;
+  x: number;
+  y: number;
+  vanish(): void;
+}
+
+/** 마나검 한 자루: 나타나 검강을 두르고, 시전이 끝나면 사라진다. */
+function skySword(b: BattleScene, x: number, y: number, lifeMs: number): SkySword {
   const sword = b.add.image(x, y - 14, 'fx-sword').setDepth(DEPTH.projectile).setTint(0x9fd8ff).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0);
   // 검강: 칼날을 감싸는 더 큰 빛
   const glow = b.add.image(x, y, 'fx-sword').setDepth(DEPTH.projectile - 1).setTint(0x4f9dff).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0).setScale(1.5);
@@ -179,21 +197,21 @@ function skySword(b: BattleScene, x: number, y: number, firstShot: number, round
   };
   // later는 쓰러지면 건너뛰므로, 검이 남지 않게 따로 지운다.
   b.time.delayedCall(lifeMs, cleanup);
-
-  for (let shot = 0; shot < SKY_SHOTS; shot++) {
-    later(b, firstShot + shot * roundMs, () => {
+  return {
+    sword,
+    glow,
+    x,
+    y,
+    vanish: () => {
       if (!sword.active) return;
-      skyShot(b, sword, glow, x, y, shot);
-      if (shot === SKY_SHOTS - 1) {
-        b.fx.burst(x, y, 0xbfe8ff, 6, 70, 260);
-        b.tweens.add({ targets: parts, alpha: 0, duration: 140, onComplete: cleanup });
-      }
-    });
-  }
+      b.fx.burst(x, y, 0xbfe8ff, 6, 70, 260);
+      b.tweens.add({ targets: parts, alpha: 0, duration: 140, onComplete: cleanup });
+    },
+  };
 }
 
 /** 탄검강 한 발: 몬스터를 조준해 칼끝에서 쏜다. 몬스터가 없으면 앞쪽 땅을 때린다. */
-function skyShot(b: BattleScene, sword: Phaser.GameObjects.Image, glow: Phaser.GameObjects.Image, x: number, y: number, shot: number): void {
+function skyShot(b: BattleScene, { sword, glow, x, y }: SkySword, last: boolean): void {
   const targets = onScreen(b);
   const m = targets.length ? targets[Math.floor(Math.random() * targets.length)] : null;
   const v = view(b);
@@ -205,7 +223,7 @@ function skyShot(b: BattleScene, sword: Phaser.GameObjects.Image, glow: Phaser.G
   glow.setRotation(ang - Math.PI / 2);
   b.tweens.add({ targets: [sword, glow], x: x - Math.cos(ang) * 6, y: y - Math.sin(ang) * 6, duration: 50, yoyo: true });
   const far = Math.hypot(tx - x, ty - y) + 90;
-  b.fx.tracer(x, y, x + Math.cos(ang) * far, y + Math.sin(ang) * far, shot === SKY_SHOTS - 1 ? 0xdff4ff : 0x7fc4ff, 3, 130);
+  b.fx.tracer(x, y, x + Math.cos(ang) * far, y + Math.sin(ang) * far, last ? 0xdff4ff : 0x7fc4ff, 3, 130);
   flare(b, tx, ty, 16, PAL.sky, 140);
   b.fx.spark(tx, ty, 0xbfe8ff, 1);
   b.hitscan(x, y, ang, far, b.skillBase({ str: SKY_SHOT_STR }), { pierce: true, color: 0x9fd8ff, width: 0, quiet: true });

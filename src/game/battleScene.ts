@@ -603,7 +603,8 @@ export class BattleScene extends Phaser.Scene {
     this.pending.gold += m.def.gold * mul;
     this.pending.exp += m.def.exp * mul;
     this.pending.kills++;
-    p.mp = Math.min(p.derived.maxMp, p.mp + m.def.mana * (m.elite ? 5 : 1));
+    // 천공 섬광 시전 중에 잡아도 마나를 돌려받지 않는다.
+    if (p.hoverTime <= 0) p.mp = Math.min(p.derived.maxMp, p.mp + m.def.mana * (m.elite ? 5 : 1));
     for (const d of m.def.drops) {
       if (Math.random() < (m.elite ? Math.min(1, d.chance * 2) : d.chance) * share) this.addMaterial(d.id, m.elite ? 2 : 1, m.x, m.body.top);
     }

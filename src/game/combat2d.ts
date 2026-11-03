@@ -823,7 +823,8 @@ function tryCast(b: BattleScene, skill: SkillDef | null, slot: number): void {
     b.hud.flashSlot(slot);
     return;
   }
-  p.mp -= skill.mana;
+  // 천공 섬광은 탄검강을 쏠 때마다 마나를 쓴다.
+  if (skill.id !== SKY_FLASH_ID) p.mp -= skill.mana;
   p.cooldowns.set(skill.id, skill.cooldown * (1 - p.derived.cdReduce));
   p.resetCombo();
   p.charge = -1;

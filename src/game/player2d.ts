@@ -370,7 +370,8 @@ export class Player {
       this.wardTime -= dt;
       if (this.wardTime <= 0) this.wardHits = 0;
     }
-    if (!this.dead) this.mp = Math.min(this.derived.maxMp, this.mp + this.derived.mpRegen * dt);
+    // 천공 섬광 시전 중에는 마나가 차지 않는다.
+    if (!this.dead && this.hoverTime <= 0) this.mp = Math.min(this.derived.maxMp, this.mp + this.derived.mpRegen * dt);
   }
 
   startDodge(): void {
