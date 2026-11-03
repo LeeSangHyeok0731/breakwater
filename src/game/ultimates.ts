@@ -985,31 +985,94 @@ function meteorAt(b: BattleScene, x: number, damage: number, loud: boolean): voi
 }
 
 /**
- * 룬 아마겟돈 [초안]: 머리 위에 뜨는 방향 룬과 같은 방향키를 누를 때마다 운석이 떨어진다 (마력의 350%).
- * 틀리거나 4.5초가 지나거나 12개를 채우면 영창이 끝나고, 새긴 룬 수만큼 커진 대폭발이 화면 안 모든 적을 덮친다
- * (마력의 200% + 룬 하나당 100%).
+ * 룬 아마겟돈 [초안]: 머리 위에 뜨는 방향 룬과 같은 방향키를 누를 때마다 운석이 떨어진다. 시간 제한 대신 룬 수로 강해진다.
+ * - 단계: 룬 4개 → 2단계, 5개 더 → 3단계, 6개 더(모두 15개) → 4단계에서 마지막 폭발. 단계마다 마법진이 커지고, 룬 하나에 운석이 단계 수만큼 떨어진다 (최대 3개).
+ * - 연속 증폭: n번째 룬의 운석은 하나에 마력의 200% × n.
+ * - 원소 조합: 룬은 불·얼음·번개 색으로 3개씩 묶여 나온다. 한 묶음을 다 맞히면 그 원소 마법이 터진다 (단계에 비례).
+ * - 틀리거나 한 룬에 2초가 지나면 영창이 끝나고, 마력의 (200% + 룬당 100%) × 단계 배수의 대폭발이 화면 안 모든 적을 덮친다.
  */
-const RUNE_TIME = 4.5;
-const RUNE_MAX = 12;
+const RUNE_LIMIT = 2;
+const RUNE_STAGES = [4, 9, 15];
+const RUNE_MAX = RUNE_STAGES[RUNE_STAGES.length - 1];
+const RUNE_METEOR_INT = 2;
+const RUNE_STAGE_MUL = [1, 1.5, 2, 2.5];
 const RUNES: { action: 'left' | 'up' | 'right' | 'down'; glyph: string }[] = [
   { action: 'left', glyph: '←' },
   { action: 'up', glyph: '↑' },
   { action: 'right', glyph: '→' },
   { action: 'down', glyph: '↓' },
 ];
+type RuneElement = 'fire' | 'ice' | 'bolt';
+const ELEMENT: Record<RuneElement, { color: number; css: string; name: string }> = {
+  fire: { color: 0xff6a2a, css: '#ff8a4a', name: '불' },
+  ice: { color: 0x8fe0ff, css: '#9fe8ff', name: '얼음' },
+  bolt: { color: 0xffe04a, css: '#fff07a', name: '번개' },
+};
+
+/** 원소 묶음을 다 맞혔을 때 터지는 마법 (단계에 비례) */
+function runeBurst(b: BattleScene, el: RuneElement, stage: number): void {
+  const foes = onScreen(b);
+  const v = view(b);
+  if (el === 'fire') {
+    // 불기둥: 화면 안 적마다 솟는다.
+    b.announce('원소 조합 · 불기둥!', 0.9);
+    sfx.play('boom', 0.8);
+    foes.forEach((m, i) =>
+      later(b, i * 50, () => {
+        column(b, m.x, FLOOR_Y, 34, 300, PAL.flame, 520);
+        b.fx.boom(m.x, FLOOR_Y - 30, 30, 'fire');
+        if (m.alive) b.hitMonster(m, b.skillBase({ int: 5 * stage }), { knock: 60, quiet: i > 0 });
+      }),
+    );
+  } else if (el === 'ice') {
+    // 얼음 감옥: 적을 얼음 가시로 가두고 잠깐 멈춘다.
+    b.announce('원소 조합 · 얼음 감옥!', 0.9);
+    sfx.play('magic', 1.2);
+    tint(b, 0x7fd8ff, 0.2, 400);
+    foes.forEach((m, i) => {
+      for (let k = -1; k <= 1; k++) b.fx.iceSpike(m.x + k * 12, FLOOR_Y, 1 + (k === 0 ? 0.4 : 0), 900, i * 30 + Math.abs(k) * 40);
+      if (m.alive) b.hitMonster(m, b.skillBase({ int: 4 * stage }), { stun: 1.5, quiet: i > 0 });
+    });
+  } else {
+    // 연쇄 번개: 하늘에서 내려와 적에서 적으로 튄다.
+    b.announce('원소 조합 · 연쇄 번개!', 0.9);
+    let from = { x: v.centerX, y: v.y };
+    foes.slice(0, 12).forEach((m, i) => {
+      const a = from;
+      later(b, i * 60, () => {
+        b.fx.lightning(a.x, a.y, m.x, m.y, 0xfff07a, 2, 220);
+        b.fx.spark(m.x, m.y, 0xffffff, 2);
+        sfx.play('magic', 1.4);
+        if (m.alive) b.hitMonster(m, b.skillBase({ int: 4.5 * stage }), { knock: 30, quiet: i > 0 });
+      });
+      from = { x: m.x, y: m.y };
+    });
+  }
+}
 
 const armageddon: Cast = (b) => {
   const p = b.player;
   p.startAction('cast', 99);
   const cam = b.cameras.main;
   const veil = b.add.rectangle(0, 0, cam.width + 400, cam.height, 0x400000, 0.45).setOrigin(0).setScrollFactor(0).setDepth(DEPTH.monster - 2);
-  const circles = skyCircles(b, 0xff5a2a, (RUNE_TIME + 2) * 1000);
+  // 마법진: 단계마다 하나씩 겹쳐 커진다.
+  let circles = skyCircles(b, 0xff5a2a, 60000);
   const rune = ultText(b, 30, '#ffd08a');
+  const timerBar = b.add.graphics().setDepth(DEPTH.text);
   const info = ultText(b, 14, '#ffb080').setScrollFactor(0);
   b.announce('룬 아마겟돈! 머리 위 룬과 같은 방향키를 눌러라', 1.6);
   b.fx.flashScreen(0xff3a1a, 0.3, 300);
+  // 원소는 같은 색 셋씩 묶어서 나온다.
+  const elements: RuneElement[] = [];
+  const order: RuneElement[] = ['fire', 'ice', 'bolt'];
+  while (elements.length < RUNE_MAX) {
+    const el = order[Math.floor(Math.random() * 3)];
+    if (elements.length && elements[elements.length - 1] === el) continue;
+    elements.push(el, el, el);
+  }
   let t = 0;
   let count = 0;
+  let stage = 1;
   let current = RUNES[Math.floor(Math.random() * 4)];
   let casting = true;
   let after = 0;
@@ -1017,10 +1080,22 @@ const armageddon: Cast = (b) => {
     let r = current;
     while (r === current) r = RUNES[Math.floor(Math.random() * 4)];
     current = r;
+    t = 0;
+  };
+  const stageUp = (): void => {
+    stage++;
+    b.announce(stage >= 4 ? '마법진 완성!' : `마법진 ${stage}단계`, 1);
+    b.fx.flashScreen(0xffa040, 0.3, 300);
+    b.fx.shake(1 + stage * 0.3, 260);
+    sfx.play('boom', 0.7);
+    for (const c of circles) if (c.active) c.destroy();
+    circles = skyCircles(b, stage >= 3 ? 0xffd060 : 0xff8a3a, 60000);
+    circles.forEach((c) => c.setScale(c.scaleX * (1 + stage * 0.2)));
   };
   const cleanup = (): void => {
     rune.destroy();
     info.destroy();
+    timerBar.destroy();
     for (const c of circles) if (c.active) c.destroy();
     b.tweens.add({ targets: veil, alpha: 0, duration: 400, onComplete: () => veil.destroy() });
     p.action = null;
@@ -1036,22 +1111,34 @@ const armageddon: Cast = (b) => {
       p.invuln = Math.max(p.invuln, 0.2);
       if (casting) {
         t += dt;
-        rune.setPosition(p.x, p.body.top - 28 + Math.sin(t * 8) * 2).setText(current.glyph);
-        info.setPosition(cam.width / 2, 74).setText(`룬 ${count} / ${RUNE_MAX} · ${Math.max(0, RUNE_TIME - t).toFixed(1)}초`);
+        const el = elements[count];
+        const rx = p.x;
+        const ry = p.body.top - 30 + Math.sin(b.time.now * 0.008) * 2;
+        rune.setPosition(rx, ry).setText(current.glyph).setColor(ELEMENT[el].css);
+        // 이 룬에 남은 시간 막대
+        const left = Math.max(0, 1 - t / RUNE_LIMIT);
+        timerBar.clear().fillStyle(0x140608, 0.8).fillRect(rx - 14, ry + 18, 28, 3).fillStyle(ELEMENT[el].color, 1).fillRect(rx - 14, ry + 18, Math.round(28 * left), 3);
+        info.setPosition(cam.width / 2, 74).setText(`마법진 ${stage}단계 · 룬 ${count} / ${RUNE_MAX} · 다음 원소 ${ELEMENT[el].name}`);
         const pressed = RUNES.find((r) => b.keys.pressed(r.action));
-        let stop = t >= RUNE_TIME;
+        let stop = t >= RUNE_LIMIT;
         if (pressed) {
           if (pressed === current) {
             count++;
-            // 새긴 룬이 하늘로 날아올라 운석을 부른다.
-            const fly = ultText(b, 30, '#ffd08a').setPosition(rune.x, rune.y).setText(current.glyph);
+            // 새긴 룬이 하늘로 날아올라 운석을 부른다. 단계만큼 떨어지고, 뒤의 룬일수록 세다.
+            const fly = ultText(b, 30, ELEMENT[el].css).setPosition(rune.x, rune.y).setText(current.glyph);
             b.tweens.add({ targets: fly, y: view(b).y + 30, alpha: 0, scale: 1.6, duration: 380, onComplete: () => fly.destroy() });
-            b.fx.burst(rune.x, rune.y, 0xffd08a, 8, 90, 260);
-            sfx.play('magic', 0.8 + count * 0.05);
-            const targets = onScreen(b);
+            b.fx.burst(rune.x, rune.y, ELEMENT[el].color, 8, 90, 260);
+            sfx.play('magic', 0.8 + count * 0.04);
+            const meteors = Math.min(3, stage);
             const v = view(b);
-            const m = targets.length ? targets[Math.floor(Math.random() * targets.length)] : null;
-            meteorAt(b, m ? m.x : v.x + 40 + Math.random() * (v.width - 80), b.skillBase({ int: 3.5 }), count % 3 === 0);
+            for (let i = 0; i < meteors; i++) {
+              const targets = onScreen(b);
+              const m = targets.length ? targets[Math.floor(Math.random() * targets.length)] : null;
+              later(b, i * 90, () => meteorAt(b, m ? m.x + (Math.random() - 0.5) * 30 : v.x + 40 + Math.random() * (v.width - 80), b.skillBase({ int: RUNE_METEOR_INT * count }), i === 0));
+            }
+            // 같은 원소 셋을 다 맞혔다: 원소 마법
+            if (count % 3 === 0) runeBurst(b, el, stage);
+            if (RUNE_STAGES.includes(count)) stageUp();
             nextRune();
             if (count >= RUNE_MAX) stop = true;
           } else {
@@ -1063,16 +1150,18 @@ const armageddon: Cast = (b) => {
           }
         }
         if (!stop) return false;
+        if (t >= RUNE_LIMIT && count < RUNE_MAX) b.fx.text(p.x, p.body.top - 40, '영창이 끊겼다', 'info');
         casting = false;
         rune.setText('');
-        info.setText(`룬 ${count}개`);
+        timerBar.clear();
+        info.setText(`룬 ${count}개 · 마법진 ${stage}단계`);
         return false;
       }
       after += dt;
-      if (after < 0.7) return false;
-      // 대폭발: 새긴 룬이 많을수록 커진다.
+      if (after < 0.8) return false;
+      // 대폭발: 새긴 룬과 마법진 단계만큼 커진다.
       const v = view(b);
-      const power = 2 + count;
+      const power = (2 + count) * RUNE_STAGE_MUL[stage - 1];
       sfx.play('boom');
       b.fx.flashScreen(0xfff0c0, 0.45 + Math.min(0.35, count * 0.03), 600);
       b.fx.shake(1.4 + count * 0.12, 420);
@@ -1086,7 +1175,6 @@ const armageddon: Cast = (b) => {
     },
   };
 };
-
 const ULTIMATES: Record<string, Cast> = {
   sword_heaven_cleave: heavenCleave,
   sword_cross_judgment: crossJudgment,
