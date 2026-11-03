@@ -31,7 +31,7 @@ const pct = (r: number): string => `${Math.round(r * 100)}%`;
 
 export const CLASS_PASSIVES: ClassPassiveDef[] = [
   { line: 'melee', name: '투기 순환', classes: ['sword', 'dao'], stat: 'str', desc: (r) => `힘의 ${pct(r)}만큼 마력이 늘어난다.` },
-  { line: 'ranged', name: '사냥꾼의 직감', classes: ['bow', 'gun'], stat: 'dex', desc: (r) => `민첩과 힘을 더한 값의 ${pct(r)}만큼 마력이 늘어난다.` },
+  { line: 'ranged', name: '사냥꾼의 직감', classes: ['bow', 'gun'], stat: 'dex', desc: (r) => `민첩과 힘을 더한 값의 ${pct(r)}만큼 마력이, 민첩의 ${pct(r)}만큼 힘이 늘어난다.` },
   { line: 'magic', name: '마력 공명', classes: ['staff'], stat: 'int', desc: (r) => `마력의 ${pct(r)}만큼 힘과 민첩이 각각 늘어난다.` },
 ];
 
@@ -85,7 +85,10 @@ export function classPassiveBonus(s: StatLike, level: number): ClassPassiveBonus
   const { tier, rate } = classPassiveTier(level);
   const add: StatLike = { str: 0, dex: 0, int: 0 };
   if (def.line === 'melee') add.int = Math.floor(s.str * rate);
-  else if (def.line === 'ranged') add.int = Math.floor((s.dex + s.str) * rate);
+  else if (def.line === 'ranged') {
+    add.int = Math.floor((s.dex + s.str) * rate);
+    add.str = Math.floor(s.dex * rate);
+  }
   else {
     add.str = Math.floor(s.int * rate);
     add.dex = Math.floor(s.int * rate);
