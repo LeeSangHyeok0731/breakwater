@@ -56,6 +56,8 @@ export interface PlayerAction {
   dur: number;
   hits: number[];
   done: number;
+  /** 이 동작을 부른 스킬 (없으면 평타·특수 공격). 수련장 집계에 쓴다. */
+  src?: string;
 }
 
 export interface Buff {
@@ -74,7 +76,7 @@ const COMBO_WINDOW = 1;
 const RANGED_ACTIONS: ReadonlySet<ActionKind> = new Set(['shoot', 'volley', 'rapid', 'snipe', 'barrage', 'manaball', 'cast', 'laser']);
 
 /** 평타: 쓰는 동안에도 이동 속도가 줄지 않는다. */
-const BASIC_ACTIONS: ReadonlySet<ActionKind> = new Set(['slash', 'airSlash', 'crouchSlash', 'shoot', 'manaball']);
+export const BASIC_ACTIONS: ReadonlySet<ActionKind> = new Set(['slash', 'airSlash', 'crouchSlash', 'shoot', 'manaball']);
 
 /** 초식: 수마다 재생할 동작. 수가 더 많으면 처음부터 돌아가며 쓴다. */
 const MOVES: Partial<Record<ActionKind, string[]>> = {

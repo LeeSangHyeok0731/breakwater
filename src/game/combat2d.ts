@@ -4,7 +4,7 @@ import { sfx } from '../core/audio';
 import { SKY_FLASH_ID, skyShotMana, type SkillDef } from '../data/skills';
 import type { BattleScene, HitOpts } from './battleScene';
 import { DEPTH } from './fx';
-import type { ActionKind } from './player2d';
+import { BASIC_ACTIONS, type ActionKind } from './player2d';
 import { meleeLook, shotColor } from './weaponArt';
 import { castUltimate } from './ultimates';
 import { aura, column, crescent, flare, impactBurst, PAL, rays, shards, shockwave, tint, type Palette3 } from './vfx';
@@ -119,7 +119,7 @@ export function updatePlayerCombat(b: BattleScene, dt: number): void {
     case 'staff':
       if (p.charge >= 0) {
         p.charge += dt;
-        if (!input.isDown('special')) releaseOrb(b);
+        if (!input.isDown('special')) b.withSource('special', () => releaseOrb(b));
       } else if (free && input.pressed('special')) p.charge = 0;
       else if (free && attack) {
         comboPop(b, p.nextCombo());
@@ -132,7 +132,7 @@ export function updatePlayerCombat(b: BattleScene, dt: number): void {
         if (!input.isDown('special')) {
           const c = Math.min(p.charge, 1.2) / 1.2;
           p.charge = -1;
-          fireArrow(b, c);
+          b.withSource('special', () => fireArrow(b, c));
         }
       } else if (free && p.drawCd <= 0 && input.pressed('special')) p.charge = 0;
       else if (free && p.drawCd <= 0 && attack) {
@@ -165,11 +165,14 @@ function advance(b: BattleScene, dt: number): void {
   const a = p.action;
   if (!a) return;
   a.t += dt;
+  // 이 동작의 피해 출처: 스킬이 시작한 동작이면 그 스킬, 아니면 평타·특수 공격
+  const src = a.src ?? (BASIC_ACTIONS.has(a.kind) ? 'basic' : 'special');
   while (a.done < a.hits.length && a.t >= a.hits[a.done]) {
-    performHit(b, a.kind, a.done);
+    const i = a.done;
+    b.withSource(src, () => performHit(b, a.kind, i));
     a.done++;
   }
-  if (a.kind === 'laser') updateLaser(b, dt);
+  if (a.kind === 'laser') b.withSource(src, () => updateLaser(b, dt));
   if (a.t >= a.dur) {
     if (a.kind === 'laser') b.setBeam(false);
     p.action = null;
@@ -834,7 +837,12 @@ function tryCast(b: BattleScene, skill: SkillDef | null, slot: number): void {
   p.guarding = false;
   if (skill.weapon === 'staff') sfx.play('magic', 1.2);
   b.lastCastSlot = slot;
-  castSkill(b, skill);
+  const before = p.action;
+  b.withSource(skill.id, () => castSkill(b, skill));
+  // 스킬이 시작한 동작·궁극기 채널은 나중에 들어가는 피해도 이 스킬로 친다.
+  if (p.action && p.action !== before) p.action.src = skill.id;
+  if (b.ult && !b.ult.src) b.ult.src = skill.id;
+  b.noteCast(skill.id);
 }
 
 /** 바라보는 쪽 앞에서 가장 가까운 적의 x (없으면 정해진 거리) */

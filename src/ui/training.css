@@ -1,0 +1,126 @@
+/* ===== 수련장 DPS 측정판 ===== */
+.dps-panel {
+  position: absolute;
+  top: 96px;
+  right: 14px;
+  z-index: 12;
+  width: 230px;
+  padding: 10px 14px 10px;
+  color: #f2e6cc;
+  background: rgba(24, 16, 10, 0.88);
+  border: 2px solid #8a6a3a;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  font-size: 12px;
+}
+
+.dps-title {
+  font-family: var(--title-font, 'Black Han Sans', sans-serif);
+  font-size: 16px;
+  color: #ffd27a;
+}
+
+.dps-state {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  font-size: 11px;
+  color: #a89a80;
+}
+
+.dps-state.on {
+  color: #7fffa0;
+}
+
+.dps-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 10px;
+  margin-top: 8px;
+}
+
+.dps-k {
+  color: #b8a888;
+}
+
+.dps-v {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.dps-v.big {
+  font-family: var(--title-font, 'Black Han Sans', sans-serif);
+  font-size: 18px;
+  color: #fff0c0;
+}
+
+.dps-last {
+  margin-top: 8px;
+  min-height: 14px;
+  color: #9fd8ff;
+  font-size: 11px;
+}
+
+.dps-note {
+  margin-top: 6px;
+  color: #8a7c66;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+/* 스킬별 표 */
+.dps-panel {
+  width: 430px;
+  max-height: calc(100% - 150px);
+  overflow-y: auto;
+}
+
+.dps-grid {
+  grid-template-columns: auto 1fr auto 1fr;
+}
+
+.dps-table {
+  width: 100%;
+  margin-top: 10px;
+  border-collapse: collapse;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dps-table th {
+  padding: 2px 4px;
+  color: #b8a888;
+  font-weight: normal;
+  text-align: right;
+  border-bottom: 1px solid rgba(138, 106, 58, 0.6);
+}
+
+.dps-table th:first-child,
+.dps-table td.dps-name {
+  text-align: left;
+}
+
+.dps-table td {
+  padding: 2px 4px;
+  text-align: right;
+  white-space: nowrap;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.dps-table td.dps-name {
+  color: #ffe0a0;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 비중: 칸 뒤에 막대를 깐다 */
+.dps-table td.dps-share {
+  background: linear-gradient(90deg, rgba(255, 160, 60, 0.35) var(--share), transparent var(--share));
+}
+
+.dps-table td.dps-empty {
+  text-align: center;
+  color: #8a7c66;
+  padding: 8px;
+}

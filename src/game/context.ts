@@ -19,7 +19,7 @@ export interface BattleOutcome {
   worldBoss?: { bars: number; damage: number };
 }
 
-export type StationId = 'board' | 'smith' | 'shop' | 'trainer' | 'chest' | 'portal' | 'legion' | 'armory' | 'shards' | 'golem';
+export type StationId = 'board' | 'smith' | 'shop' | 'trainer' | 'chest' | 'portal' | 'legion' | 'armory' | 'shards' | 'golem' | 'dummy';
 
 /** 마을 또는 전투 기지 (같은 씬을 다르게 꾸민다) */
 export type Area = 'town' | 'base';
