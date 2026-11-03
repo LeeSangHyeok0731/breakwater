@@ -305,14 +305,38 @@ const IAI_PER_STEP = 3;
 const IAI_STR = 0.7;
 const IAI_GAP = 0.035;
 
+/** 혈월 게이지: 플레이어 옆에 세로로 선 칸. 0.5초마다 한 칸(3타)씩 아래에서 위로 차오른다. */
+const IAI_CELLS = IAI_MAX / IAI_STEP;
+const GAUGE_CELL = 3;
+
+function drawIaiGauge(g: Phaser.GameObjects.Graphics, x: number, feet: number, t: number, time: number): void {
+  const full = Math.min(IAI_CELLS, t / IAI_STEP);
+  const filled = Math.floor(full);
+  const h = IAI_CELLS * GAUGE_CELL;
+  const top = feet - 6 - h;
+  g.clear();
+  g.fillStyle(0x140608, 0.85).fillRect(x - 2, top - 2, 9, h + 3);
+  for (let i = 0; i < IAI_CELLS; i++) {
+    const y = feet - 6 - (i + 1) * GAUGE_CELL;
+    if (i < filled) g.fillStyle(i === filled - 1 ? 0xff8a96 : 0xd01a3a, 1).fillRect(x, y + 1, 5, GAUGE_CELL - 1);
+    else if (i === filled && filled < IAI_CELLS) {
+      // 지금 차오르는 칸
+      const k = full - filled;
+      g.fillStyle(0x5a0a14, 1).fillRect(x, y + 1, 5, GAUGE_CELL - 1);
+      g.fillStyle(0xff3a4a, 0.5 + k * 0.5).fillRect(x, y + 1, Math.max(1, Math.round(5 * k)), GAUGE_CELL - 1);
+    } else g.fillStyle(0x2a0a10, 1).fillRect(x, y + 1, 5, GAUGE_CELL - 1);
+  }
+  // 가득 차면 테두리가 하얗게 맥동한다.
+  if (filled >= IAI_CELLS) g.lineStyle(1, 0xffffff, 0.5 + Math.sin(time * 14) * 0.4).strokeRect(x - 2, top - 2, 9, h + 3);
+}
+
 const bloodMoon: Cast = (b) => {
   const p = b.player;
   const key = SLOT_ACTIONS[b.lastCastSlot];
   const cam = b.cameras.main;
-  p.startAction('iai', 99, []);
   const moon = b.add.image(cam.width / 2, 110, 'fx-moon').setScrollFactor(0).setDepth(DEPTH.monster - 1).setScale(0.3).setAlpha(0);
   const veil = b.add.rectangle(0, 0, cam.width + 400, cam.height, 0x3a0008, 0).setOrigin(0).setScrollFactor(0).setDepth(DEPTH.monster - 2);
-  const label = ultText(b, 18, '#ff6a7a');
+  const gauge = b.add.graphics().setDepth(DEPTH.text - 1);
   b.announce('키를 누르고 있으면 혈월이 차오른다. 떼면 발도!', 1.4);
   let t = 0;
   let steps = 0;
@@ -321,13 +345,15 @@ const bloodMoon: Cast = (b) => {
   let gap = 0;
   let striking = false;
   const cleanup = (): void => {
-    label.destroy();
+    gauge.destroy();
     b.tweens.add({ targets: [moon, veil], alpha: 0, duration: 400, onComplete: () => (moon.destroy(), veil.destroy()) });
     p.action = null;
   };
-  b.ult = {
+  const ult = {
+    // 모으는 동안은 움직일 수 있지만 공격·스킬·구르기는 못 한다. 발도하는 동안은 제자리에 선다.
     lock: true,
-    tick: (dt) => {
+    still: false,
+    tick: (dt: number): boolean => {
       if (p.dead) {
         cleanup();
         return true;
@@ -337,26 +363,28 @@ const bloodMoon: Cast = (b) => {
         const k = Math.min(1, t / IAI_MAX);
         moon.setAlpha(0.3 + k * 0.65).setScale(0.3 + k * 1.6);
         veil.setAlpha(k * 0.45);
-        label.setPosition(p.x, p.body.top - 18).setText(steps > 0 ? `×${steps * IAI_PER_STEP}` : '');
+        drawIaiGauge(gauge, Math.round(p.x + (p.facing === 1 ? -20 : 15)), p.feet, t, b.time.now / 1000);
         if (Math.random() < 0.3 + k * 0.6) b.fx.embers(p.x, p.feet - 4, Math.random() < 0.5 ? 0xff3a4a : 0xffa0a8, 1, 12 + k * 20, 30 + k * 40, 500);
-        const now = Math.min(IAI_MAX / IAI_STEP, Math.floor(t / IAI_STEP));
+        const now = Math.min(IAI_CELLS, Math.floor(t / IAI_STEP));
         if (now > steps) {
           steps = now;
           b.fx.ring(p.x, p.feet, 24 + k * 50, 0xff3a4a, 260);
           sfx.play('parry', 0.3 + k * 0.4);
-          if (steps * IAI_PER_STEP === (IAI_MAX / IAI_STEP) * IAI_PER_STEP) b.fx.flashScreen(0xff3a4a, 0.25, 200);
+          if (steps === IAI_CELLS) b.fx.flashScreen(0xff3a4a, 0.25, 200);
         }
         if (b.keys.isDown(key) && t < IAI_MAX) return false;
-        // 떼었다: 발도. 0.5초가 안 되어도 3타는 나간다.
+        // 떼었다: 발도. 0.5초가 안 되어도 한 칸(3타)은 나간다.
         striking = true;
-        total = Math.max(IAI_PER_STEP, steps * IAI_PER_STEP);
-        label.setText(`발도 ×${total}`).setColor('#ffffff');
+        ult.still = true;
+        total = Math.max(1, steps) * IAI_PER_STEP;
+        p.startAction('iai', 99, []);
         b.fx.flashScreen(0xff2a3a, 0.4, 240);
         sfx.play('slash', 1.4);
         return false;
       }
-      // 발도: 짧은 간격으로 화면 안 모든 적을 벤다. 이 동안은 맞지 않는다.
+      // 발도: 짧은 간격으로 화면 안 모든 적을 벤다. 이 동안은 맞지 않는다. 게이지가 위에서부터 비워진다.
       p.invuln = Math.max(p.invuln, 0.2);
+      drawIaiGauge(gauge, Math.round(p.x + (p.facing === 1 ? -20 : 15)), p.feet, ((total - hits) / IAI_PER_STEP) * IAI_STEP, b.time.now / 1000);
       gap -= dt;
       while (gap <= 0 && hits < total) {
         gap += IAI_GAP;
@@ -375,7 +403,6 @@ const bloodMoon: Cast = (b) => {
           b.hitMonster(m, b.skillBase({ str: IAI_STR }), { knock: 6, quiet: hits !== total });
         });
         if (hits % 6 === 0) b.fx.shake(0.6, 80);
-        label.setPosition(p.x, p.body.top - 18).setText(`${hits} / ${total}`);
       }
       if (hits < total) return false;
       b.fx.flashScreen(0xff3a4a, 0.45, 360);
@@ -386,8 +413,8 @@ const bloodMoon: Cast = (b) => {
       return true;
     },
   };
+  b.ult = ult;
 };
-
 // ───────────────────────── 궁수 ─────────────────────────
 
 /** 화살 한 발이 (x0,y0)에서 (x1,y1)로 꽂힌다. */
@@ -523,6 +550,7 @@ const aurora: Cast = (b) => {
   };
   b.ult = {
     lock: false,
+    still: false,
     tick: (dt) => {
       if (p.dead) {
         clear();
@@ -718,6 +746,7 @@ const deadEye: Cast = (b) => {
   };
   b.ult = {
     lock: true,
+    still: true,
     tick: (dt) => {
       if (p.dead) {
         cleanup();
@@ -900,6 +929,7 @@ const armageddon: Cast = (b) => {
   };
   b.ult = {
     lock: true,
+    still: true,
     tick: (dt) => {
       if (p.dead) {
         cleanup();

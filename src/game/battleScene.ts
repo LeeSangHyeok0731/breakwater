@@ -245,7 +245,7 @@ export class BattleScene extends Phaser.Scene {
   /** 쌓은 처치·타격 수 (천공 섬광의 마나검이 된다). 전투는 가득 찬 채로 시작한다. */
   skyStacks = 0;
   /** 이어지는 궁극기 (충전·표식·타이밍·룬 입력): tick이 true를 돌려주면 끝난다. lock이면 플레이어가 움직이거나 공격할 수 없다. */
-  ult: { tick: (dt: number) => boolean; lock: boolean } | null = null;
+  ult: { tick: (dt: number) => boolean; lock: boolean; still: boolean } | null = null;
   /** 방금 스킬을 쓴 슬롯 (누르고 있는 궁극기가 그 키를 본다) */
   lastCastSlot = 0;
   /** 플레이어의 타격이 몬스터에 들어갈 때마다 불린다 (별사냥 표식) */
@@ -396,7 +396,7 @@ export class BattleScene extends Phaser.Scene {
     const p = this.player;
     p.updateTimers(dt);
     if (this.ult && this.ult.tick(dt)) this.ult = null;
-    p.locked = !!this.ult?.lock;
+    p.locked = !!this.ult?.still;
     if (dev.infiniteMp) p.mp = p.derived.maxMp;
     if (dev.noCooldown) for (const id of p.cooldowns.keys()) p.cooldowns.set(id, 0);
     p.onPlatform = p.grounded && p.feet < FLOOR_Y - 4;

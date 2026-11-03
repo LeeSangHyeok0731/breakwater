@@ -57,6 +57,7 @@ export function whelp(el: DragonElement): Behavior {
           m.body.setVelocity(0, -20);
           m.play(m.look.attack);
           // 숨을 머금는 동안 몸이 속성 색으로 물든다 (맞을 때 번쩍임이 덮어써도 남지 않게 채우기 대신 곱하기 색).
+          m.sprite.setTint(el.hi === 0xffffff ? el.color : el.hi);
         }
         break;
       case 'windup':

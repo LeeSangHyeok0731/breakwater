@@ -152,7 +152,7 @@ export class Player {
   airJumps = 1;
   /** 공중에 떠서 스킬을 쓰는 남은 시간 (천공 섬광). 이동·공격을 할 수 없다. */
   hoverTime = 0;
-  /** 궁극기 채널 중: 제자리에 서서 움직이지도 공격하지도 못한다 (중력은 그대로) */
+  /** 궁극기 채널 중 제자리에 선다 (중력은 그대로). 공격 막기는 BattleScene.ult.lock이 한다. */
   locked = false;
   private hoverY = 0;
   /** 방향 더블 점프의 잔상이 남은 시간 */
