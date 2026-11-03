@@ -55,6 +55,8 @@ export interface BoltSpec {
   stun?: number;
   gravity?: number;
   life?: number;
+  /** 피해 출처 (스킬 id·'basic'·'special'). 비우면 쏜 순간의 출처를 쓴다. */
+  src?: string;
 }
 
 type BoltObject = Phaser.GameObjects.Image | Phaser.GameObjects.Sprite;
@@ -119,6 +121,8 @@ export interface FieldSpec {
   style?: 'frost' | 'fire' | 'rain' | 'poison' | 'plain';
   /** 적이 남긴 장판: 그 위 땅에 선 플레이어가 틱마다 받는 피해 (가드 불가) */
   hurt?: number;
+  /** 피해 출처 (플레이어 장판). 비우면 깐 순간의 출처를 쓴다. */
+  src?: string;
 }
 
 interface Field extends FieldSpec {
@@ -246,7 +250,9 @@ export class BattleScene extends Phaser.Scene {
   /** 쌓은 처치·타격 수 (천공 섬광의 마나검이 된다). 전투는 가득 찬 채로 시작한다. */
   skyStacks = 0;
   /** 이어지는 궁극기 (충전·표식·타이밍·룬 입력): tick이 true를 돌려주면 끝난다. lock이면 플레이어가 움직이거나 공격할 수 없다. */
-  ult: { tick: (dt: number) => boolean; lock: boolean; still: boolean } | null = null;
+  ult: { tick: (dt: number) => boolean; lock: boolean; still: boolean; src?: string } | null = null;
+  /** 지금 들어가는 피해의 출처 (스킬 id, 'basic' 평타, 'special' 특수 공격). 수련장의 스킬별 집계에 쓴다. */
+  src = 'basic';
   /** 방금 스킬을 쓴 슬롯 (누르고 있는 궁극기가 그 키를 본다) */
   lastCastSlot = 0;
   /** 플레이어의 타격이 몬스터에 들어갈 때마다 불린다 (별사냥 표식) */
@@ -403,7 +409,11 @@ export class BattleScene extends Phaser.Scene {
 
     const p = this.player;
     p.updateTimers(dt);
-    if (this.ult && this.ult.tick(dt)) this.ult = null;
+    this.src = 'basic';
+    if (this.ult) {
+      const ult = this.ult;
+      if (this.withSource(ult.src ?? 'basic', () => ult.tick(dt))) this.ult = null;
+    }
     p.locked = !!this.ult?.still;
     if (dev.infiniteMp) p.mp = p.derived.maxMp;
     if (dev.noCooldown) for (const id of p.cooldowns.keys()) p.cooldowns.set(id, 0);
@@ -474,6 +484,22 @@ export class BattleScene extends Phaser.Scene {
 
   // ───────────────────────── 피해 ─────────────────────────
 
+  /** fn 동안 피해 출처를 src로 둔다. */
+  withSource<T>(src: string, fn: () => T): T {
+    const prev = this.src;
+    this.src = src;
+    try {
+      return fn();
+    } finally {
+      this.src = prev;
+    }
+  }
+
+  /** 스킬을 썼다 (수련장 발동 횟수) */
+  noteCast(id: string): void {
+    this.training?.cast(id);
+  }
+
   weaponBase(): number {
     const w = this.player.weapon;
     return basicDamage(w.def, w.enhance, this.stats);
@@ -540,7 +566,7 @@ export class BattleScene extends Phaser.Scene {
     if (dev.oneHit) dmg = Math.max(dmg, Math.ceil(m.hp));
     m.hp -= dmg;
     this.hitHook?.(m);
-    this.training?.record(m, dmg, crit);
+    this.training?.record(m, dmg, crit, this.src);
     // 탄검강의 타격도 다음 마나검으로 쌓인다.
     this.skyStacks++;
     m.onHit(p.x, opts.knock ?? 0);
@@ -1148,7 +1174,7 @@ export class BattleScene extends Phaser.Scene {
         break;
     }
     obj.setDepth(DEPTH.projectile);
-    this.bolts.push({ ...o, obj, trail, fxTimer: 0, radius, hit: new Set(), life: o.life ?? 1.6 });
+    this.bolts.push({ ...o, src: o.src ?? this.src, obj, trail, fxTimer: 0, radius, hit: new Set(), life: o.life ?? 1.6 });
   }
 
   /** 날아가는 동안의 꼬리·잔상 */
@@ -1194,6 +1220,8 @@ export class BattleScene extends Phaser.Scene {
   private updateBolts(dt: number): void {
     const W = this.level.width;
     this.bolts = this.bolts.filter((b) => {
+      // 맞은 피해는 이 탄을 쏜 출처로 친다.
+      this.src = b.src ?? 'basic';
       b.life -= dt;
       b.vy += (b.gravity ?? 0) * dt;
       b.x += b.vx * dt;
@@ -1416,7 +1444,7 @@ export class BattleScene extends Phaser.Scene {
       // 하늘에 금빛 마법진이 열리고 그 아래로 화살이 쏟아진다.
       deco.push(this.fx.circle(cx, FLOOR_Y - 150, 0xffe08a, spec.w + 30, ms + 200, false, DEPTH.fx));
     }
-    const f: Field & { poison?: boolean } = { ...spec, style, rect, deco, tickTimer: 0, age: 0 };
+    const f: Field & { poison?: boolean } = { ...spec, src: spec.src ?? this.src, style, rect, deco, tickTimer: 0, age: 0 };
     f.poison = poison;
     this.fields.push(f);
   }
@@ -1478,6 +1506,7 @@ export class BattleScene extends Phaser.Scene {
           for (const m of this.monsters) {
             if (!m.alive) continue;
             if (m.x < f.x - 6 || m.x > f.x + f.w + 6) continue;
+            this.src = f.src ?? 'basic';
             if (!f.hitsAir && m.body.bottom < FLOOR_Y - 60) continue;
             this.hitMonster(m, f.damage, { quiet: true, slow: f.slow ? [f.slow, 0.6] : undefined });
           }

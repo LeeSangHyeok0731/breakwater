@@ -1,7 +1,7 @@
 /* ===== 수련장 DPS 측정판 ===== */
 .dps-panel {
   position: absolute;
-  top: 70px;
+  top: 96px;
   right: 14px;
   z-index: 12;
   width: 230px;
@@ -66,4 +66,61 @@
   color: #8a7c66;
   font-size: 11px;
   line-height: 1.4;
+}
+
+/* 스킬별 표 */
+.dps-panel {
+  width: 430px;
+  max-height: calc(100% - 150px);
+  overflow-y: auto;
+}
+
+.dps-grid {
+  grid-template-columns: auto 1fr auto 1fr;
+}
+
+.dps-table {
+  width: 100%;
+  margin-top: 10px;
+  border-collapse: collapse;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dps-table th {
+  padding: 2px 4px;
+  color: #b8a888;
+  font-weight: normal;
+  text-align: right;
+  border-bottom: 1px solid rgba(138, 106, 58, 0.6);
+}
+
+.dps-table th:first-child,
+.dps-table td.dps-name {
+  text-align: left;
+}
+
+.dps-table td {
+  padding: 2px 4px;
+  text-align: right;
+  white-space: nowrap;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.dps-table td.dps-name {
+  color: #ffe0a0;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 비중: 칸 뒤에 막대를 깐다 */
+.dps-table td.dps-share {
+  background: linear-gradient(90deg, rgba(255, 160, 60, 0.35) var(--share), transparent var(--share));
+}
+
+.dps-table td.dps-empty {
+  text-align: center;
+  color: #8a7c66;
+  padding: 8px;
 }
