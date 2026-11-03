@@ -73,7 +73,7 @@ interface Bolt extends BoltSpec {
 export interface EnemyBoltOpts {
   /** 생김새: 마력탄(기본), 서리, 도깨비불, 깃털 */
   kind?: 'orb' | 'frost' | 'wisp' | 'feather' | 'void';
-  /** 깃털 탄의 색 (밤의 여왕·공허 천사) */
+  /** 깃털·기본 구슬 탄의 색 (밤의 여왕·공허 천사·뇌운 새끼용) */
   tint?: number;
   /** 맞으면 플레이어가 잠깐 느려진다 */
   slow?: boolean;
@@ -1227,6 +1227,7 @@ export class BattleScene extends Phaser.Scene {
       obj = this.add.sprite(x, y, 'fx-orb-enemy').play('fx-orb-enemy').setTint(0x80d0ff).setBlendMode(Phaser.BlendModes.ADD);
     } else {
       obj = this.add.sprite(x, y, 'fx-orb-enemy').play('fx-orb-enemy').setBlendMode(Phaser.BlendModes.ADD);
+      if (opts.tint !== undefined) obj.setTint(opts.tint);
     }
     obj.setDepth(DEPTH.projectile);
     this.enemyBolts.push({ obj, x, y, vx, vy, damage, aoe, owner, life: opts.life ?? 4, opts });

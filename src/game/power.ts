@@ -46,6 +46,10 @@ const EXPECTED_WEAPON: Record<number, { attack: number; enhance: [number, number
   5: { attack: 70, enhance: [5, 9] },
   // 전설 무기는 +10이 끝이라, 챕터 6부터는 레벨로만 따라간다.
   6: { attack: 70, enhance: [9, 10] },
+  7: { attack: 70, enhance: [10, 10] },
+  8: { attack: 70, enhance: [10, 10] },
+  9: { attack: 70, enhance: [10, 10] },
+  10: { attack: 70, enhance: [10, 10] },
 };
 /** 분배 포인트 중 주 스탯에 넣는 비율 (나머지는 체력) */
 const MAIN_STAT_SHARE = 0.8;

@@ -43,6 +43,10 @@ const THEME_TINT: Record<Theme, { bg: number; far: number; near: number; ground:
   horror: { bg: 0xffffff, far: 0xd8e0c8, near: 0xffffff, ground: 0xffffff },
   void: { bg: 0x7a6aff, far: 0xffffff, near: 0xffffff, ground: 0xb8a0ff },
   nest: { bg: 0xffffff, far: 0xffffff, near: 0xffffff, ground: 0xffffff },
+  boneyard: { bg: 0xffffff, far: 0xffffff, near: 0xffffff, ground: 0xffffff },
+  storm: { bg: 0xffffff, far: 0xffffff, near: 0xffffff, ground: 0xffffff },
+  hell: { bg: 0xffffff, far: 0xffffff, near: 0xffffff, ground: 0xffffff },
+  throne: { bg: 0xffffff, far: 0xffffff, near: 0xffffff, ground: 0xffffff },
 };
 
 /** 테마별 바닥·발판 타일 */
@@ -59,13 +63,96 @@ interface TileSet {
   under: number;
 }
 
-const TILES: Record<'cemetery' | 'church' | 'castle' | 'horror' | 'nest', TileSet> = {
+const TILES: Record<'cemetery' | 'church' | 'castle' | 'horror', TileSet> = {
   cemetery: { key: 'cem-tiles', groundH: 48, groundDrop: 0, platH: 32, platTop: 7, under: 0x140c18 },
   church: { key: 'church-tiles', groundH: 40, groundDrop: 7, platH: 32, platTop: 1, under: 0x1a1426 },
   castle: { key: 'castle-tiles', groundH: 48, groundDrop: 7, platH: 22, platTop: 1, under: 0x0c1814 },
   horror: { key: 'horror-tiles', groundH: 32, groundDrop: 7, platH: 16, platTop: 1, under: 0x1a120e },
-  nest: { key: 'nest-tiles', groundH: 48, groundDrop: 7, platH: 22, platTop: 1, under: 0x120808 },
 };
+
+/** 챕터 6~10 배경: 코드로 그린 동굴·하늘(chapter6Art, lateArt)과 장식 */
+interface CaveTheme {
+  /** 배경·타일 텍스처 이름 앞부분 (`${prefix}-far`, `${prefix}-mid`, `${prefix}-tiles`) */
+  prefix: string;
+  bg: string;
+  under: number;
+  /** 땅에 놓는 장식 (같은 이름을 여러 번 넣으면 자주 나온다) */
+  deco: string[];
+  crystal: number;
+  spire: number;
+  /** 날리는 것: 위로 오르는 불티 / 내리는 눈 / 비스듬한 비 */
+  particle: 'ember' | 'snow' | 'rain';
+  particleColors: [number, number];
+  /** 이따금 번개가 친다 */
+  lightning?: boolean;
+}
+
+const CAVES: Partial<Record<Theme, CaveTheme>> = {
+  nest: { prefix: 'nest', bg: '#140808', under: 0x120808, deco: ['nest-eggs', 'nest-bones', 'nest-crystal', 'nest-crystal'], crystal: 0xff8a3a, spire: 0xb09088, particle: 'ember', particleColors: [0xffb040, 0xff6a1a] },
+  boneyard: { prefix: 'boneyard', bg: '#06080e', under: 0x0a0e14, deco: ['nest-bones', 'nest-bones', 'nest-crystal'], crystal: 0x8ae8ff, spire: 0x8a96a8, particle: 'snow', particleColors: [0xffffff, 0xbfe8ff] },
+  storm: { prefix: 'storm', bg: '#05081a', under: 0x0c1018, deco: ['nest-crystal', 'nest-bones'], crystal: 0xffe04a, spire: 0x8a96b8, particle: 'rain', particleColors: [0x9ab8ff, 0xd8e4ff], lightning: true },
+  hell: { prefix: 'hell', bg: '#1a0204', under: 0x080202, deco: ['nest-bones', 'nest-crystal', 'nest-bones'], crystal: 0xff4a2a, spire: 0x7a3a30, particle: 'ember', particleColors: [0xff8a2a, 0xff3a1a] },
+  throne: { prefix: 'throne', bg: '#08040e', under: 0x0a0610, deco: ['nest-crystal', 'nest-crystal', 'nest-bones'], crystal: 0xb06aff, spire: 0x7a6a98, particle: 'ember', particleColors: [0xc080ff, 0xffd060] },
+};
+
+function caveTiles(theme: Theme): TileSet {
+  const c = CAVES[theme]!;
+  return { key: `${c.prefix}-tiles`, groundH: 48, groundDrop: 7, platH: 22, platTop: 1, under: c.under };
+}
+
+/** 동굴 장식: 바위 기둥, 땅의 장식, 빛나는 수정, 날리는 불티·눈·비, 번개 */
+function caveDeco(scene: Phaser.Scene, c: CaveTheme, width: number, groundTop: number, rand: () => number): void {
+  for (let x = 100 + rand() * 120; x < width - 80; x += 300 + rand() * 200) {
+    scene.add.image(x, groundTop + 2, 'nest-spire').setOrigin(0.5, 1).setDepth(DEPTH.deco - 3).setTint(c.spire);
+  }
+  for (let x = 50 + rand() * 60; x < width - 40; x += 130 + rand() * 150) {
+    const key = c.deco[Math.floor(rand() * c.deco.length)];
+    const img = scene.add.image(x, groundTop + 1, key).setOrigin(0.5, 1).setDepth(DEPTH.deco);
+    if (key !== 'nest-crystal') continue;
+    img.setTint(c.crystal);
+    const glow = scene.add.image(x, groundTop - 10, key).setOrigin(0.5, 0.6).setDepth(DEPTH.deco).setBlendMode(Phaser.BlendModes.ADD).setScale(1.6).setAlpha(0.35).setTint(c.crystal);
+    scene.tweens.add({ targets: glow, alpha: 0.12, duration: 900 + rand() * 600, yoyo: true, repeat: -1 });
+  }
+  for (let i = 0; i < 30; i++) {
+    const color = rand() < 0.5 ? c.particleColors[0] : c.particleColors[1];
+    const x = rand() * width;
+    if (c.particle === 'ember') {
+      const p = scene.add.rectangle(x, GROUND_Y - rand() * 260, 2, 2, color).setDepth(DEPTH.deco - 1).setBlendMode(Phaser.BlendModes.ADD);
+      scene.tweens.add({ targets: p, y: p.y - 120 - rand() * 80, x: p.x + (rand() - 0.5) * 60, alpha: 0, duration: 2600 + rand() * 2400, repeat: -1, delay: rand() * 2000 });
+    } else if (c.particle === 'snow') {
+      const p = scene.add.rectangle(x, -10 - rand() * 100, 2, 2, color, 0.8).setDepth(DEPTH.deco - 1);
+      scene.tweens.add({ targets: p, y: GROUND_Y + 4, x: p.x + (rand() - 0.5) * 80, duration: 5000 + rand() * 4000, repeat: -1, delay: rand() * 5000 });
+    } else {
+      const p = scene.add.rectangle(x, -20, 1, 9, color, 0.55).setDepth(DEPTH.deco - 1).setAngle(14);
+      scene.tweens.add({ targets: p, y: GROUND_Y, x: p.x - 70, duration: 700 + rand() * 300, repeat: -1, delay: rand() * 1000 });
+    }
+  }
+  if (c.lightning) {
+    // 먼 하늘에 이따금 번개: 화면이 잠깐 밝아지고 갈라진 빛줄기가 내리친다.
+    const flash = scene.add.rectangle(0, 0, VIEW_W_MAX, VIEW_H, 0xdfe8ff, 0).setOrigin(0, 0).setScrollFactor(0).setDepth(DEPTH.bg + 2);
+    const bolt = scene.add.graphics().setScrollFactor(0).setDepth(DEPTH.bg + 2);
+    scene.time.addEvent({
+      delay: 2600,
+      loop: true,
+      callback: () => {
+        if (rand() < 0.4) return;
+        flash.setAlpha(0.28);
+        scene.tweens.add({ targets: flash, alpha: 0, duration: 380 });
+        bolt.clear().lineStyle(2, 0xffffff, 0.9);
+        let bx = 60 + rand() * (VIEW_W_MAX - 120);
+        let by = 0;
+        bolt.beginPath().moveTo(bx, by);
+        while (by < 200) {
+          bx += (rand() - 0.5) * 30;
+          by += 16 + rand() * 18;
+          bolt.lineTo(bx, by);
+        }
+        bolt.strokePath().setAlpha(1);
+        scene.tweens.add({ targets: bolt, alpha: 0, duration: 260 });
+      },
+    });
+  }
+}
 
 function seeded(seed: number): () => number {
   let s = seed;
@@ -128,11 +215,11 @@ export function buildLevel(scene: Phaser.Scene, width: number, platforms: [numbe
         ? TILES.castle
         : theme === 'horror'
           ? TILES.horror
-          : theme === 'nest'
-            ? TILES.nest
+          : CAVES[theme]
+            ? caveTiles(theme)
             : TILES.cemetery;
-  const bgColor: Partial<Record<Theme, string>> = { lava: '#1a0606', church: '#100c1c', castle: '#08100e', horror: '#1a2418', void: '#06040e', nest: '#140808' };
-  scene.cameras.main.setBackgroundColor(bgColor[theme] ?? '#120a1e');
+  const bgColor: Partial<Record<Theme, string>> = { lava: '#1a0606', church: '#100c1c', castle: '#08100e', horror: '#1a2418', void: '#06040e' };
+  scene.cameras.main.setBackgroundColor(CAVES[theme]?.bg ?? bgColor[theme] ?? '#120a1e');
 
   if (theme === 'church') {
     // 패널 벽이 화면 위부터 바닥까지 채운다.
@@ -140,10 +227,11 @@ export function buildLevel(scene: Phaser.Scene, width: number, platforms: [numbe
   } else if (theme === 'castle' || theme === 'void') {
     // 공허의 문: 같은 성을 보랏빛으로 물들인다.
     layers.push(layer(scene, 'castle-bg', 0, VIEW_H, 0.3, tint.bg, DEPTH.bg));
-  } else if (theme === 'nest') {
-    // 용들의 둥지: 달아오른 동굴 안쪽과 종유석·바위 기둥
-    layers.push(layer(scene, 'nest-far', 0, VIEW_H, 0.06, tint.bg, DEPTH.bg));
-    layers.push(layer(scene, 'nest-mid', 30, GROUND_Y - 10, 0.3, tint.far, DEPTH.bg + 1));
+  } else if (CAVES[theme]) {
+    // 챕터 6~10: 코드로 그린 동굴·하늘 배경 (먼 층 + 가까운 바위)
+    const prefix = CAVES[theme]!.prefix;
+    layers.push(layer(scene, `${prefix}-far`, 0, VIEW_H, 0.06, tint.bg, DEPTH.bg));
+    layers.push(layer(scene, `${prefix}-mid`, 30, GROUND_Y - 10, 0.3, tint.far, DEPTH.bg + 1));
   } else if (theme === 'horror') {
     // 저주받은 마을: 구름 낀 하늘과 먼 마을 실루엣
     layers.push(layer(scene, 'horror-clouds', 0, GROUND_Y + 10, 0.05, tint.bg, DEPTH.bg));
@@ -215,26 +303,8 @@ export function buildLevel(scene: Phaser.Scene, width: number, platforms: [numbe
       const key = ['shrine', 'arch', 'skulls', 'ivy'][Math.floor(rand() * 4)];
       scene.add.image(x, groundTop + 1, 'horror-tiles', key).setOrigin(0.5, 1).setDepth(DEPTH.deco);
     }
-  } else if (theme === 'nest') {
-    // 장식: 바위 기둥, 알 무더기·용의 뼈·빛나는 불의 수정, 그리고 위로 날리는 불티
-    for (let x = 100 + rand() * 120; x < width - 80; x += 300 + rand() * 200) {
-      scene.add.image(x, groundTop + 2, 'nest-spire').setOrigin(0.5, 1).setDepth(DEPTH.deco - 3).setTint(0xb09088);
-    }
-    for (let x = 50 + rand() * 60; x < width - 40; x += 130 + rand() * 150) {
-      const key = ['nest-eggs', 'nest-bones', 'nest-crystal', 'nest-crystal'][Math.floor(rand() * 4)];
-      scene.add.image(x, groundTop + 1, key).setOrigin(0.5, 1).setDepth(DEPTH.deco);
-      if (key === 'nest-crystal') {
-        const glow = scene.add.image(x, groundTop - 10, key).setOrigin(0.5, 0.6).setDepth(DEPTH.deco).setBlendMode(Phaser.BlendModes.ADD).setScale(1.6).setAlpha(0.35);
-        scene.tweens.add({ targets: glow, alpha: 0.12, duration: 900 + rand() * 600, yoyo: true, repeat: -1 });
-      }
-    }
-    for (let i = 0; i < 26; i++) {
-      const ember = scene.add
-        .rectangle(rand() * width, GROUND_Y - rand() * 260, 2, 2, rand() < 0.5 ? 0xffb040 : 0xff6a1a)
-        .setDepth(DEPTH.deco - 1)
-        .setBlendMode(Phaser.BlendModes.ADD);
-      scene.tweens.add({ targets: ember, y: ember.y - 120 - rand() * 80, x: ember.x + (rand() - 0.5) * 60, alpha: 0, duration: 2600 + rand() * 2400, repeat: -1, delay: rand() * 2000 });
-    }
+  } else if (CAVES[theme]) {
+    caveDeco(scene, CAVES[theme]!, width, groundTop, rand);
   } else if (theme === 'church') {
     // 장식: 해골이 새겨진 돌기둥이 일정하게 늘어선다.
     for (let x = 120 + rand() * 80; x < width - 60; x += 260 + rand() * 120) {
