@@ -9,6 +9,7 @@ import { derive, totalStats } from './stats';
 import { buildLevel, FLOOR_Y, GROUND_Y, VIEW_H, VIEW_W_MAX, type Level } from './world';
 import { LEGION_UNLOCK_PHASE } from '../data/legion';
 import { makeStatueTexture } from './worldGolem';
+import { ensureScarecrow } from './scarecrow';
 
 interface Station {
   id: StationId;
@@ -100,6 +101,9 @@ export class TownScene extends Phaser.Scene {
     this.addProp('board', '출정 게시판', '페이즈 선택 · 소탕', '게시판 보기', 820, 'quest-board');
     this.addNpc('shop', '잡화상 리나', '무기 · 장비 · 포션', '상인과 대화', 980, 'npc-woman');
     this.addNpc('trainer', '교관 메이린', '스탯 · 스킬 · 패시브', '교관과 대화', 1260, 'npc-oldman');
+    // 교관 옆 수련장 허수아비: DPS를 재는 수련장으로 들어간다.
+    ensureScarecrow(this);
+    this.addProp('dummy', '수련장 허수아비', 'DPS 측정', '수련장 들어가기', 1130, 'scarecrow');
     // 5-5를 깨면 마을 끝에 전투 기지로 가는 포탈이 열린다.
     if (save.cleared.includes(LEGION_UNLOCK_PHASE)) this.addPortal('전투 기지 포탈', '군단장 토벌 준비', '포탈 타기', 1440);
     else this.add.sprite(1440, GROUND_Y + 6, 'npc-hatman').setOrigin(0.5, 1).setDepth(DEPTH.deco).play('npc-hatman').setFlipX(true);

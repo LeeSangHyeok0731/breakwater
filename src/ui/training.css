@@ -1,0 +1,69 @@
+/* ===== 수련장 DPS 측정판 ===== */
+.dps-panel {
+  position: absolute;
+  top: 70px;
+  right: 14px;
+  z-index: 12;
+  width: 230px;
+  padding: 10px 14px 10px;
+  color: #f2e6cc;
+  background: rgba(24, 16, 10, 0.88);
+  border: 2px solid #8a6a3a;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  font-size: 12px;
+}
+
+.dps-title {
+  font-family: var(--title-font, 'Black Han Sans', sans-serif);
+  font-size: 16px;
+  color: #ffd27a;
+}
+
+.dps-state {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  font-size: 11px;
+  color: #a89a80;
+}
+
+.dps-state.on {
+  color: #7fffa0;
+}
+
+.dps-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 10px;
+  margin-top: 8px;
+}
+
+.dps-k {
+  color: #b8a888;
+}
+
+.dps-v {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.dps-v.big {
+  font-family: var(--title-font, 'Black Han Sans', sans-serif);
+  font-size: 18px;
+  color: #fff0c0;
+}
+
+.dps-last {
+  margin-top: 8px;
+  min-height: 14px;
+  color: #9fd8ff;
+  font-size: 11px;
+}
+
+.dps-note {
+  margin-top: 6px;
+  color: #8a7c66;
+  font-size: 11px;
+  line-height: 1.4;
+}

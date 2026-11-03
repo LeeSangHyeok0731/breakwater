@@ -16,6 +16,7 @@ import { ctx, type Area, type BattleOutcome, type StationId } from './game/conte
 import { legionPhase, type LegionRun } from './data/legion';
 import { koNum } from './ui/format';
 import { worldBossPhase } from './data/worldBoss';
+import { TRAINING_PHASE } from './game/training';
 import { useWorldBossTry } from './ui/worldBossPanel';
 import { addExp } from './game/stats';
 import { TownScene } from './game/townScene';
@@ -48,6 +49,7 @@ const STATION_TABS: Record<StationId, Tab[]> = {
   armory: ['armory'],
   shards: ['shards'],
   golem: ['worldboss'],
+  dummy: [],
 };
 
 function replaceSave(next: SaveData): void {
@@ -220,6 +222,10 @@ Object.assign(ctx, {
   windowOpen: () => village.isOpen,
   openStation: (id: StationId, name: string) => {
     // 포탈: 마을 ↔ 전투 기지
+    if (id === 'dummy') {
+      startTraining();
+      return;
+    }
     if (id === 'portal') {
       const town = game.scene.getScene('town') as TownScene;
       travel(town.area === 'base' ? 'town' : 'base');
@@ -278,6 +284,15 @@ function startTutorial(trialOnly = false): void {
   input.endFrame();
   game.scene.stop('town');
   game.scene.start('battle', { phase: TUTORIAL_PHASE, tutorial: true, trialOnly });
+}
+
+/** 수련장: 허수아비를 때려 DPS를 잰다. */
+function startTraining(): void {
+  village.hide();
+  input.enabled = true;
+  input.endFrame();
+  game.scene.stop('town');
+  game.scene.start('battle', { phase: TRAINING_PHASE, training: true });
 }
 
 function startPhase(id: string): void {
