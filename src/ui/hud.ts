@@ -64,6 +64,8 @@ export interface BattleResultView {
   levelsGained: number;
   /** 군단장 전투: 조각만 보여 주고 기지로 돌아간다 */
   legion?: boolean;
+  /** 마왕 레이드 (legion도 함께 켜서 기지로 돌아간다) */
+  raid?: boolean;
   /** 월드 보스: 깬 줄과 총 피해, 최고 기록인가 */
   worldBoss?: { bars: number; damage: string; best: boolean };
 }
@@ -530,7 +532,7 @@ export class Hud {
     const box = this.openModal('result');
     box.classList.add(r.cleared ? 'cleared' : 'failed');
     el('div', 'hud-modal-sub', box, r.phaseName);
-    el('h2', 'hud-modal-title', box, r.worldBoss ? '월드 보스 결과' : r.legion ? (r.cleared ? '군단장 토벌 성공' : '토벌 실패') : r.cleared ? '페이즈 클리어' : '페이즈 실패');
+    el('h2', 'hud-modal-title', box, r.worldBoss ? '월드 보스 결과' : r.raid ? (r.cleared ? '마왕 토벌 성공' : '마왕 토벌 실패') : r.legion ? (r.cleared ? '군단장 토벌 성공' : '토벌 실패') : r.cleared ? '페이즈 클리어' : '페이즈 실패');
     if (r.worldBoss) {
       const wb = el('div', 'hud-wb-score', box);
       el('div', 'hud-wb-bars', wb, `${r.worldBoss.bars}줄 돌파`);
@@ -558,7 +560,7 @@ export class Hud {
       el('div', 'hud-result-levelup', box, `레벨 업! (+${r.levelsGained})  스탯·스킬 포인트를 마을에서 분배하세요.`);
     }
     if (!r.cleared) {
-      el('p', 'hud-modal-text warn', box, r.legion ? '토벌에 실패하여 조각을 얻지 못했습니다.' : '페이즈에 실패하여 이번 전투의 보상을 모두 잃었습니다.');
+      el('p', 'hud-modal-text warn', box, r.raid ? '토벌에 실패하여 보상을 얻지 못했습니다.' : r.legion ? '토벌에 실패하여 조각을 얻지 못했습니다.' : '페이즈에 실패하여 이번 전투의 보상을 모두 잃었습니다.');
     }
     const btns = el('div', 'hud-modal-buttons', box);
     const cont = el('button', 'ui-btn primary', btns, r.legion ? '기지로 돌아가기' : '마을로 돌아가기');

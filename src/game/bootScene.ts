@@ -4,6 +4,7 @@ import { createClassSprites, createLegionSprites } from './classSprites';
 import { createFxArt } from './fxArt';
 import { createChapter6Art } from './dragon/chapter6Art';
 import { createLateArt } from './dragon/lateArt';
+import { createRaidArt } from './raid/raidArt';
 
 /** 에셋을 불러오고 애니메이션을 만든 뒤, 첫 화면에서 시작하면 첫 씬으로 간다. */
 export class BootScene extends Phaser.Scene {
@@ -23,6 +24,7 @@ export class BootScene extends Phaser.Scene {
     createFxArt(this);
     createChapter6Art(this);
     createLateArt(this);
+    createRaidArt(this);
     this.onDone((scene, data) => this.scene.start(scene, data));
   }
 }

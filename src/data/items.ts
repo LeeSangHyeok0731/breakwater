@@ -17,4 +17,5 @@ export const MATERIALS: Record<string, MaterialDef> = {
   corrupt_shard: { name: '타락의 조각', desc: '타락한 엘프가 남긴 조각. 사격 세트 방어구를 사고 강화한다.' },
   dark_shard: { name: '암흑의 조각', desc: '암흑의 군주가 남긴 조각. 마법 세트 방어구를 사고 강화한다.' },
   hope_shard: { name: '희망의 조각', desc: '하드 군단장에게서 드물게 나오는 빛나는 조각. 전설 세트 방어구에 필요하다.' },
+  demon_essence: { name: '마왕의 정수', desc: '종언의 마왕 아스타로트가 남긴 검붉은 정수. 신화 장비에 쓰인다.' },
 };

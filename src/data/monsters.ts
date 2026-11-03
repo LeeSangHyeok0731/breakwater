@@ -73,6 +73,9 @@ export type MonsterKind =
   | 'silent_knight'
   | 'corrupted_elf'
   | 'dark_lord'
+  // 마왕 레이드
+  | 'demon_lord_raid'
+  | 'seal_crystal'
   | 'world_golem'
   // 직업 체험장
   | 'scarecrow';
@@ -1250,6 +1253,43 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
     gold: 0,
     exp: 0,
     mana: 30,
+    drops: [],
+  },
+  // 마왕 레이드 (src/data/raid.ts)
+  demon_lord_raid: {
+    kind: 'demon_lord_raid',
+    name: '종언의 마왕 아스타로트',
+    // [초안] 노멀 기준. 10-5 마왕 벨제로스(체력 약 7.8만, 공격 약 218)보다 세게 잡는다.
+    // 봉인·약점 배율이 걸리므로 체력은 크게.
+    boss: true,
+    hp: 400000,
+    speed: 4.5,
+    damage: 260,
+    range: 12,
+    attackCd: 1.2,
+    radius: 1,
+    height: 4,
+    flying: false,
+    gold: 0,
+    exp: 0,
+    mana: 40,
+    drops: [],
+  },
+  seal_crystal: {
+    kind: 'seal_crystal',
+    name: '봉인의 결정',
+    // 맞는 횟수로 깨진다 (RaidFight.hitCrystal). 체력은 쓰지 않는다.
+    hp: 9999,
+    speed: 0,
+    damage: 0,
+    range: 0,
+    attackCd: 99,
+    radius: 0.6,
+    height: 2,
+    flying: true,
+    gold: 0,
+    exp: 0,
+    mana: 0,
     drops: [],
   },
   world_golem: {

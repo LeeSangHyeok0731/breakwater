@@ -2,6 +2,7 @@ import { DEFAULT_KEYMAP, type Keymap } from './input';
 import { SKILL_BY_ID, SKILL_SLOTS, SKILLS, STARTER_SKILLS } from '../data/skills';
 import type { GearSlot } from '../data/gear';
 import type { WeaponType } from '../data/weapons';
+import type { RaidLoadout } from '../data/raid';
 
 export interface OwnedWeapon {
   uid: string;
@@ -38,6 +39,8 @@ export interface SaveData {
   legion: { loadout: Partial<Record<string, [string, string]>>; clears: Record<string, number> };
   /** 월드 보스: 오늘 날짜와 쓴 횟수 (도전·소탕), 최고 기록 */
   worldBoss: { day: string; used: number; bestBars: number; bestDamage: number };
+  /** 마왕 레이드: 고른 장비(없으면 기본값)와 토벌 횟수 */
+  raid: { loadout: RaidLoadout | null; clears: number };
   /** 튜토리얼을 끝냈거나 건너뛰었는가 */
   tutorialDone: boolean;
 }
@@ -71,6 +74,7 @@ export function newSave(): SaveData {
     sfxVolume: 0.6,
     legion: { loadout: {}, clears: {} },
     worldBoss: { day: '', used: 0, bestBars: 0, bestDamage: 0 },
+    raid: { loadout: null, clears: 0 },
     tutorialDone: false,
   };
 }
@@ -94,6 +98,7 @@ function normalize(data: Partial<SaveData>): SaveData {
     potions: { ...base.potions, ...data.potions },
     legion: { loadout: { ...data.legion?.loadout }, clears: { ...data.legion?.clears } },
     worldBoss: { ...base.worldBoss, ...data.worldBoss },
+    raid: { ...base.raid, ...data.raid },
     // 튜토리얼이 생기기 전 세이브는 진행한 흔적이 있으면 끝낸 것으로 본다.
     tutorialDone: data.tutorialDone ?? ((data.level ?? 1) > 1 || (data.cleared?.length ?? 0) > 0),
     // v3에서 2D 키보드 조작으로 바뀌어 예전(마우스·WASD) 키 설정은 버린다.

@@ -8,6 +8,7 @@ import { Player } from './player2d';
 import { derive, totalStats } from './stats';
 import { buildLevel, FLOOR_Y, GROUND_Y, VIEW_H, VIEW_W_MAX, type Level } from './world';
 import { LEGION_UNLOCK_PHASE } from '../data/legion';
+import { RAID_UNLOCK_PHASE } from '../data/raid';
 import { makeStatueTexture } from './worldGolem';
 import { ensureScarecrow } from './scarecrow';
 
@@ -125,6 +126,7 @@ export class TownScene extends Phaser.Scene {
     const cmd = this.add.sprite(600, GROUND_Y + 6, 'dao:hero-idle').setOrigin(0.5, 1).setDepth(DEPTH.deco + 1).play('dao:hero-idle').setFlipX(true);
     this.stations.push({ id: 'legion', name: '작전 지휘관 레온', verb: '작전 듣기', x: 600, labelY: cmd.y - 50, plate: this.plate('legion', '작전 지휘관 레온', '군단장 토벌 · 출격', '작전 듣기') });
     this.addNpc('shards', '조각 상인 세라', '조각으로 세트 방어구', '상인과 대화', 880, 'npc-woman', 0xd0b8ff);
+    this.addRaidGate(1100, ctx.getSave().cleared.includes(RAID_UNLOCK_PHASE));
     this.spawnPlayer(600, this.level.solids, BASE_W);
   }
 
@@ -244,6 +246,44 @@ export class TownScene extends Phaser.Scene {
     const glow = this.add.ellipse(x, GROUND_Y - 26, 30, 46, 0xb070ff, 0.35).setDepth(DEPTH.deco + 2).setBlendMode(Phaser.BlendModes.ADD);
     this.tweens.add({ targets: glow, scaleX: 1.15, scaleY: 1.08, alpha: 0.15, duration: 900, yoyo: true, repeat: -1 });
     this.stations.push({ id: 'portal', name, verb, x, labelY: img.y - img.height - 4, plate: this.plate('portal', name, sub, verb) });
+  }
+
+  /** 마왕성 문: 핏빛 아치. 10-5 전에는 사슬로 잠겨 있다. */
+  private addRaidGate(x: number, open: boolean): void {
+    const key = open ? 'raid-gate-open' : 'raid-gate-shut';
+    if (!this.textures.exists(key)) {
+      const g = this.make.graphics({}, false);
+      // 돌기둥과 아치
+      g.fillStyle(0x1a0e14).fillRect(0, 12, 10, 72).fillRect(54, 12, 10, 72);
+      g.fillStyle(0x3a2230).fillRect(2, 12, 6, 72).fillRect(56, 12, 6, 72);
+      g.fillStyle(0x2a1620).fillRect(0, 4, 64, 12);
+      g.fillStyle(0x6a1a2a).fillRect(4, 6, 56, 3);
+      // 꼭대기의 뿔 장식
+      g.fillStyle(0x8a1a2a).fillTriangle(6, 4, 14, 4, 4, -0).fillTriangle(50, 4, 58, 4, 60, 0);
+      if (open) {
+        g.fillStyle(0x3a0610).fillEllipse(32, 52, 42, 66);
+        g.fillStyle(0x9a1024).fillEllipse(32, 52, 32, 56);
+        g.fillStyle(0xff4a5a).fillEllipse(32, 52, 16, 34);
+        g.fillStyle(0xffd0d4).fillEllipse(32, 52, 5, 12);
+      } else {
+        g.fillStyle(0x140a0e).fillRect(10, 16, 44, 68);
+        g.fillStyle(0x6a6a72);
+        for (let i = 0; i < 6; i++) {
+          g.fillRect(12 + i * 7, 20 + i * 9, 5, 3);
+          g.fillRect(47 - i * 7, 20 + i * 9, 5, 3);
+        }
+        g.fillStyle(0xc8a040).fillRect(28, 46, 8, 8);
+      }
+      g.generateTexture(key, 64, 84);
+      g.destroy();
+    }
+    const img = this.add.image(x, GROUND_Y + 6, key).setOrigin(0.5, 1).setDepth(DEPTH.deco + 1);
+    if (open) {
+      const glow = this.add.ellipse(x, GROUND_Y - 26, 40, 60, 0xff3a4a, 0.3).setDepth(DEPTH.deco + 2).setBlendMode(Phaser.BlendModes.ADD);
+      this.tweens.add({ targets: glow, scaleX: 1.12, scaleY: 1.06, alpha: 0.12, duration: 1100, yoyo: true, repeat: -1 });
+    }
+    const sub = open ? '마왕 레이드 · 출격 준비' : '봉인된 문 · 10-5 클리어 필요';
+    this.stations.push({ id: 'raid', name: '마왕성 문', verb: '문 조사하기', x, labelY: img.y - img.height - 4, plate: this.plate('raid', '마왕성 문', sub, '문 조사하기') });
   }
 
   private addProp(id: StationId, name: string, sub: string, verb: string, x: number, key: string): void {

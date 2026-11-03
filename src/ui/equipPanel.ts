@@ -1,5 +1,6 @@
 import type { SaveData } from '../core/save';
 import type { LegionRun } from '../data/legion';
+import type { RaidRun } from '../data/raid';
 import { GEAR, GEAR_SLOT_NAME, gearBonus, gearStatsText, SET_LINE_NAME, SETS, setPieces, setProgress, type GearDef, type GearSlot, type GearStats } from '../data/gear';
 import { CLASS_NAME, GRADES, WEAPON_TYPE_NAME, WEAPONS, type Grade, type WeaponDef, type WeaponType } from '../data/weapons';
 import { combatPower } from '../game/power';
@@ -28,6 +29,8 @@ export interface PanelHost {
   art?(key: string): HTMLCanvasElement | null;
   /** 군단장 출격 (전투 기지에서만) */
   startLegion?(run: LegionRun): void;
+  /** 마왕 레이드 출격 (전투 기지 마왕성 문) */
+  startRaid?(run: RaidRun): void;
   /** 월드 보스 도전 (마을 골렘 석상) */
   startWorldBoss?(): void;
 }
