@@ -527,8 +527,12 @@ const STAR_TIME = 6;
 const STAR_GAP = 0.04;
 /** 별이 아무리 많아도 이 시간 안에 다 떨어진다. */
 const STAR_FALL_MAX = 3;
-/** 화면에 그리는 별똥별은 초당 이만큼까지만 (나머지는 그림 없이 바로 맞는다) */
-const STAR_DRAW_MAX = 60;
+/** 별똥별은 일제 사격으로 쏟아진다: 한 번에 최소 몇 발, 대략 몇 번에 나눠, 몇 초 간격으로 */
+const STAR_VOLLEY_MIN = 6;
+const STAR_VOLLEYS = 18;
+const STAR_VOLLEY_GAP = 0.14;
+/** 일제 사격 한 번에 그리는 화살은 이만큼까지만 (나머지는 그림 없이 같이 맞는다) */
+const STAR_DRAW_PER_VOLLEY = 10;
 
 const aurora: Cast = (b) => {
   const p = b.player;
@@ -564,6 +568,7 @@ const aurora: Cast = (b) => {
   let gap = 0;
   let end = 0;
   let starGap = STAR_GAP;
+  let volleySize = STAR_VOLLEY_MIN;
   let drawEvery = 1;
   let dropped = 0;
   const clear = (): void => {
@@ -597,8 +602,10 @@ const aurora: Cast = (b) => {
         b.tweens.add({ targets: lines, alpha: 0, delay: 600, duration: 500, onComplete: () => lines.destroy() });
         for (const [m, e] of live) for (let i = 0; i < e.n; i++) queue.push(m);
         queue = Phaser.Utils.Array.Shuffle(queue);
-        starGap = Math.min(STAR_GAP, STAR_FALL_MAX / Math.max(1, queue.length));
-        drawEvery = Math.max(1, Math.ceil(1 / (starGap * STAR_DRAW_MAX)));
+        // 한 번에 여러 발씩 일제히 쏟아진다: 일제 사격 수를 정하고, 그 간격으로 다 떨어지게 한다.
+        volleySize = Math.max(STAR_VOLLEY_MIN, Math.ceil(queue.length / STAR_VOLLEYS));
+        starGap = Math.min(STAR_VOLLEY_GAP, STAR_FALL_MAX / Math.max(1, Math.ceil(queue.length / volleySize)));
+        drawEvery = Math.max(1, Math.ceil(volleySize / STAR_DRAW_PER_VOLLEY));
         if (queue.length) timer.setText(`별똥별 ${queue.length}개`);
         if (queue.length) {
           b.fx.flashScreen(0xffe08a, 0.25, 260);
@@ -610,20 +617,27 @@ const aurora: Cast = (b) => {
       gap -= dt;
       while (gap <= 0 && queue.length) {
         gap += starGap;
-        const m = queue.shift()!;
+        // 일제 사격 한 번: 여러 발이 하늘 여기저기서 동시에 쏟아진다.
         const v = view(b);
-        const e = marks.get(m);
-        if (e) e.n = Math.max(0, e.n - 1);
-        const hit = (): void => {
-          if (m.alive) b.hitMonster(m, b.skillBase({ dex: 1.5, str: 0.5 }), { knock: 4, quiet: queue.length > 0 });
-        };
-        // 별이 많으면 몇 개에 하나만 그리고, 나머지는 그림 없이 바로 맞는다.
-        if (dropped++ % drawEvery === 0)
-          arrowRain(b, m.x + 40, v.y + 10, m.x, m.y, 220, 0xffe08a, () => {
-            flare(b, m.x, m.y, 22, PAL.gold, 220);
-            hit();
-          });
-        else b.time.delayedCall(220, hit);
+        sfx.play('arrow', 0.6);
+        for (let k = 0; k < volleySize && queue.length; k++) {
+          const m = queue.shift()!;
+          const e = marks.get(m);
+          if (e) e.n = Math.max(0, e.n - 1);
+          const hit = (): void => {
+            if (m.alive) b.hitMonster(m, b.skillBase({ dex: 1.5, str: 0.5 }), { knock: 4, quiet: queue.length > 0 || k > 0 });
+          };
+          // 별이 많으면 몇 개에 하나만 그리고, 나머지는 그림 없이 같이 맞는다.
+          if (dropped++ % drawEvery === 0) {
+            const sx = m.x + 20 + Math.random() * 90;
+            const ex = m.x + (Math.random() - 0.5) * 16;
+            const ey = m.y + (Math.random() - 0.5) * 20;
+            arrowRain(b, sx, v.y + 4 + Math.random() * 30, ex, ey, 200 + Math.random() * 60, 0xffe08a, () => {
+              flare(b, ex, ey, 18, PAL.gold, 200);
+              hit();
+            });
+          } else b.time.delayedCall(220, hit);
+        }
       }
       if (queue.length) return false;
       end += dt;
