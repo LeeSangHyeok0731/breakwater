@@ -57,7 +57,8 @@ let iaiPath: { x0: number; len: number; y: number } | null = null;
 export function updatePlayerCombat(b: BattleScene, dt: number): void {
   const p = b.player;
   const input = b.keys;
-  if (p.dead || p.hoverTime > 0) return;
+  // 궁극기 채널 중에는 공격·스킬·구르기·무기 교체를 못 한다 (혈월 발도를 모으는 동안은 걸을 수는 있다).
+  if (p.dead || p.hoverTime > 0 || b.ult?.lock) return;
 
   if (input.pressed('swap') && p.swapCd <= 0 && p.dodgeTime <= 0 && !(p.action && CHANNELS.has(p.action.kind))) {
     p.swapWeapon();
@@ -832,6 +833,7 @@ function tryCast(b: BattleScene, skill: SkillDef | null, slot: number): void {
   p.charge = -1;
   p.guarding = false;
   if (skill.weapon === 'staff') sfx.play('magic', 1.2);
+  b.lastCastSlot = slot;
   castSkill(b, skill);
 }
 

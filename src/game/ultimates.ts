@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { sfx } from '../core/audio';
+import { SLOT_ACTIONS } from '../core/input';
 import { skyShotMana, skyShotStr } from '../data/skills';
 import type { BattleScene } from './battleScene';
 import { DEPTH } from './fx';
@@ -289,41 +290,131 @@ const heavenFall: Cast = (b) => {
   });
 };
 
-/** 혈월 강림: 화면이 핏빛으로 물들고, 모든 적에게 참격이 여덟 번 몰아친다. */
+/** 궁극기 중에 머리 위·화면에 띄우는 글자 */
+function ultText(b: BattleScene, size: number, color: string): Phaser.GameObjects.Text {
+  return b.add
+    .text(0, 0, '', { fontFamily: '"Black Han Sans", "Malgun Gothic", sans-serif', fontSize: `${size}px`, color, stroke: '#140608', strokeThickness: 4, resolution: 3 })
+    .setOrigin(0.5)
+    .setDepth(DEPTH.text);
+}
+
+/** 혈월 발도 [초안]: 키를 누르고 있는 동안 0.5초마다 3타씩 쌓고(최대 10초), 떼면 화면 안 모든 적에게 쌓은 만큼 몰아친다. */
+const IAI_MAX = 10;
+const IAI_STEP = 0.5;
+const IAI_PER_STEP = 3;
+const IAI_STR = 0.7;
+const IAI_GAP = 0.035;
+
+/** 혈월 게이지: 플레이어 옆에 세로로 선 칸. 0.5초마다 한 칸(3타)씩 아래에서 위로 차오른다. */
+const IAI_CELLS = IAI_MAX / IAI_STEP;
+const GAUGE_CELL = 3;
+
+function drawIaiGauge(g: Phaser.GameObjects.Graphics, x: number, feet: number, t: number, time: number): void {
+  const full = Math.min(IAI_CELLS, t / IAI_STEP);
+  const filled = Math.floor(full);
+  const h = IAI_CELLS * GAUGE_CELL;
+  const top = feet - 6 - h;
+  g.clear();
+  g.fillStyle(0x140608, 0.85).fillRect(x - 2, top - 2, 9, h + 3);
+  for (let i = 0; i < IAI_CELLS; i++) {
+    const y = feet - 6 - (i + 1) * GAUGE_CELL;
+    if (i < filled) g.fillStyle(i === filled - 1 ? 0xff8a96 : 0xd01a3a, 1).fillRect(x, y + 1, 5, GAUGE_CELL - 1);
+    else if (i === filled && filled < IAI_CELLS) {
+      // 지금 차오르는 칸
+      const k = full - filled;
+      g.fillStyle(0x5a0a14, 1).fillRect(x, y + 1, 5, GAUGE_CELL - 1);
+      g.fillStyle(0xff3a4a, 0.5 + k * 0.5).fillRect(x, y + 1, Math.max(1, Math.round(5 * k)), GAUGE_CELL - 1);
+    } else g.fillStyle(0x2a0a10, 1).fillRect(x, y + 1, 5, GAUGE_CELL - 1);
+  }
+  // 가득 차면 테두리가 하얗게 맥동한다.
+  if (filled >= IAI_CELLS) g.lineStyle(1, 0xffffff, 0.5 + Math.sin(time * 14) * 0.4).strokeRect(x - 2, top - 2, 9, h + 3);
+}
+
 const bloodMoon: Cast = (b) => {
   const p = b.player;
-  p.startAction('iai', 0.8, []);
-  b.fx.dim(0x3a0008, 0.6, 2600);
-  b.fx.flashScreen(0xff2a3a, 0.3, 240);
+  const key = SLOT_ACTIONS[b.lastCastSlot];
   const cam = b.cameras.main;
-  const moon = b.add
-    .image(cam.width / 2, 90, 'fx-moon')
-    .setScrollFactor(0)
-    .setDepth(DEPTH.monster - 1)
-    .setScale(0.4)
-    .setAlpha(0);
-  b.tweens.add({ targets: moon, alpha: 0.95, scale: 1.8, y: 70, duration: 600, ease: 'Quad.Out' });
-  b.tweens.add({ targets: moon, alpha: 0, delay: 2200, duration: 400, onComplete: () => moon.destroy() });
-  for (let k = 0; k < 8; k++) {
-    later(b, 650 + k * 170, () => {
-      sfx.play('slash', 0.5 + k * 0.05);
-      for (const m of onScreen(b)) {
-        const dir = (Math.random() < 0.5 ? 1 : -1) as 1 | -1;
-        b.fx.slash(m.x, m.y, dir, 22 + Math.random() * 10, 0xff3a4a, false, { rot: (Math.random() - 0.5) * 2.4, up: Math.random() < 0.5, speed: 1.6 });
-        const a = Math.random() * Math.PI;
-        crescent(b, m.x, m.y, dir, 40 + Math.random() * 20, PAL.crimson, { from: a - 1.4, to: a + 1.4, ms: 220 });
-        b.hitMonster(m, b.skillBase({ str: 2.5 }), { knock: 10, quiet: k < 7 });
+  const moon = b.add.image(cam.width / 2, 110, 'fx-moon').setScrollFactor(0).setDepth(DEPTH.monster - 1).setScale(0.3).setAlpha(0);
+  const veil = b.add.rectangle(0, 0, cam.width + 400, cam.height, 0x3a0008, 0).setOrigin(0).setScrollFactor(0).setDepth(DEPTH.monster - 2);
+  const gauge = b.add.graphics().setDepth(DEPTH.text - 1);
+  b.announce('키를 누르고 있으면 혈월이 차오른다. 떼면 발도!', 1.4);
+  let t = 0;
+  let steps = 0;
+  let hits = 0;
+  let total = 0;
+  let gap = 0;
+  let striking = false;
+  const cleanup = (): void => {
+    gauge.destroy();
+    b.tweens.add({ targets: [moon, veil], alpha: 0, duration: 400, onComplete: () => (moon.destroy(), veil.destroy()) });
+    p.action = null;
+  };
+  const ult = {
+    // 모으는 동안은 움직일 수 있지만 공격·스킬·구르기는 못 한다. 발도하는 동안은 제자리에 선다.
+    lock: true,
+    still: false,
+    tick: (dt: number): boolean => {
+      if (p.dead) {
+        cleanup();
+        return true;
       }
-    });
-  }
-  later(b, 650 + 8 * 170 + 120, () => {
-    b.fx.flashScreen(0xff3a4a, 0.4, 320);
-    b.fx.shake(1.6, 260);
-    for (const m of onScreen(b)) impactBurst(b, m.x, m.y, 50, PAL.crimson);
-    tint(b, 0xd01a3a, 0.3, 500);
-  });
+      if (!striking) {
+        t += dt;
+        const k = Math.min(1, t / IAI_MAX);
+        moon.setAlpha(0.3 + k * 0.65).setScale(0.3 + k * 1.6);
+        veil.setAlpha(k * 0.45);
+        drawIaiGauge(gauge, Math.round(p.x + (p.facing === 1 ? -20 : 15)), p.feet, t, b.time.now / 1000);
+        if (Math.random() < 0.3 + k * 0.6) b.fx.embers(p.x, p.feet - 4, Math.random() < 0.5 ? 0xff3a4a : 0xffa0a8, 1, 12 + k * 20, 30 + k * 40, 500);
+        const now = Math.min(IAI_CELLS, Math.floor(t / IAI_STEP));
+        if (now > steps) {
+          steps = now;
+          b.fx.ring(p.x, p.feet, 24 + k * 50, 0xff3a4a, 260);
+          sfx.play('parry', 0.3 + k * 0.4);
+          if (steps === IAI_CELLS) b.fx.flashScreen(0xff3a4a, 0.25, 200);
+        }
+        if (b.keys.isDown(key) && t < IAI_MAX) return false;
+        // 떼었다: 발도. 0.5초가 안 되어도 한 칸(3타)은 나간다.
+        striking = true;
+        ult.still = true;
+        total = Math.max(1, steps) * IAI_PER_STEP;
+        p.startAction('iai', 99, []);
+        b.fx.flashScreen(0xff2a3a, 0.4, 240);
+        sfx.play('slash', 1.4);
+        return false;
+      }
+      // 발도: 짧은 간격으로 화면 안 모든 적을 벤다. 이 동안은 맞지 않는다. 게이지가 위에서부터 비워진다.
+      p.invuln = Math.max(p.invuln, 0.2);
+      drawIaiGauge(gauge, Math.round(p.x + (p.facing === 1 ? -20 : 15)), p.feet, ((total - hits) / IAI_PER_STEP) * IAI_STEP, b.time.now / 1000);
+      gap -= dt;
+      while (gap <= 0 && hits < total) {
+        gap += IAI_GAP;
+        hits++;
+        const targets = onScreen(b);
+        if (hits % 3 === 1) sfx.play('slash', 0.4 + Math.random() * 0.3);
+        targets.forEach((m, i) => {
+          if (i < 6) {
+            const dir = (Math.random() < 0.5 ? 1 : -1) as 1 | -1;
+            b.fx.slash(m.x, m.y, dir, 20 + Math.random() * 12, 0xff3a4a, false, { rot: (Math.random() - 0.5) * 2.4, up: Math.random() < 0.5, speed: 1.8 });
+            if (hits % 4 === 0) {
+              const a = Math.random() * Math.PI;
+              crescent(b, m.x, m.y, dir, 36 + Math.random() * 24, PAL.crimson, { from: a - 1.4, to: a + 1.4, ms: 200 });
+            }
+          }
+          b.hitMonster(m, b.skillBase({ str: IAI_STR }), { knock: 6, quiet: hits !== total });
+        });
+        if (hits % 6 === 0) b.fx.shake(0.6, 80);
+      }
+      if (hits < total) return false;
+      b.fx.flashScreen(0xff3a4a, 0.45, 360);
+      b.fx.shake(1.8, 300);
+      for (const m of onScreen(b)) impactBurst(b, m.x, m.y, 50, PAL.crimson);
+      tint(b, 0xd01a3a, 0.3, 500);
+      cleanup();
+      return true;
+    },
+  };
+  b.ult = ult;
 };
-
 // ───────────────────────── 궁수 ─────────────────────────
 
 /** 화살 한 발이 (x0,y0)에서 (x1,y1)로 꽂힌다. */
@@ -413,43 +504,100 @@ const meteorArrow: Cast = (b) => {
   }
 };
 
-/** 오로라 폭우: 하늘을 덮는 마법진에서 3초 동안 화살 폭우 */
+/** 별사냥 [초안]: 6초 동안 활로 맞힌 적에게 별 표식이 쌓이고 (한 적에 최대 15), 끝나면 표식마다 별똥별이 떨어진다. */
+const STAR_TIME = 6;
+const STAR_CAP = 15;
+const STAR_GAP = 0.04;
+
 const aurora: Cast = (b) => {
   const p = b.player;
   p.startAction('shoot', 0.4);
-  b.fx.dim(0x001820, 0.4, 3600);
-  const rings = skyCircles(b, 0x7fffd0, 3500);
+  const rings = skyCircles(b, 0x7fffd0, STAR_TIME * 1000 + 400);
   b.tweens.addCounter({
     from: 0,
     to: 1,
-    duration: 3400,
+    duration: STAR_TIME * 1000,
     onUpdate: (tw) => {
       // 오로라처럼 초록·하늘·보라로 색이 흐른다.
       const h = (0.42 + Math.sin(tw.getValue() * Math.PI * 4) * 0.12 + 1) % 1;
       for (const r of rings) r.setTint(Phaser.Display.Color.HSVToRGB(h, 0.5, 1).color);
     },
   });
-  for (let k = 0; k < 30; k++) {
-    later(b, 300 + k * 100, () => {
-      const v = view(b);
-      const targets = onScreen(b);
-      for (let j = 0; j < 2; j++) {
-        const m = targets.length ? targets[Math.floor(Math.random() * targets.length)] : null;
-        const x = m ? m.x : v.x + Math.random() * v.width;
-        const y = m ? m.y : FLOOR_Y - 3;
-        arrowRain(b, x + 20, v.y + 34, x, y, 160, 0x9ff0e0, () => {
-          if (m && m.alive) b.hitMonster(m, b.skillBase({ dex: 2, str: 0.8 }), { knock: 10, quiet: k % 3 !== 0 });
+  b.announce('별사냥! 6초 동안 활로 맞힌 적에게 별 표식이 새겨진다', 1.6);
+  const marks = new Map<Monster, { n: number; label: Phaser.GameObjects.Text }>();
+  const timer = ultText(b, 16, '#ffe08a').setScrollFactor(0);
+  b.hitHook = (m) => {
+    if (b.player.weapon.def.type !== 'bow') return;
+    let e = marks.get(m);
+    if (!e) {
+      e = { n: 0, label: ultText(b, 12, '#ffe08a') };
+      marks.set(m, e);
+    }
+    if (e.n >= STAR_CAP) return;
+    e.n++;
+    b.fx.spark(m.x, m.body.top - 6, 0xffe08a, 1, Math.PI / 4);
+  };
+  let t = 0;
+  let falling = false;
+  let queue: Monster[] = [];
+  let gap = 0;
+  let end = 0;
+  const clear = (): void => {
+    b.hitHook = null;
+    timer.destroy();
+    for (const e of marks.values()) e.label.destroy();
+    marks.clear();
+  };
+  b.ult = {
+    lock: false,
+    still: false,
+    tick: (dt) => {
+      if (p.dead) {
+        clear();
+        return true;
+      }
+      t += dt;
+      for (const [m, e] of marks) e.label.setPosition(m.x, m.body.top - 14).setText(`★${e.n}`).setVisible(m.alive);
+      if (!falling) {
+        timer.setPosition(b.cameras.main.width / 2, 74).setText(`별사냥 ${Math.max(0, STAR_TIME - t).toFixed(1)}초`);
+        if (t < STAR_TIME) return false;
+        // 끝: 표식을 별자리로 잇고, 표식 수만큼 별똥별이 떨어진다.
+        falling = true;
+        b.hitHook = null;
+        timer.setText('');
+        const live = [...marks.entries()].filter(([m]) => m.alive);
+        const lines = b.add.graphics().setDepth(DEPTH.fx);
+        lines.lineStyle(1, 0xffe08a, 0.9);
+        for (let i = 1; i < live.length; i++) lines.lineBetween(live[i - 1][0].x, live[i - 1][0].y, live[i][0].x, live[i][0].y);
+        b.tweens.add({ targets: lines, alpha: 0, delay: 600, duration: 500, onComplete: () => lines.destroy() });
+        for (const [m, e] of live) for (let i = 0; i < e.n; i++) queue.push(m);
+        queue = Phaser.Utils.Array.Shuffle(queue);
+        if (queue.length) {
+          b.fx.flashScreen(0xffe08a, 0.25, 260);
+          sfx.play('magic', 1.2);
+        }
+        gap = 0.4;
+        return false;
+      }
+      gap -= dt;
+      while (gap <= 0 && queue.length) {
+        gap += STAR_GAP;
+        const m = queue.shift()!;
+        const v = view(b);
+        const e = marks.get(m);
+        if (e) e.n = Math.max(0, e.n - 1);
+        arrowRain(b, m.x + 40, v.y + 10, m.x, m.y, 220, 0xffe08a, () => {
+          flare(b, m.x, m.y, 22, PAL.gold, 220);
+          if (m.alive) b.hitMonster(m, b.skillBase({ dex: 1.5, str: 0.5 }), { knock: 8, quiet: queue.length > 0 });
         });
       }
-      if (k % 3 === 0) {
-        const pals: Palette3[] = [PAL.jade, PAL.sky, PAL.violet];
-        column(b, v.x + Math.random() * v.width, FLOOR_Y, 16, 300, pals[(k / 3) % 3 | 0], 600);
-      }
-      // 빈 곳에도 화살이 쏟아진다 (보이기용).
-      const xr = v.x + Math.random() * v.width;
-      arrowRain(b, xr + 20, v.y + 34, xr, FLOOR_Y - 3, 160, 0x9ff0e0, () => undefined);
-    });
-  }
+      if (queue.length) return false;
+      end += dt;
+      if (end < 0.5) return false;
+      clear();
+      return true;
+    },
+  };
 };
 
 // ───────────────────────── 총잡이 ─────────────────────────
@@ -519,43 +667,124 @@ const airstrike: Cast = (b) => {
   });
 };
 
-/** 데드아이: 세상이 느려지며 화면 안 모든 적에게 조준점이 잡히고 일제히 쏜다. */
+/**
+ * 황금 탄환 [초안]: 세상이 느려지고 황금 탄환 8발을 쏜다. 발마다 적 하나에 조준 원이 줄어들고,
+ * 원이 가운데 고리에 닿을 때 공격키를 누르면 PERFECT (기본 사격 1500% + 가까운 적 둘에게 도탄),
+ * 조금 이르면 GOOD (800%), 너무 이르거나 놓치면 400%.
+ */
+const GOLD_SHOTS = 8;
+const RING_TIME = 0.9;
+const RING_MAX = 60;
+const RING_MIN = 6;
+const PERFECT_R: [number, number] = [8, 20];
+const GOOD_R = 34;
+
 const deadEye: Cast = (b) => {
   const p = b.player;
-  p.startAction('snipe', 1.6, []);
-  b.fx.dim(0x000000, 0.65, 1900);
-  const targets = onScreen(b);
-  const marks = targets.map((m) => {
-    const c = b.add.image(m.x, m.y, 'fx-crosshair').setDepth(DEPTH.text - 2).setScale(3).setAlpha(0);
-    b.tweens.add({ targets: c, scale: 1.2, alpha: 1, angle: 90, duration: 500, ease: 'Back.Out' });
-    return c;
-  });
-  // 조준점이 적을 따라다닌다.
-  const follow = b.time.addEvent({
-    delay: 16,
-    loop: true,
-    callback: () => targets.forEach((m, i) => marks[i].setPosition(m.x, m.y)),
-  });
+  p.startAction('snipe', 99, []);
+  const cam = b.cameras.main;
+  const veil = b.add.rectangle(0, 0, cam.width + 400, cam.height, 0x000000, 0.55).setOrigin(0).setScrollFactor(0).setDepth(DEPTH.monster - 2);
+  const ring = b.add.graphics().setDepth(DEPTH.text - 1);
+  const cross = b.add.image(0, 0, 'fx-crosshair').setDepth(DEPTH.text - 1).setScale(1.2);
+  const counter = ultText(b, 16, '#ffe08a').setScrollFactor(0);
+  b.announce('황금 탄환! 원이 가운데 고리에 닿을 때 공격키!', 1.6);
   sfx.play('reload');
-  targets.forEach((m, i) => {
-    later(b, 900 + i * 70, () => {
-      const m0 = p.muzzle();
-      b.fx.muzzle(m0.x, m0.y, p.facing, 2);
-      b.fx.tracer(m0.x, m0.y, m.x, m.y, 0xfff0a0, 3, 200);
-      b.fx.bigSlash(m0.x, m0.y, m.x, m.y, 0xffc040, 8, 300);
-      b.fx.spark(m.x, m.y, 0xffffff, 2);
-      impactBurst(b, m.x, m.y, 50, PAL.gold);
-      sfx.play('shot', 1.3);
-      marks[i].destroy();
-      if (m.alive) b.hitMonster(m, b.weaponBase() * 15, { knock: 160 });
-    });
-  });
-  later(b, 900 + targets.length * 70 + 100, () => {
-    follow.remove();
-    for (const c of marks) if (c.active) c.destroy();
-    b.fx.flashScreen(0xfff0c0, 0.35, 260);
-    b.fx.shake(1.2, 200);
-  });
+  // 세상이 느려진다: 몬스터가 거의 움직이지 못한다.
+  for (const m of b.monsters) {
+    m.slowTime = 9;
+    m.slowMul = 0.2;
+  }
+  let shot = 0;
+  let t = -0.3;
+  let target: Monster | null = null;
+  const pick = (): Monster | null => {
+    const list = onScreen(b).sort((a, c) => Math.abs(a.x - p.x) - Math.abs(c.x - p.x));
+    return list.length ? list[shot % list.length] : null;
+  };
+  const fire = (grade: 'perfect' | 'good' | 'miss'): void => {
+    const m0 = p.muzzle();
+    const tx = target?.x ?? p.x + p.facing * 200;
+    const ty = target?.y ?? FLOOR_Y - 20;
+    p.facing = tx >= p.x ? 1 : -1;
+    b.fx.muzzle(m0.x, m0.y, p.facing, 2);
+    b.fx.tracer(m0.x, m0.y, tx, ty, 0xfff0a0, grade === 'perfect' ? 5 : 3, 220);
+    if (grade === 'perfect') b.fx.bigSlash(m0.x, m0.y, tx, ty, 0xffc040, 8, 300);
+    sfx.play('shot', grade === 'perfect' ? 1.5 : 1.1);
+    const mul = grade === 'perfect' ? 15 : grade === 'good' ? 8 : 4;
+    b.fx.text(tx, ty - 30, grade === 'perfect' ? 'PERFECT!' : grade === 'good' ? 'GOOD' : '빗나감', grade === 'perfect' ? 'crit' : 'info');
+    if (target?.alive) {
+      impactBurst(b, tx, ty, grade === 'perfect' ? 60 : 36, PAL.gold);
+      b.hitMonster(target, b.weaponBase() * mul, { knock: grade === 'perfect' ? 160 : 60 });
+    }
+    if (grade === 'perfect') {
+      b.fx.flashScreen(0xfff0c0, 0.25, 160);
+      b.fx.shake(1, 160);
+      // 도탄: 가까운 적 둘에게 튕겨 간다.
+      const others = onScreen(b)
+        .filter((o) => o !== target)
+        .sort((a, c) => Math.hypot(a.x - tx, a.y - ty) - Math.hypot(c.x - tx, c.y - ty))
+        .slice(0, 2);
+      others.forEach((o, i) =>
+        later(b, 60 + i * 60, () => {
+          b.fx.tracer(tx, ty, o.x, o.y, 0xffe08a, 2, 180);
+          b.fx.spark(o.x, o.y, 0xffffff, 1.5);
+          if (o.alive) b.hitMonster(o, b.weaponBase() * mul * 0.5, { knock: 60 });
+        }),
+      );
+    }
+  };
+  const cleanup = (): void => {
+    ring.destroy();
+    cross.destroy();
+    counter.destroy();
+    b.tweens.add({ targets: veil, alpha: 0, duration: 300, onComplete: () => veil.destroy() });
+    for (const m of b.monsters) {
+      m.slowTime = 0;
+      m.slowMul = 1;
+    }
+    p.action = null;
+  };
+  b.ult = {
+    lock: true,
+    still: true,
+    tick: (dt) => {
+      if (p.dead) {
+        cleanup();
+        return true;
+      }
+      p.invuln = Math.max(p.invuln, 0.2);
+      if (shot >= GOLD_SHOTS) {
+        t += dt;
+        if (t < 0.3) return false;
+        cleanup();
+        return true;
+      }
+      t += dt;
+      if (t < 0) {
+        ring.clear();
+        cross.setVisible(false);
+        return false;
+      }
+      if (!target || !target.alive) target = pick();
+      const x = target?.x ?? p.x + p.facing * 200;
+      const y = target?.y ?? FLOOR_Y - 20;
+      const r = RING_MIN + (RING_MAX - RING_MIN) * Math.max(0, 1 - t / RING_TIME);
+      ring.clear();
+      // 가운데 고리(PERFECT 구간)와 줄어드는 원
+      ring.lineStyle(2, 0xffe08a, 0.5).strokeCircle(x, y, (PERFECT_R[0] + PERFECT_R[1]) / 2);
+      ring.lineStyle(2, r <= PERFECT_R[1] ? 0xffffff : 0xffc040, 1).strokeCircle(x, y, r);
+      cross.setVisible(true).setPosition(x, y);
+      counter.setPosition(cam.width / 2, 74).setText(`황금 탄환 ${GOLD_SHOTS - shot}발`);
+      const pressed = b.keys.pressed('attack');
+      if (!pressed && t < RING_TIME) return false;
+      const grade = pressed && r >= PERFECT_R[0] && r <= PERFECT_R[1] ? 'perfect' : pressed && r <= GOOD_R ? 'good' : 'miss';
+      fire(grade);
+      shot++;
+      target = null;
+      t = -0.15;
+      return false;
+    },
+  };
 };
 
 // ───────────────────────── 마법사 ─────────────────────────
@@ -633,54 +862,131 @@ const blizzard: Cast = (b) => {
   later(b, 4300, () => snow.remove());
 };
 
-/** 아마겟돈: 하늘이 붉게 갈라지며 운석이 쏟아지고, 마지막에 대폭발 */
+/** 운석 하나가 x에 떨어진다. */
+function meteorAt(b: BattleScene, x: number, damage: number, loud: boolean): void {
+  const v = view(b);
+  const rock = b.add.sprite(x - 100, v.y - 30, 'fx-meteor').play('fx-meteor').setDepth(DEPTH.projectile).setOrigin(26 / 40, 26 / 40);
+  b.tweens.add({
+    targets: rock,
+    x,
+    y: FLOOR_Y - 14,
+    duration: 380,
+    ease: 'Quad.In',
+    onUpdate: () => b.fx.burst(rock.x - 4, rock.y - 4, 0xffa040, 1, 30, 240),
+    onComplete: () => {
+      rock.destroy();
+      sfx.play('boom', 0.6);
+      b.fx.boom(x, FLOOR_Y - 20, 34, 'fire');
+      b.fx.ring(x, FLOOR_Y, 60, 0xff6a1a);
+      impactBurst(b, x, FLOOR_Y - 26, 70, PAL.flame, FLOOR_Y);
+      column(b, x, FLOOR_Y, 26, 260, PAL.flame, 460);
+      b.fx.shake(0.9, 140);
+      b.hitArea(x - 45, FLOOR_Y - 110, 90, 110, damage, { knock: 80, quiet: !loud });
+    },
+  });
+}
+
+/**
+ * 룬 아마겟돈 [초안]: 머리 위에 뜨는 방향 룬과 같은 방향키를 누를 때마다 운석이 떨어진다 (마력의 350%).
+ * 틀리거나 4.5초가 지나거나 12개를 채우면 영창이 끝나고, 새긴 룬 수만큼 커진 대폭발이 화면 안 모든 적을 덮친다
+ * (마력의 200% + 룬 하나당 100%).
+ */
+const RUNE_TIME = 4.5;
+const RUNE_MAX = 12;
+const RUNES: { action: 'left' | 'up' | 'right' | 'down'; glyph: string }[] = [
+  { action: 'left', glyph: '←' },
+  { action: 'up', glyph: '↑' },
+  { action: 'right', glyph: '→' },
+  { action: 'down', glyph: '↓' },
+];
+
 const armageddon: Cast = (b) => {
   const p = b.player;
-  p.startAction('cast', 0.6);
-  b.fx.dim(0x400000, 0.55, 4000);
+  p.startAction('cast', 99);
+  const cam = b.cameras.main;
+  const veil = b.add.rectangle(0, 0, cam.width + 400, cam.height, 0x400000, 0.45).setOrigin(0).setScrollFactor(0).setDepth(DEPTH.monster - 2);
+  const circles = skyCircles(b, 0xff5a2a, (RUNE_TIME + 2) * 1000);
+  const rune = ultText(b, 30, '#ffd08a');
+  const info = ultText(b, 14, '#ffb080').setScrollFactor(0);
+  b.announce('룬 아마겟돈! 머리 위 룬과 같은 방향키를 눌러라', 1.6);
   b.fx.flashScreen(0xff3a1a, 0.3, 300);
-  const v0 = view(b);
-  for (let i = 0; i < 3; i++) b.fx.lightning(v0.x + Math.random() * v0.width, v0.y, v0.x + Math.random() * v0.width, v0.y + 40, 0xff7a3a, 2, 500);
-  skyCircles(b, 0xff5a2a, 3800);
-  for (let i = 0; i < 18; i++) {
-    later(b, 300 + i * 160, () => {
+  let t = 0;
+  let count = 0;
+  let current = RUNES[Math.floor(Math.random() * 4)];
+  let casting = true;
+  let after = 0;
+  const nextRune = (): void => {
+    let r = current;
+    while (r === current) r = RUNES[Math.floor(Math.random() * 4)];
+    current = r;
+  };
+  const cleanup = (): void => {
+    rune.destroy();
+    info.destroy();
+    for (const c of circles) if (c.active) c.destroy();
+    b.tweens.add({ targets: veil, alpha: 0, duration: 400, onComplete: () => veil.destroy() });
+    p.action = null;
+  };
+  b.ult = {
+    lock: true,
+    still: true,
+    tick: (dt) => {
+      if (p.dead) {
+        cleanup();
+        return true;
+      }
+      p.invuln = Math.max(p.invuln, 0.2);
+      if (casting) {
+        t += dt;
+        rune.setPosition(p.x, p.body.top - 28 + Math.sin(t * 8) * 2).setText(current.glyph);
+        info.setPosition(cam.width / 2, 74).setText(`룬 ${count} / ${RUNE_MAX} · ${Math.max(0, RUNE_TIME - t).toFixed(1)}초`);
+        const pressed = RUNES.find((r) => b.keys.pressed(r.action));
+        let stop = t >= RUNE_TIME;
+        if (pressed) {
+          if (pressed === current) {
+            count++;
+            // 새긴 룬이 하늘로 날아올라 운석을 부른다.
+            const fly = ultText(b, 30, '#ffd08a').setPosition(rune.x, rune.y).setText(current.glyph);
+            b.tweens.add({ targets: fly, y: view(b).y + 30, alpha: 0, scale: 1.6, duration: 380, onComplete: () => fly.destroy() });
+            b.fx.burst(rune.x, rune.y, 0xffd08a, 8, 90, 260);
+            sfx.play('magic', 0.8 + count * 0.05);
+            const targets = onScreen(b);
+            const v = view(b);
+            const m = targets.length ? targets[Math.floor(Math.random() * targets.length)] : null;
+            meteorAt(b, m ? m.x : v.x + 40 + Math.random() * (v.width - 80), b.skillBase({ int: 3.5 }), count % 3 === 0);
+            nextRune();
+            if (count >= RUNE_MAX) stop = true;
+          } else {
+            // 틀렸다: 룬이 깨지며 영창이 끝난다.
+            b.fx.burst(rune.x, rune.y, 0xff3a3a, 14, 120, 320);
+            b.fx.text(p.x, p.body.top - 40, '룬이 깨졌다', 'info');
+            sfx.play('block', 0.8);
+            stop = true;
+          }
+        }
+        if (!stop) return false;
+        casting = false;
+        rune.setText('');
+        info.setText(`룬 ${count}개`);
+        return false;
+      }
+      after += dt;
+      if (after < 0.7) return false;
+      // 대폭발: 새긴 룬이 많을수록 커진다.
       const v = view(b);
-      const targets = onScreen(b);
-      const m = targets.length && i % 2 === 0 ? targets[(i / 2) % targets.length | 0] : null;
-      const x = m ? m.x : v.x + 30 + Math.random() * (v.width - 60);
-      const rock = b.add.sprite(x - 100, v.y - 30, 'fx-meteor').play('fx-meteor').setDepth(DEPTH.projectile).setOrigin(26 / 40, 26 / 40);
-      b.tweens.add({
-        targets: rock,
-        x,
-        y: FLOOR_Y - 14,
-        duration: 420,
-        ease: 'Quad.In',
-        onUpdate: () => b.fx.burst(rock.x - 4, rock.y - 4, 0xffa040, 1, 30, 240),
-        onComplete: () => {
-          rock.destroy();
-          sfx.play('boom', 0.6);
-          b.fx.boom(x, FLOOR_Y - 20, 34, 'fire');
-          b.fx.ring(x, FLOOR_Y, 60, 0xff6a1a);
-          impactBurst(b, x, FLOOR_Y - 26, 70, PAL.flame, FLOOR_Y);
-          column(b, x, FLOOR_Y, 26, 260, PAL.flame, 460);
-          b.fx.shake(0.9, 140);
-          b.hitArea(x - 45, FLOOR_Y - 110, 90, 110, b.skillBase({ int: 4 }), { knock: 80, quiet: i % 3 !== 0 });
-        },
-      });
-    });
-  }
-  later(b, 300 + 18 * 160 + 500, () => {
-    // 대폭발: 화면이 하얗게 타오르고 모든 적이 휩쓸린다.
-    const v = view(b);
-    sfx.play('boom');
-    b.fx.flashScreen(0xfff0c0, 0.75, 600);
-    b.fx.shake(2.6, 420);
-    for (let i = 0; i < 5; i++) b.fx.boom(v.x + (v.width * (i + 0.5)) / 5, FLOOR_Y - 40 - Math.random() * 60, 60, 'fire');
-    for (let i = 0; i < 5; i++) later(b, i * 60, () => impactBurst(b, v.x + (v.width * (i + 0.5)) / 5, FLOOR_Y - 60, 140, i % 2 ? PAL.gold : PAL.flame, FLOOR_Y));
-    shockwave(b, v.centerX, FLOOR_Y, v.width, PAL.flame, 900, 0.25, 14);
-    tint(b, 0xff3a00, 0.4, 700);
-    for (const m of onScreen(b)) b.hitMonster(m, b.skillBase({ int: 12 }), { knock: 200 });
-  });
+      const power = 2 + count;
+      sfx.play('boom');
+      b.fx.flashScreen(0xfff0c0, 0.45 + Math.min(0.35, count * 0.03), 600);
+      b.fx.shake(1.4 + count * 0.12, 420);
+      for (let i = 0; i < 5; i++) b.fx.boom(v.x + (v.width * (i + 0.5)) / 5, FLOOR_Y - 40 - Math.random() * 60, 40 + count * 3, 'fire');
+      for (let i = 0; i < 5; i++) later(b, i * 60, () => impactBurst(b, v.x + (v.width * (i + 0.5)) / 5, FLOOR_Y - 60, 80 + count * 6, i % 2 ? PAL.gold : PAL.flame, FLOOR_Y));
+      shockwave(b, v.centerX, FLOOR_Y, v.width, PAL.flame, 900, 0.25, 14);
+      tint(b, 0xff3a00, 0.4, 700);
+      for (const m of onScreen(b)) b.hitMonster(m, b.skillBase({ int: power }), { knock: 200 });
+      cleanup();
+      return true;
+    },
+  };
 };
 
 const ULTIMATES: Record<string, Cast> = {

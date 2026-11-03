@@ -152,6 +152,8 @@ export class Player {
   airJumps = 1;
   /** 공중에 떠서 스킬을 쓰는 남은 시간 (천공 섬광). 이동·공격을 할 수 없다. */
   hoverTime = 0;
+  /** 궁극기 채널 중 제자리에 선다 (중력은 그대로). 공격 막기는 BattleScene.ult.lock이 한다. */
+  locked = false;
   private hoverY = 0;
   /** 방향 더블 점프의 잔상이 남은 시간 */
   private airDashTime = 0;
@@ -399,6 +401,10 @@ export class Player {
     }
     if (this.hoverTime > 0) {
       body.setVelocity(0, this.y > this.hoverY + 2 ? Math.max(-420, (this.hoverY - this.y) * 8) : 0);
+      return;
+    }
+    if (this.locked) {
+      body.setVelocityX(0);
       return;
     }
     if (this.dodgeTime > 0) {

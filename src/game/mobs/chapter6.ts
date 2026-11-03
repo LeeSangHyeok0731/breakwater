@@ -56,14 +56,15 @@ export function whelp(el: DragonElement): Behavior {
           m.step = (m.step + 1) % 3;
           m.body.setVelocity(0, -20);
           m.play(m.look.attack);
-          m.sprite.setTint(0xffffff).setTintFill(el.hi);
-          b.time.delayedCall(80, () => m.alive && resetTint(m));
+          // 숨을 머금는 동안 몸이 속성 색으로 물든다 (맞을 때 번쩍임이 덮어써도 남지 않게 채우기 대신 곱하기 색).
+          m.sprite.setTint(el.hi === 0xffffff ? el.color : el.hi);
         }
         break;
       case 'windup':
         m.body.setVelocity(0, -10);
         m.face(p.x - m.x);
         if (m.stateTime > 0) break;
+        resetTint(m);
         if (m.step === 0) {
           m.state = 'dive';
           m.stateTime = 0.8;
