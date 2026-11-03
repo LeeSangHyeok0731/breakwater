@@ -73,7 +73,7 @@ interface Bolt extends BoltSpec {
 export interface EnemyBoltOpts {
   /** 생김새: 마력탄(기본), 서리, 도깨비불, 깃털 */
   kind?: 'orb' | 'frost' | 'wisp' | 'feather' | 'void';
-  /** 깃털 탄의 색 (밤의 여왕·공허 천사) */
+  /** 깃털·기본 구슬 탄의 색 (밤의 여왕·공허 천사·뇌운 새끼용) */
   tint?: number;
   /** 맞으면 플레이어가 잠깐 느려진다 */
   slow?: boolean;
@@ -116,6 +116,8 @@ export interface FieldSpec {
   rain?: boolean;
   /** 겉모습: 서리(얼음 가시), 불길, 화살비, 독, 기본 */
   style?: 'frost' | 'fire' | 'rain' | 'poison' | 'plain';
+  /** 적이 남긴 장판: 그 위 땅에 선 플레이어가 틱마다 받는 피해 (가드 불가) */
+  hurt?: number;
 }
 
 interface Field extends FieldSpec {
@@ -320,8 +322,14 @@ export class BattleScene extends Phaser.Scene {
     });
     this.monsterGroup = this.physics.add.group();
     this.physics.add.collider(this.monsterGroup, this.level.solids);
-    this.physics.add.collider(this.monsterGroup, this.level.platforms, undefined, (m, plat) =>
-      onTop((m as Phaser.GameObjects.Zone).body as Phaser.Physics.Arcade.Body, (plat as Phaser.GameObjects.Zone).body as Phaser.Physics.Arcade.StaticBody),
+    // 거대한 용처럼 발판을 무시하는 몬스터는 몸통 zone에 noPlatform을 단다.
+    this.physics.add.collider(
+      this.monsterGroup,
+      this.level.platforms,
+      undefined,
+      (m, plat) =>
+        !(m as Phaser.GameObjects.Zone).getData('noPlatform') &&
+        onTop((m as Phaser.GameObjects.Zone).body as Phaser.Physics.Arcade.Body, (plat as Phaser.GameObjects.Zone).body as Phaser.Physics.Arcade.StaticBody),
     );
 
     const cam = this.cameras.main;
@@ -1219,6 +1227,7 @@ export class BattleScene extends Phaser.Scene {
       obj = this.add.sprite(x, y, 'fx-orb-enemy').play('fx-orb-enemy').setTint(0x80d0ff).setBlendMode(Phaser.BlendModes.ADD);
     } else {
       obj = this.add.sprite(x, y, 'fx-orb-enemy').play('fx-orb-enemy').setBlendMode(Phaser.BlendModes.ADD);
+      if (opts.tint !== undefined) obj.setTint(opts.tint);
     }
     obj.setDepth(DEPTH.projectile);
     this.enemyBolts.push({ obj, x, y, vx, vy, damage, aoe, owner, life: opts.life ?? 4, opts });
@@ -1427,10 +1436,10 @@ export class BattleScene extends Phaser.Scene {
       this.fieldFx(f, dt);
       if (f.tickTimer <= 0) {
         f.tickTimer = f.tickEvery;
-        if (poison) {
-          // 독 웅덩이: 플레이어를 해친다 (가드 불가).
+        if (poison || f.hurt) {
+          // 독 웅덩이·용암 불길: 플레이어를 해친다 (가드 불가).
           if (p.x > f.x && p.x < f.x + f.w && p.grounded && !p.onPlatform) {
-            this.damagePlayer(6, { x: p.x, melee: false, unblockable: true });
+            this.damagePlayer(f.hurt ?? 6, { x: p.x, melee: false, unblockable: true });
           }
         } else {
           for (const m of this.monsters) {
