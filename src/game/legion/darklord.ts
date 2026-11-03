@@ -62,8 +62,8 @@ interface LordState {
 
 const states = new WeakMap<Monster, LordState>();
 
-/** 검은 달 구슬 그림 */
-function makeArt(scene: Phaser.Scene): void {
+/** 검은 달 구슬 그림 (마왕 레이드도 쓴다) */
+export function makeOrbArt(scene: Phaser.Scene): void {
   if (!scene.textures.exists(ORB_KEY)) {
     const c = document.createElement('canvas');
     c.width = 16;
@@ -122,7 +122,7 @@ function syncStaff(_m: Monster, st: LordState): void {
 }
 
 /** 검은 달 구슬: 머리 위에 떠올랐다가 정한 자리로 날아가 터진다. */
-function moonOrb(m: Monster, x: number, y: number, tx: number, ty: number, delay: number): void {
+export function moonOrb(m: Monster, x: number, y: number, tx: number, ty: number, delay: number): void {
   const b = m.scene;
   const orb = b.add.image(x, y, ORB_KEY).setScale(0).setDepth(DEPTH.projectile);
   const halo = b.add.circle(x, y, 12, PURPLE, 0.35).setDepth(DEPTH.projectile - 1).setBlendMode(Phaser.BlendModes.ADD).setScale(0);
@@ -160,7 +160,7 @@ function moonOrb(m: Monster, x: number, y: number, tx: number, ty: number, delay
 }
 
 /** 초승달 참격: 바닥을 타고 미끄러진다. 점프하면 넘을 수 있다. */
-function crescent(m: Monster, x: number, dir: 1 | -1): void {
+export function crescent(m: Monster, x: number, dir: 1 | -1): void {
   const b = m.scene;
   const W = b.level.width;
   const img = b.add.image(x, FLOOR_Y - 22, ORB_KEY).setVisible(false);
@@ -200,7 +200,7 @@ function crescent(m: Monster, x: number, dir: 1 | -1): void {
 }
 
 /** 월식 기둥: 예고한 자리에 검은 빛 기둥이 솟는다. */
-function eclipseColumn(m: Monster, x: number, delay: number): void {
+export function eclipseColumn(m: Monster, x: number, delay: number): void {
   const b = m.scene;
   b.addTelegraph(x - 30, 0, 60, FLOOR_Y, delay, m, () => {
     b.fx.pillar(x, FLOOR_Y, PURPLE, 260, 650);
@@ -389,7 +389,7 @@ export const darkLord: Behavior = (m, dt) => {
   const p = b.player;
   let st = states.get(m);
   if (!st) {
-    makeArt(b);
+    makeOrbArt(b);
     makeDarkLordArt(b);
     const rig = new Rig(b, DARKLORD_RIG, DARKLORD_IDLE);
     rig.glowColor = PURPLE;

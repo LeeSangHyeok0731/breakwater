@@ -20,8 +20,12 @@ export const DEX_SPEED_CAP = 0.5;
 
 /** 레벨 자동 상승 + 분배한 포인트 + 장비 보너스 (직업 패시브 전) */
 export function baseStats(save: SaveData): Stats {
+  return baseStatsWith(save, gearBonus(save.gear.equipped, save.gear.enhance));
+}
+
+/** 장비 보너스를 따로 정해 계산한다 (마왕 레이드는 방어구 세 벌을 합친다). */
+export function baseStatsWith(save: SaveData, g: Required<GearStats>): Stats {
   const auto = BASE_STAT + (save.level - 1);
-  const g = gearBonus(save.gear.equipped, save.gear.enhance);
   return {
     str: auto + save.allocated.str + g.str,
     dex: auto + save.allocated.dex + g.dex,
@@ -32,7 +36,14 @@ export function baseStats(save: SaveData): Stats {
 
 /** 기본 스탯 + 직업 패시브로 늘어난 스탯. 전투·전투력·창 표시 모두 이 값을 쓴다. */
 export function totalStats(save: SaveData): Stats {
-  const s = baseStats(save);
+  return withClassPassive(save, baseStats(save));
+}
+
+export function totalStatsWith(save: SaveData, g: Required<GearStats>): Stats {
+  return withClassPassive(save, baseStatsWith(save, g));
+}
+
+function withClassPassive(save: SaveData, s: Stats): Stats {
   const { add } = classPassiveBonus(s, save.level);
   return { str: s.str + add.str, dex: s.dex + add.dex, int: s.int + add.int, hp: s.hp };
 }

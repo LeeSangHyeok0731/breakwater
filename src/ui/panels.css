@@ -1214,3 +1214,27 @@
   font-size: 12px;
   margin: 2px 0 8px;
 }
+/* ───────── 마왕성 문 (마왕 레이드) ───────── */
+/* 방어구 세 줄: 줄 이름 + 4부위 */
+.eq-doll.raid-doll {
+  grid-template-columns: auto repeat(4, auto);
+  justify-content: center;
+  gap: 8px 10px;
+}
+.raid-armor-line {
+  font-weight: bold;
+  color: #e8c46a;
+  padding-right: 4px;
+}
+.raid-weapons {
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.raid-setsum-line {
+  font-size: 11px;
+  color: #e8c46a;
+}
+.raid-armor-total {
+  margin: 0;
+  font-size: 12px;
+}

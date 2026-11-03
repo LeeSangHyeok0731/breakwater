@@ -12,13 +12,15 @@ import { LATE_CHAPTERS } from './mobs/lateChapters';
 import { silentKnight } from './legion/knight';
 import { corruptedElf } from './legion/elf';
 import { darkLord } from './legion/darklord';
+import { demonKingRaid, sealCrystal } from './raid/demonKing';
+import { CRYSTAL_ANIM, RAID_DEMON_ATTACK, RAID_DEMON_IDLE } from './raid/raidArt';
 import { worldGolem } from './worldGolem';
 import { SCARECROW_ANIM } from './scarecrow';
 import { hpStack, isStacked } from './hpStack';
 
 /** 챕터 2·3 몬스터의 행동 (몬스터 하나를 한 프레임 움직인다) */
 export type Behavior = (m: Monster, dt: number) => void;
-const BEHAVIORS: Partial<Record<MonsterKind, Behavior>> = { ...CHAPTER2, ...CHAPTER3, ...CHAPTER4, ...CHAPTER5, ...CHAPTER6, ...LATE_CHAPTERS, silent_knight: silentKnight, corrupted_elf: corruptedElf, dark_lord: darkLord, world_golem: worldGolem };
+const BEHAVIORS: Partial<Record<MonsterKind, Behavior>> = { ...CHAPTER2, ...CHAPTER3, ...CHAPTER4, ...CHAPTER5, ...CHAPTER6, ...LATE_CHAPTERS, silent_knight: silentKnight, corrupted_elf: corruptedElf, dark_lord: darkLord, world_golem: worldGolem, demon_lord_raid: demonKingRaid, seal_crystal: sealCrystal };
 
 export interface Look {
   walk: string;
@@ -101,6 +103,8 @@ const LOOKS: Record<MonsterKind, Look> = {
   shadow_wyvern: { walk: 'shadow-wyvern-pose', facesLeft: false, body: [70, 56] },
   demon_king: { walk: 'dking-idle', attack: 'dking-attack', facesLeft: true, body: [70, 96], scale: 1.5 },
   scarecrow: { walk: SCARECROW_ANIM, facesLeft: false, body: [24, 50] },
+  demon_lord_raid: { walk: RAID_DEMON_IDLE, attack: RAID_DEMON_ATTACK, facesLeft: true, body: [70, 96], scale: 1.6 },
+  seal_crystal: { walk: CRYSTAL_ANIM, facesLeft: false, body: [22, 40], scale: 1.3 },
 };
 
 export function monsterLook(kind: MonsterKind): Look {

@@ -4,6 +4,8 @@ import { StoryBooks } from './storyBook';
 import { renderWorldBossPanel } from './worldBossPanel';
 import { renderSkillPanel } from './skillPanel';
 import { renderArmoryPanel, renderLegionPanel, renderShardPanel } from './legionPanel';
+import { renderRaidPanel } from './raidPanel';
+import type { RaidRun } from '../data/raid';
 import type { LegionRun } from '../data/legion';
 import { exportSave, importSave, type SaveData } from '../core/save';
 import { DEFAULT_KEYMAP, keyLabel, type Action } from '../core/input';
@@ -28,6 +30,8 @@ export interface VillageCallbacks {
   onClose(): void;
   /** 전투 기지에서 군단장에게 출격한다. */
   onStartLegion(run: LegionRun): void;
+  /** 전투 기지 마왕성 문에서 레이드에 출격한다. */
+  onStartRaid(run: RaidRun): void;
   /** 월드 보스 도전 */
   onStartWorldBoss(): void;
   /** 튜토리얼 다시 하기 */
@@ -42,7 +46,7 @@ export interface VillageCallbacks {
   monsterArt(kind: MonsterKind): HTMLCanvasElement | null;
 }
 
-export type Tab = 'phase' | 'equip' | 'skill' | 'enhance' | 'exchange' | 'shop' | 'settings' | 'legion' | 'armory' | 'shards' | 'worldboss';
+export type Tab = 'phase' | 'equip' | 'skill' | 'enhance' | 'exchange' | 'shop' | 'settings' | 'legion' | 'armory' | 'shards' | 'worldboss' | 'raid';
 type ConfirmKey = 'statReset' | 'skillReset' | 'fullReset';
 
 const TABS: { id: Tab; label: string }[] = [
@@ -57,6 +61,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'armory', label: '무기고' },
   { id: 'shards', label: '조각 상인' },
   { id: 'worldboss', label: '월드 보스' },
+  { id: 'raid', label: '마왕성' },
 ];
 
 const ACTION_LABELS: Record<Action, string> = {
@@ -301,6 +306,9 @@ export class VillageUI {
       case 'worldboss':
         renderWorldBossPanel(this.host, save);
         break;
+      case 'raid':
+        renderRaidPanel(this.host, save);
+        break;
     }
     this.body.scrollTop = scroll;
   }
@@ -320,6 +328,7 @@ export class VillageUI {
       portrait: (type) => this.cb.portrait(type),
       art: (key) => this.cb.art(key),
       startLegion: (run) => this.cb.onStartLegion(run),
+      startRaid: (run) => this.cb.onStartRaid(run),
       startWorldBoss: () => this.cb.onStartWorldBoss(),
     };
   }

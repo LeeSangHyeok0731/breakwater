@@ -2,6 +2,7 @@ import type { Input } from '../core/input';
 import type { SaveData } from '../core/save';
 import type { PhaseDef } from '../data/phases';
 import type { LegionRun } from '../data/legion';
+import type { RaidRun } from '../data/raid';
 import type { Hud } from '../ui/hud';
 import type { TownHud } from '../ui/townHud';
 
@@ -15,11 +16,13 @@ export interface BattleOutcome {
   kills: number;
   /** 군단장 전투였으면 출격 정보 */
   legion?: LegionRun;
+  /** 마왕 레이드였으면 출격 정보 */
+  raid?: RaidRun;
   /** 월드 보스였으면 깬 줄과 총 피해 */
   worldBoss?: { bars: number; damage: number };
 }
 
-export type StationId = 'board' | 'smith' | 'shop' | 'trainer' | 'chest' | 'portal' | 'legion' | 'armory' | 'shards' | 'golem' | 'dummy';
+export type StationId = 'board' | 'smith' | 'shop' | 'trainer' | 'chest' | 'portal' | 'legion' | 'armory' | 'shards' | 'golem' | 'dummy' | 'raid';
 
 /** 마을 또는 전투 기지 (같은 씬을 다르게 꾸민다) */
 export type Area = 'town' | 'base';

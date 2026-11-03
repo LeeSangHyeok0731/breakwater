@@ -139,7 +139,6 @@ export class Player {
   wardHits = 0;
   wardTime = 0;
 
-  swapCd = 0;
   /** 서리 마법에 맞아 느려진 남은 시간 */
   slowTime = 0;
   reloadTime = 0;
@@ -284,7 +283,6 @@ export class Player {
     this.guarding = false;
     this.reloadTime = 0;
     this.ads = false;
-    this.swapCd = 0.3;
     this.swapFlash = 0.12;
     this.aimHold = 0;
     this.swapPuff();
@@ -346,7 +344,6 @@ export class Player {
     this.dodgeCd = Math.max(0, this.dodgeCd - dt);
     this.invuln = Math.max(0, this.invuln - dt);
     this.parryTimer = Math.max(0, this.parryTimer - dt);
-    this.swapCd = Math.max(0, this.swapCd - dt);
     this.slowTime = Math.max(0, this.slowTime - dt);
     this.swapFlash = Math.max(0, this.swapFlash - dt);
     this.aimHold = this.wantsAim ? 0.35 : Math.max(0, this.aimHold - dt);

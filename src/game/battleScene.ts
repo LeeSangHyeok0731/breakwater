@@ -24,7 +24,9 @@ import { Player } from './player2d';
 import { TrainingRoom } from './training';
 import { Tutorial } from './tutorial';
 import { hpStack, isStacked, STACK_COLORS } from './hpStack';
-import { CRIT_DAMAGE, basicDamage, derive, enhanceMultiplier, expToNext, totalStats, type Stats } from './stats';
+import { CRIT_DAMAGE, basicDamage, derive, enhanceMultiplier, expToNext, totalStats, totalStatsWith, type Stats } from './stats';
+import { raidGearBonus, raidReward, type RaidRun } from '../data/raid';
+import { RaidFight } from './raid/raidFight';
 import { buildLevel, FLOOR_Y, VIEW_H, type Level } from './world';
 
 export interface HitOpts {
@@ -246,6 +248,11 @@ export class BattleScene extends Phaser.Scene {
   /** 군단장이 HUD에 띄우는 상태 (보호막 남은 횟수 등). 그로기보다 먼저 보인다. */
   legionNote = '';
   private reviveLeft = 0;
+  /** 마왕 레이드면 출격 정보와 진행자 */
+  private raidRun: RaidRun | null = null;
+  raid: RaidFight | null = null;
+  /** 봉인 전 스탯 (레이드). 피해 계산은 봉인을 곱한 this.stats를 쓴다. */
+  private fullStats: Stats | null = null;
   /** 월드 보스 전투인가, 흐른 시간 */
   worldBoss = false;
   private wbTime = 0;
@@ -272,7 +279,10 @@ export class BattleScene extends Phaser.Scene {
     super('battle');
   }
 
-  init(data: { phase: PhaseDef; legion?: LegionRun; worldBoss?: boolean; tutorial?: boolean; trialOnly?: boolean; training?: boolean }): void {
+  init(data: { phase: PhaseDef; legion?: LegionRun; raid?: RaidRun; worldBoss?: boolean; tutorial?: boolean; trialOnly?: boolean; training?: boolean }): void {
+    this.raidRun = data.raid ?? null;
+    this.raid = null;
+    this.fullStats = null;
     this.isTutorial = !!data.tutorial;
     this.skyStacks = SKY_MAX_BLADES * SKY_STACKS_PER_BLADE;
     this.trialOnly = !!data.trialOnly;
@@ -317,15 +327,25 @@ export class BattleScene extends Phaser.Scene {
     this.level = buildLevel(this, phase.width, phase.platforms, phase.theme, phase.id.charCodeAt(2) * 31);
     this.physics.world.setBounds(0, -200, phase.width, VIEW_H + 400);
 
-    this.stats = totalStats(this.save);
-    // 군단장 전투는 기지에서 고른 무기 2개로 싸운다.
-    const uids = this.legion?.weapons ?? this.save.equipped;
+    // 마왕 레이드는 방어구 세 벌을 합친 장비로 계산한다.
+    const run = this.raidRun;
+    const gear = run ? raidGearBonus(this.save, run.armor) : gearBonus(this.save.gear.equipped, this.save.gear.enhance);
+    this.stats = run ? totalStatsWith(this.save, gear) : totalStats(this.save);
+    // 군단장 전투는 기지에서 고른 무기 2개, 레이드는 무기 5자루로 싸운다.
+    const uids = run?.weapons.length ? run.weapons : (this.legion?.weapons ?? this.save.equipped);
     const weapons = uids.map((uid) => {
       const owned = this.save.weapons.find((w) => w.uid === uid) ?? this.save.weapons[0];
       const def = WEAPONS[owned.defId];
       return { def, enhance: owned.enhance, pages: buildPages(this.save, def.type) };
     });
-    const derived = derive(this.stats, this.save.passives, gearBonus(this.save.gear.equipped, this.save.gear.enhance), this.save.level);
+    const derived = derive(this.stats, this.save.passives, gear, this.save.level);
+    if (run) {
+      // HP·마나는 원래 스탯으로 정하고, 봉인은 피해 계산에 쓰는 스탯에만 건다.
+      this.fullStats = this.stats;
+      this.raid = new RaidFight(this, run);
+      this.raid.onSeal = () => this.applySeal();
+      this.applySeal();
+    }
     const mods = this.legion?.mods ?? [];
     if (mods.includes('atk')) derived.damageMul += 0.2;
     if (mods.includes('guard')) derived.damageReduce = Math.min(0.6, derived.damageReduce + 0.2);
@@ -373,12 +393,21 @@ export class BattleScene extends Phaser.Scene {
 
   /** 페이즈 번호 없이 이름만 보여 주는 전투 */
   private get namedOnly(): boolean {
-    return !!this.legion || this.worldBoss || this.isTutorial || this.isTraining;
+    return !!this.legion || !!this.raid || this.worldBoss || this.isTutorial || this.isTraining;
+  }
+
+  /** 레이드 봉인: 피해 계산에 쓰는 힘·민첩·마력을 봉인 비율만큼 줄인다 (HP 스탯은 그대로). */
+  private applySeal(): void {
+    const full = this.fullStats;
+    if (!full || !this.raid) return;
+    const k = this.raid.sealMul;
+    this.stats = { str: full.str * k, dex: full.dex * k, int: full.int * k, hp: full.hp };
   }
 
   private cleanup(): void {
     // this.anims는 게임 전체가 함께 쓰므로, 일시정지 중에 나가면 마을까지 멈춘 채로 남는다.
     this.anims.resumeAll();
+    this.raid?.destroy();
     this.tutorial?.destroy();
     this.training?.destroy();
     this.hud.destroy();
@@ -504,7 +533,9 @@ export class BattleScene extends Phaser.Scene {
 
   weaponBase(): number {
     const w = this.player.weapon;
-    return basicDamage(w.def, w.enhance, this.stats);
+    // 총 평타는 스탯을 쓰지 않으므로 레이드 봉인 비율을 그대로 곱한다.
+    const seal = this.raid && w.def.type === 'gun' ? this.raid.sealMul : 1;
+    return basicDamage(w.def, w.enhance, this.stats) * seal;
   }
 
   /** 스킬 피해 = Σ(스탯 × 계수) × 무기 강화 배율 */
@@ -531,6 +562,11 @@ export class BattleScene extends Phaser.Scene {
     if (opts.noDamage) {
       this.fx.spark(m.x, m.y, 0xc060ff, 1, Math.PI / 4);
       this.fx.burst(m.x, m.y, 0xb04aff, 6, 50, 400);
+      return 0;
+    }
+    // 레이드 봉인의 결정: 맞는 무기로 친 횟수만큼 깎인다.
+    if (this.raid?.isCrystal(m)) {
+      this.raid.hitCrystal(m, p.weapon.def.type);
       return 0;
     }
     // 횟수 보호막: 피해 대신 한 번씩 깎인다.
@@ -565,7 +601,9 @@ export class BattleScene extends Phaser.Scene {
     }
     // 후광 망령의 보호막을 두른 적은 피해를 절반만 받는다.
     const ward = m.ward > 0 ? 0.5 : 1;
-    let dmg = Math.max(1, Math.round(base * p.damageMul * (1 + p.derived.damageMul) * (1 + m.vuln) * critMul * dev.damageMul * ward));
+    // 레이드 마왕: 약점 무기 ×3, 다른 무기 ×0.3
+    const raidMul = this.raid && m === this.raid.boss ? this.raid.damageMul(w.type) : 1;
+    let dmg = Math.max(1, Math.round(base * p.damageMul * (1 + p.derived.damageMul) * (1 + m.vuln) * critMul * dev.damageMul * ward * raidMul));
     if (dev.oneHit) dmg = Math.max(dmg, Math.ceil(m.hp));
     m.hp -= dmg;
     this.hitHook?.(m);
@@ -579,7 +617,9 @@ export class BattleScene extends Phaser.Scene {
       return dmg;
     }
 
-    this.fx.text(m.x, m.body.top - 2, String(dmg), crit ? 'crit' : opts.quiet ? 'quiet' : 'normal');
+    // 레이드: 약점 피해는 금빛 큰 숫자, 다른 무기는 흐린 숫자
+    const style = raidMul > 1 || crit ? 'crit' : raidMul < 1 || opts.quiet ? 'quiet' : 'normal';
+    this.fx.text(m.x, m.body.top - 2, String(dmg), style);
     if (!opts.quiet) {
       const hx = m.x + (Math.random() - 0.5) * m.body.width * 0.6;
       const hy = m.y + (Math.random() - 0.5) * m.body.height * 0.4;
@@ -658,7 +698,7 @@ export class BattleScene extends Phaser.Scene {
     }
     const p = this.player;
     // 일반 몬스터는 수가 늘어난 만큼 한 마리의 몫을 나눠, 페이즈 전체 보상을 그대로 둔다.
-    const share = m.elite || m.showsBossBar || this.legion || this.worldBoss ? 1 : 1 / MOB_COUNT_MUL;
+    const share = m.elite || m.showsBossBar || this.legion || this.raid || this.worldBoss ? 1 : 1 / MOB_COUNT_MUL;
     const mul = (m.elite ? ELITE_MOD.reward : 1) * share;
     this.pending.gold += m.def.gold * mul;
     this.pending.exp += m.def.exp * mul;
@@ -763,6 +803,7 @@ export class BattleScene extends Phaser.Scene {
 
   /** 군단장 패턴 속도 배율 (대기 시간에 곱한다): 난이도 · 둔화 디버프 */
   legionPace(_m?: Monster): number {
+    if (this.raid) return this.raid.pace();
     if (!this.legion) return 1;
     return DIFFICULTY[this.legion.difficulty].pace * (this.legion.mods.includes('boss_slow') ? 1.15 : 1);
   }
@@ -912,6 +953,16 @@ export class BattleScene extends Phaser.Scene {
     }
     if (this.worldBoss) {
       this.updateWorldBoss(dt);
+      return;
+    }
+    if (this.raid) {
+      // 마왕 레이드: 시작 연출이 끝나면 마왕을 세우고, 그 뒤로는 진행자가 기믹을 돌린다.
+      if (this.state === 'intro') {
+        if (this.stateTimer > 0) return;
+        this.state = 'fight';
+        this.boss = this.raid.spawnBoss();
+      }
+      this.raid.update(dt);
       return;
     }
     if (this.phase.mission) {
@@ -1097,7 +1148,11 @@ export class BattleScene extends Phaser.Scene {
       outcome.worldBoss = { bars: sc.bars, damage: Math.round(sc.damage) };
       outcome.sweepTickets = totalReward(sc.bars).sweepTickets;
     }
-    const area = this.legion ? 'base' : 'town';
+    if (this.raidRun) {
+      outcome.raid = this.raidRun;
+      outcome.materials = cleared ? raidReward(this.raidRun) : {};
+    }
+    const area = this.legion || this.raidRun ? 'base' : 'town';
     ctx.onBattleEnd(outcome, this.hud, () => {
       this.cameras.main.fadeOut(250);
       this.time.delayedCall(260, () => this.scene.start('town', { area }));
@@ -1727,7 +1782,9 @@ export class BattleScene extends Phaser.Scene {
       gold: this.pending.gold,
       kills: this.pending.kills,
       boss: barTarget ? { name: barTarget.def.name, hp: Math.max(0, barTarget.hp), maxHp: barTarget.maxHp, phase2: barTarget.phase2, stack: this.worldBoss ? this.worldBossStack() : isStacked(barTarget.maxHp) ? this.bossStack(barTarget) : undefined } : null,
-      legion: this.legion
+      legion: this.raid
+        ? { stacks: 0, max: 0, silence: 0, revive: 0, status: this.raid.note() }
+        : this.legion
         ? {
             stacks: this.silenceStacks,
             max: this.silenceMax,

@@ -14,6 +14,7 @@ import { BattleScene } from './game/battleScene';
 import { BootScene } from './game/bootScene';
 import { ctx, type Area, type BattleOutcome, type StationId } from './game/context';
 import { legionPhase, type LegionRun } from './data/legion';
+import { raidLoadout, raidPhase, raidWeaponUids, type RaidDifficulty, type RaidRun } from './data/raid';
 import { koNum } from './ui/format';
 import { worldBossPhase } from './data/worldBoss';
 import { TRAINING_PHASE } from './game/training';
@@ -50,6 +51,7 @@ const STATION_TABS: Record<StationId, Tab[]> = {
   shards: ['shards'],
   golem: ['worldboss'],
   dummy: [],
+  raid: ['raid'],
 };
 
 function replaceSave(next: SaveData): void {
@@ -69,6 +71,7 @@ townHud.hide();
 const village = new VillageUI(uiRoot, () => save, {
   onStartPhase: startPhase,
   onStartLegion: startLegion,
+  onStartRaid: startRaid,
   onStartWorldBoss: startWorldBoss,
   onStartTutorial: () => startTutorial(),
   onStartTrial: () => startTutorial(true),
@@ -166,8 +169,9 @@ function onBattleEnd(o: BattleOutcome, hud: Hud, backToTown: () => void): void {
     levelsGained = addExp(save, o.exp);
     for (const [id, n] of Object.entries(o.materials)) save.materials[id] = (save.materials[id] ?? 0) + n;
     save.sweepTickets += o.sweepTickets;
-    if (!o.legion && !o.worldBoss && !save.cleared.includes(o.phase.id)) save.cleared.push(o.phase.id);
+    if (!o.legion && !o.raid && !o.worldBoss && !save.cleared.includes(o.phase.id)) save.cleared.push(o.phase.id);
     if (o.legion) save.legion.clears[o.legion.id] = (save.legion.clears[o.legion.id] ?? 0) + 1;
+    if (o.raid) save.raid.clears++;
   }
   // 월드 보스 최고 기록 (소탕은 이 기록으로 보상을 준다)
   let best = false;
@@ -196,8 +200,9 @@ function onBattleEnd(o: BattleOutcome, hud: Hud, backToTown: () => void): void {
   hud.showResult(
     {
       cleared: o.cleared,
-      phaseName: o.legion || o.worldBoss ? o.phase.name : `${o.phase.id} ${o.phase.name}`,
-      legion: !!o.legion,
+      phaseName: o.legion || o.raid || o.worldBoss ? o.phase.name : `${o.phase.id} ${o.phase.name}`,
+      legion: !!o.legion || !!o.raid,
+      raid: !!o.raid,
       worldBoss: o.worldBoss ? { bars: o.worldBoss.bars, damage: koNum(o.worldBoss.damage), best } : undefined,
       gold: o.gold,
       exp: o.exp,
@@ -267,6 +272,15 @@ function startLegion(run: LegionRun): void {
   game.scene.start('battle', { phase: legionPhase(run), legion: run });
 }
 
+function startRaid(run: RaidRun): void {
+  if (!run.weapons.length) return;
+  village.hide();
+  input.enabled = true;
+  input.endFrame();
+  game.scene.stop('town');
+  game.scene.start('battle', { phase: raidPhase(run), raid: run });
+}
+
 /** 월드 보스 도전: 하루 횟수를 하나 쓰고 들어간다. */
 function startWorldBoss(): void {
   if (!useWorldBossTry(save)) return;
@@ -321,6 +335,12 @@ if (import.meta.env.DEV) {
     },
     legion(run: LegionRun): string {
       startLegion(run);
+      return 'started';
+    },
+    /** 마왕 레이드를 지금 장비(없으면 기본값)로 시작한다. */
+    raid(difficulty: RaidDifficulty = 'normal'): string {
+      const lo = raidLoadout(save);
+      startRaid({ difficulty, weapons: raidWeaponUids(lo), armor: lo.armor });
       return 'started';
     },
     step(frames = 60): string {
