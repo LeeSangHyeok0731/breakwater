@@ -36,7 +36,26 @@ export interface PanelHost {
 }
 
 type StatKey = keyof Stats;
-type BagFilter = 'all' | 'weapon' | 'armor' | 'acc';
+export type BagFilter = 'all' | 'weapon' | 'armor' | 'acc';
+
+/**
+ * 가방·장비 칸·상세 창이 '어디에 장착하는지'를 묻는 곳. 마을 장비창과 마왕성 문(레이드 장비)이 같은 화면을 쓴다.
+ */
+export interface BagAdapter {
+  /** 가방 위 탭 */
+  filters: BagFilter[];
+  /** 창을 다시 그려도 유지되는 탭과 고른 아이템 */
+  state: { filter: BagFilter; selected: DragItem | null };
+  isEquipped(save: SaveData, item: DragItem): boolean;
+  /** 더블클릭: 장착하거나 해제한다. */
+  quickEquip(save: SaveData, item: DragItem): void;
+  /** 장착한 방어구를 가방으로 끌어냈다. */
+  unequip(save: SaveData, item: DragItem): void;
+  /** 상세 창 아래쪽: 전투력 변화, 장착 버튼 */
+  detailActions(host: PanelHost, box: HTMLElement, save: SaveData, item: DragItem): void;
+  /** 세트 정보에 쓸 '입은 부위' (그 세트를 세는 장비 묶음) */
+  wornFor(save: SaveData, setId: string): Partial<Record<GearSlot, string>>;
+}
 
 const STAT_INFO: { key: StatKey; name: string; desc: string }[] = [
   { key: 'str', name: '힘', desc: '근접 무기(도·검) 피해 증가. 활 피해에 30% 반영.' },
@@ -50,16 +69,7 @@ const STAT_NAME = { str: '힘', dex: '민첩', int: '마력' } as const;
 const ARMOR_SLOTS: GearSlot[] = ['head', 'body', 'legs', 'feet'];
 const ACC_SLOTS: GearSlot[] = ['necklace', 'ring'];
 
-const FILTERS: { id: BagFilter; label: string }[] = [
-  { id: 'all', label: '전체' },
-  { id: 'weapon', label: '무기' },
-  { id: 'armor', label: '방어구' },
-  { id: 'acc', label: '장신구' },
-];
-
-// 창을 다시 그려도 유지되는 선택 상태
-let filter: BagFilter = 'all';
-let selected: DragItem | null = null;
+const FILTER_NAME: Record<BagFilter, string> = { all: '전체', weapon: '무기', armor: '방어구', acc: '장신구' };
 
 function weaponOf(save: SaveData, uid: string): { def: WeaponDef; enhance: number } | null {
   const w = save.weapons.find((x) => x.uid === uid);
@@ -67,7 +77,7 @@ function weaponOf(save: SaveData, uid: string): { def: WeaponDef; enhance: numbe
   return w && def ? { def, enhance: w.enhance } : null;
 }
 
-function iconOf(save: SaveData, item: DragItem): string {
+export function iconOf(save: SaveData, item: DragItem): string {
   if (item.kind === 'weapon') {
     const w = weaponOf(save, item.uid);
     return w ? weaponIconUrl(w.def) : '';
@@ -108,6 +118,59 @@ function powerDelta(save: SaveData, item: DragItem): number {
   return combatPower(next) - combatPower(save);
 }
 
+// ───────── 마을 장비 ─────────
+
+const TOWN: BagAdapter = {
+  filters: ['all', 'weapon', 'armor', 'acc'],
+  state: { filter: 'all', selected: null },
+  isEquipped(save, item) {
+    if (item.kind === 'weapon') return save.equipped.includes(item.uid);
+    if (item.kind === 'gear') return save.gear.equipped[GEAR[item.id]?.slot] === item.id;
+    return false;
+  },
+  quickEquip(save, item) {
+    // 무기는 직업 1에 넣고, 방어구·장신구는 장착하거나 해제한다.
+    if (item.kind === 'weapon') equipWeapon(save, item.uid, 0);
+    else if (item.kind === 'gear') {
+      if (this.isEquipped(save, item)) unequipGear(save, item.id);
+      else equipGear(save, item.id);
+    }
+  },
+  unequip(save, item) {
+    if (item.kind === 'gear') unequipGear(save, item.id);
+  },
+  detailActions(host, box, save, item) {
+    const equipped = this.isEquipped(save, item);
+    const delta = powerDelta(save, item);
+    if (delta !== 0) {
+      const d = el('div', `eq-delta ${delta > 0 ? 'up' : 'down'}`, box);
+      el('span', '', d, equipped ? '해제 시 전투력' : item.kind === 'weapon' ? '직업 1에 장착 시 전투력' : '장착 시 전투력');
+      el('b', '', d, `${delta > 0 ? '▲' : '▼'} ${koNum(Math.abs(delta))}`);
+    }
+    const actions = el('div', 'v-actions', box);
+    if (item.kind === 'weapon') {
+      for (const i of [0, 1]) {
+        button(actions, `직업 ${i + 1}에 장착`, i === 0 ? 'primary small' : 'small', save.equipped[i] !== item.uid, () => {
+          equipWeapon(host.getSave(), item.uid, i);
+          host.changed();
+        });
+      }
+    } else if (item.kind === 'gear') {
+      if (equipped)
+        button(actions, '해제', 'small', true, () => {
+          unequipGear(host.getSave(), item.id);
+          host.changed();
+        });
+      else
+        button(actions, '장착', 'primary small', true, () => {
+          equipGear(host.getSave(), item.id);
+          host.changed();
+        });
+    }
+  },
+  wornFor: (save) => save.gear.equipped,
+};
+
 // ───────── 그리기 ─────────
 
 export function renderEquipPanel(host: PanelHost, save: SaveData): void {
@@ -116,15 +179,20 @@ export function renderEquipPanel(host: PanelHost, save: SaveData): void {
   const right = el('div', 'eq-right', root);
 
   renderDoll(host, left, save);
-  const detail = el('div', 'eq-detail');
-  renderBag(host, right, save, detail);
-  right.appendChild(detail);
-  renderDetail(host, detail, save, selected);
+  renderBagAndDetail(host, right, save, TOWN);
 
   renderStats(host, save);
 }
 
-function slotCell(
+/** 오른쪽 칸: 가방 표와 그 아래 상세 창 */
+export function renderBagAndDetail(host: PanelHost, parent: HTMLElement, save: SaveData, ad: BagAdapter): void {
+  const detail = el('div', 'eq-detail');
+  renderBag(host, parent, save, detail, ad);
+  parent.appendChild(detail);
+  renderDetail(host, detail, save, ad.state.selected, ad);
+}
+
+export function slotCell(
   host: PanelHost,
   parent: HTMLElement,
   save: SaveData,
@@ -132,19 +200,26 @@ function slotCell(
   item: DragItem | null,
   accepts: (it: DragItem) => boolean,
   drop: (it: DragItem) => void,
-  detail: () => HTMLElement | null,
+  ad: BagAdapter = TOWN,
 ): HTMLDivElement {
   const cell = el('div', `eq-slot${item ? '' : ' empty'}`, parent);
   cell.title = label;
   el('span', 'eq-slot-label', cell, label);
+  const detail = (): HTMLElement | null => host.body.querySelector('.eq-detail');
   if (item) {
     const url = iconOf(save, item);
     iconImg(cell, url);
     gradeFrame(cell, save, item);
     draggable(cell, () => item, url);
-    cell.addEventListener('click', () => select(host, item, cell));
-    cell.addEventListener('mouseenter', () => hover(host, detail(), item));
-    cell.addEventListener('mouseleave', () => hover(host, detail(), null));
+    cell.addEventListener('click', () => select(host, item, cell, ad));
+    cell.addEventListener('mouseenter', () => hover(host, detail(), item, ad));
+    cell.addEventListener('mouseleave', () => hover(host, detail(), null, ad));
+    // 마을 장비창의 장비 칸은 원래 더블클릭이 없다 (끌어내서 해제).
+    if (ad !== TOWN)
+      cell.addEventListener('dblclick', () => {
+        ad.quickEquip(host.getSave(), item);
+        host.changed();
+      });
   }
   dropZone(cell, accepts, (it) => {
     drop(it);
@@ -154,7 +229,7 @@ function slotCell(
 }
 
 /** 등급 색 테두리 */
-function gradeFrame(cell: HTMLElement, save: SaveData, item: DragItem): void {
+export function gradeFrame(cell: HTMLElement, save: SaveData, item: DragItem): void {
   let grade: string | undefined;
   if (item.kind === 'weapon') grade = weaponOf(save, item.uid)?.def.grade;
   else if (item.kind === 'gear') grade = GEAR[item.id]?.grade;
@@ -166,7 +241,6 @@ function gradeFrame(cell: HTMLElement, save: SaveData, item: DragItem): void {
 
 function renderDoll(host: PanelHost, parent: HTMLElement, save: SaveData): void {
   const doll = el('div', 'eq-doll', parent);
-  const detail = (): HTMLElement | null => host.body.querySelector('.eq-detail');
   const gearCol = (slots: GearSlot[], cls: string): void => {
     const col = el('div', `eq-col ${cls}`, doll);
     for (const slot of slots) {
@@ -179,7 +253,6 @@ function renderDoll(host: PanelHost, parent: HTMLElement, save: SaveData): void 
         id ? { kind: 'gear', id, equipped: true } : null,
         (it) => it.kind === 'gear' && GEAR[it.id]?.slot === slot,
         (it) => it.kind === 'gear' && equipGear(host.getSave(), it.id),
-        detail,
       );
     }
   };
@@ -207,7 +280,6 @@ function renderDoll(host: PanelHost, parent: HTMLElement, save: SaveData): void 
       { kind: 'weapon', uid, from: i },
       (it) => it.kind === 'weapon' && it.from !== i,
       (it) => it.kind === 'weapon' && equipWeapon(host.getSave(), it.uid, i),
-      detail,
     ).classList.add('weapon');
   });
 
@@ -272,7 +344,7 @@ function gearTable(save: SaveData, slots: GearSlot[]): BagTable {
   );
 }
 
-function bagTables(save: SaveData): BagTable[] {
+function bagTables(save: SaveData, filter: BagFilter): BagTable[] {
   switch (filter) {
     case 'weapon':
       return [weaponTable(save)];
@@ -285,20 +357,15 @@ function bagTables(save: SaveData): BagTable[] {
   }
 }
 
-function isEquipped(save: SaveData, item: DragItem): boolean {
-  if (item.kind === 'weapon') return save.equipped.includes(item.uid);
-  if (item.kind === 'gear') return save.gear.equipped[GEAR[item.id]?.slot] === item.id;
-  return false;
-}
-
-function renderBag(host: PanelHost, parent: HTMLElement, save: SaveData, detail: HTMLElement): void {
+function renderBag(host: PanelHost, parent: HTMLElement, save: SaveData, detail: HTMLElement, ad: BagAdapter): void {
   const head = el('div', 'eq-bag-head', parent);
   el('span', 'eq-bag-title', head, '가방');
   const tabs = el('div', 'eq-bag-tabs', head);
-  for (const f of FILTERS) {
-    const b = el('button', `eq-bag-tab${filter === f.id ? ' active' : ''}`, tabs, f.label);
+  if (!ad.filters.includes(ad.state.filter)) ad.state.filter = ad.filters[0];
+  for (const f of ad.filters) {
+    const b = el('button', `eq-bag-tab${ad.state.filter === f ? ' active' : ''}`, tabs, FILTER_NAME[f]);
     b.addEventListener('click', () => {
-      filter = f.id;
+      ad.state.filter = f;
       host.changed();
     });
   }
@@ -309,11 +376,11 @@ function renderBag(host: PanelHost, parent: HTMLElement, save: SaveData, detail:
     bag,
     (it) => it.kind === 'gear' && !!it.equipped,
     (it) => {
-      if (it.kind === 'gear') unequipGear(host.getSave(), it.id);
+      ad.unequip(host.getSave(), it);
       host.changed();
     },
   );
-  for (const table of bagTables(save)) {
+  for (const table of bagTables(save, ad.state.filter)) {
     const grid = el('div', 'eq-table', bag);
     grid.style.gridTemplateColumns = `auto repeat(${table.columns.length}, minmax(0, 1fr))`;
     el('span', 'eq-th corner', grid);
@@ -328,26 +395,29 @@ function renderBag(host: PanelHost, parent: HTMLElement, save: SaveData, detail:
             const cell = el('div', 'eq-cell ghost', td);
             iconImg(cell, e.ghost);
             cell.title = `미보유: ${e.name}`;
-          } else bagCell(host, td, save, e.item, detail);
+          } else bagCell(host, td, save, e.item, detail, ad);
         }
       }
     }
   }
 }
 
-function bagCell(host: PanelHost, parent: HTMLElement, save: SaveData, item: DragItem, detail: HTMLElement): void {
+function bagCell(host: PanelHost, parent: HTMLElement, save: SaveData, item: DragItem, detail: HTMLElement, ad: BagAdapter): void {
   const cell = el('div', 'eq-cell', parent);
   const url = iconOf(save, item);
   iconImg(cell, url);
   gradeFrame(cell, save, item);
-  const on = isEquipped(save, item);
+  const on = ad.isEquipped(save, item);
   if (on) el('span', 'eq-on', cell, 'E');
-  if (sameItem(item, selected)) cell.classList.add('selected');
+  if (sameItem(item, ad.state.selected)) cell.classList.add('selected');
   draggable(cell, () => (item.kind === 'gear' && on ? { ...item, equipped: true } : item), url);
-  cell.addEventListener('click', () => select(host, item, cell));
-  cell.addEventListener('mouseenter', () => hover(host, detail, item));
-  cell.addEventListener('mouseleave', () => hover(host, detail, null));
-  cell.addEventListener('dblclick', () => quickEquip(host, item));
+  cell.addEventListener('click', () => select(host, item, cell, ad));
+  cell.addEventListener('mouseenter', () => hover(host, detail, item, ad));
+  cell.addEventListener('mouseleave', () => hover(host, detail, null, ad));
+  cell.addEventListener('dblclick', () => {
+    ad.quickEquip(host.getSave(), item);
+    host.changed();
+  });
 }
 
 function sameItem(a: DragItem | null, b: DragItem | null): boolean {
@@ -358,30 +428,19 @@ function sameItem(a: DragItem | null, b: DragItem | null): boolean {
 }
 
 /** 클릭으로 고른 아이템. 창을 통째로 다시 그리면 더블클릭이 끊기므로 표시만 바꾼다. */
-function select(host: PanelHost, item: DragItem, cell: HTMLElement): void {
-  selected = item;
+function select(host: PanelHost, item: DragItem, cell: HTMLElement, ad: BagAdapter): void {
+  ad.state.selected = item;
   for (const c of host.body.querySelectorAll('.eq-cell.selected')) c.classList.remove('selected');
   if (cell.classList.contains('eq-cell')) cell.classList.add('selected');
   const detail = host.body.querySelector<HTMLElement>('.eq-detail');
-  if (detail) renderDetail(host, detail, host.getSave(), item);
+  if (detail) renderDetail(host, detail, host.getSave(), item, ad);
 }
 
-function hover(host: PanelHost, detail: HTMLElement | null, item: DragItem | null): void {
-  if (detail) renderDetail(host, detail, host.getSave(), item ?? selected);
+function hover(host: PanelHost, detail: HTMLElement | null, item: DragItem | null, ad: BagAdapter): void {
+  if (detail) renderDetail(host, detail, host.getSave(), item ?? ad.state.selected, ad);
 }
 
-/** 더블클릭: 무기는 직업 1에 넣고, 방어구·장신구는 장착하거나 해제한다. */
-function quickEquip(host: PanelHost, item: DragItem): void {
-  const save = host.getSave();
-  if (item.kind === 'weapon') equipWeapon(save, item.uid, 0);
-  else if (item.kind === 'gear') {
-    if (isEquipped(save, item)) unequipGear(save, item.id);
-    else equipGear(save, item.id);
-  }
-  host.changed();
-}
-
-function renderDetail(host: PanelHost, box: HTMLElement, save: SaveData, item: DragItem | null): void {
+function renderDetail(host: PanelHost, box: HTMLElement, save: SaveData, item: DragItem | null, ad: BagAdapter): void {
   box.replaceChildren();
   if (!item || (item.kind === 'weapon' && !weaponOf(save, item.uid)) || (item.kind === 'gear' && !GEAR[item.id])) {
     el('p', 'eq-detail-empty', box, '아이템에 마우스를 올리거나 클릭하면 여기에 정보가 나옵니다. 아이콘을 장비 칸으로 끌어다 놓으면 장착합니다.');
@@ -410,50 +469,22 @@ function renderDetail(host: PanelHost, box: HTMLElement, save: SaveData, item: D
     name.style.color = GRADES[def.grade].color;
     el('div', 'v-muted', info, `${GRADES[def.grade].name} ${GEAR_SLOT_NAME[def.slot]}`);
     el('div', 'v-meta', box, gearStatsText(def.stats));
-    if (def.set) setInfo(box, save, def.set);
+    if (def.set) setInfo(box, save, def.set, ad.wornFor(save, def.set));
   }
-
-  const equipped = isEquipped(save, item);
-  const delta = powerDelta(save, item);
-  if (delta !== 0) {
-    const d = el('div', `eq-delta ${delta > 0 ? 'up' : 'down'}`, box);
-    el('span', '', d, equipped ? '해제 시 전투력' : item.kind === 'weapon' ? '직업 1에 장착 시 전투력' : '장착 시 전투력');
-    el('b', '', d, `${delta > 0 ? '▲' : '▼'} ${koNum(Math.abs(delta))}`);
-  }
-
-  const actions = el('div', 'v-actions', box);
-  if (item.kind === 'weapon') {
-    for (const i of [0, 1]) {
-      button(actions, `직업 ${i + 1}에 장착`, i === 0 ? 'primary small' : 'small', save.equipped[i] !== item.uid, () => {
-        equipWeapon(host.getSave(), item.uid, i);
-        host.changed();
-      });
-    }
-  } else if (item.kind === 'gear') {
-    if (equipped)
-      button(actions, '해제', 'small', true, () => {
-        unequipGear(host.getSave(), item.id);
-        host.changed();
-      });
-    else
-      button(actions, '장착', 'primary small', true, () => {
-        equipGear(host.getSave(), item.id);
-        host.changed();
-      });
-  }
+  ad.detailActions(host, box, save, item);
 }
 
-function sumStats(list: GearStats[]): GearStats {
+export function sumStats(list: GearStats[]): GearStats {
   const out: Record<string, number> = {};
   for (const st of list) for (const [k, v] of Object.entries(st)) out[k] = (out[k] ?? 0) + (v ?? 0);
   return out as GearStats;
 }
 
 /** 상세 창의 세트 정보: 부위별 착용 여부, 세트 효과, 강화 합 효과. 켜진 줄은 밝게 표시한다. */
-function setInfo(box: HTMLElement, save: SaveData, setId: string): void {
+function setInfo(box: HTMLElement, save: SaveData, setId: string, wornMap: Partial<Record<GearSlot, string>>): void {
   const set = SETS[setId];
   if (!set) return;
-  const pr = setProgress(save.gear.equipped, save.gear.enhance).find((p) => p.set.id === setId);
+  const pr = setProgress(wornMap, save.gear.enhance).find((p) => p.set.id === setId);
   const worn = pr?.worn ?? 0;
   const sum = pr?.enhanceSum ?? 0;
   const wrap = el('div', 'eq-set', box);
@@ -465,7 +496,7 @@ function setInfo(box: HTMLElement, save: SaveData, setId: string): void {
 
   const parts = el('div', 'eq-set-parts', wrap);
   for (const id of setPieces(setId)) {
-    const on = Object.values(save.gear.equipped).includes(id);
+    const on = Object.values(wornMap).includes(id);
     el('span', on ? 'on' : '', parts, GEAR[id]?.name ?? id);
   }
   for (const [n, st] of set.pieces) el('div', `eq-set-line${worn >= n ? ' on' : ''}`, wrap, `${n}세트 · ${gearStatsText(st)}`);

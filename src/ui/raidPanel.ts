@@ -1,5 +1,5 @@
 import type { SaveData } from '../core/save';
-import { ARMOR_SLOTS, GEAR, GEAR_SLOT_NAME, gearStatsText, SET_LINE_NAME, SETS, type GearSlot, type SetLine } from '../data/gear';
+import { ARMOR_SLOTS, GEAR, GEAR_SLOT_NAME, gearStatsText, SET_LINE_NAME, setProgress, SETS, type SetLine } from '../data/gear';
 import { MATERIALS } from '../data/items';
 import {
   CRYSTAL_TIME,
@@ -17,41 +17,114 @@ import {
   type RaidLoadout,
 } from '../data/raid';
 import { GRADES, WEAPON_TYPE_NAME, WEAPONS, type WeaponType } from '../data/weapons';
-import { weaponIconUrl } from '../game/weaponArt';
-import { button, el, iconImg } from './dom';
-import { draggable, dropZone } from './drag';
-import type { PanelHost } from './equipPanel';
-import { gearIconUrl } from './iconArt';
+import { button, el } from './dom';
+import type { DragItem } from './drag';
+import { renderBagAndDetail, slotCell, sumStats, type BagAdapter, type PanelHost } from './equipPanel';
 
-/** 마왕성 문: 마왕 레이드 출격 창. 무기 5칸과 방어구 세 벌을 고른다. 마을 장비는 바뀌지 않는다. */
+/**
+ * 마왕성 문: 마왕 레이드 출격 창. 마을 장비창과 같은 화면(장비 칸 · 가방 표 · 상세 창)으로
+ * 무기 5칸과 방어구 세 벌을 고른다. 마을 장비는 바뀌지 않는다.
+ */
 
 // 창을 다시 그려도 유지되는 선택
 let difficulty: RaidDifficulty = 'normal';
 
-const gradeRank = (g: string): number => Object.keys(GRADES).indexOf(g);
-
-/** 고친 장비를 세이브에 넣고 창을 다시 그린다. */
-function commit(host: PanelHost, fn: (lo: RaidLoadout, sv: SaveData) => void): void {
-  const sv = host.getSave();
-  const lo = raidLoadout(sv);
-  fn(lo, sv);
-  sv.raid.loadout = lo;
-  host.changed();
+/** 레이드 장비를 고쳐 세이브에 넣는다 (다시 그리기는 부른 쪽이 한다). */
+function edit(save: SaveData, fn: (lo: RaidLoadout) => void): void {
+  const lo = raidLoadout(save);
+  fn(lo);
+  save.raid.loadout = lo;
 }
 
-function setWeapon(host: PanelHost, type: WeaponType, uid: string): void {
-  commit(host, (lo) => {
-    lo.weapons[type] = uid;
-  });
+const typeOf = (save: SaveData, uid: string): WeaponType | undefined => WEAPONS[save.weapons.find((w) => w.uid === uid)?.defId ?? '']?.type;
+
+/** 방어구가 들어 있는 줄 */
+function lineOf(lo: RaidLoadout, id: string): SetLine | undefined {
+  return RAID_LINES.find((l) => ARMOR_SLOTS.some((s) => lo.armor[l][s] === id));
 }
 
 /** 방어구를 한 줄의 칸에 넣는다. 다른 칸에 있던 같은 방어구는 빠진다 (한 방어구는 한 칸에만). */
-function setArmor(host: PanelHost, line: SetLine, slot: GearSlot, id: string): void {
-  commit(host, (lo) => {
-    for (const l of RAID_LINES) for (const s of ARMOR_SLOTS) if (lo.armor[l][s] === id) lo.armor[l][s] = '';
-    lo.armor[line][slot] = id;
-  });
+function putArmor(lo: RaidLoadout, line: SetLine, id: string): void {
+  const slot = GEAR[id]?.slot;
+  if (!slot || !ARMOR_SLOTS.includes(slot)) return;
+  removeArmor(lo, id);
+  lo.armor[line][slot] = id;
 }
+
+function removeArmor(lo: RaidLoadout, id: string): void {
+  for (const l of RAID_LINES) for (const s of ARMOR_SLOTS) if (lo.armor[l][s] === id) lo.armor[l][s] = '';
+}
+
+/** 더블클릭 기본 줄: 세트 방어구는 그 계열 줄, 아니면 그 부위가 빈 첫 줄 (없으면 근접) */
+function defaultLine(lo: RaidLoadout, id: string): SetLine {
+  const def = GEAR[id];
+  const setLine = def?.set ? SETS[def.set]?.line : undefined;
+  return setLine ?? RAID_LINES.find((l) => !lo.armor[l][def.slot]) ?? 'melee';
+}
+
+const RAID: BagAdapter = {
+  // 장신구는 마을 장착 그대로 쓰므로 가방에 무기·방어구만 보인다.
+  filters: ['weapon', 'armor'],
+  state: { filter: 'weapon', selected: null },
+  isEquipped(save, item) {
+    const lo = raidLoadout(save);
+    if (item.kind === 'weapon') {
+      const t = typeOf(save, item.uid);
+      return !!t && lo.weapons[t] === item.uid;
+    }
+    if (item.kind === 'gear') return !!lineOf(lo, item.id);
+    return false;
+  },
+  quickEquip(save, item) {
+    edit(save, (lo) => {
+      if (item.kind === 'weapon') {
+        const t = typeOf(save, item.uid);
+        if (t) lo.weapons[t] = lo.weapons[t] === item.uid ? '' : item.uid;
+      } else if (item.kind === 'gear') {
+        if (lineOf(lo, item.id)) removeArmor(lo, item.id);
+        else putArmor(lo, defaultLine(lo, item.id), item.id);
+      }
+    });
+  },
+  unequip(save, item) {
+    if (item.kind === 'gear') edit(save, (lo) => removeArmor(lo, item.id));
+  },
+  detailActions(host, box, save, item) {
+    const lo = raidLoadout(save);
+    const actions = el('div', 'v-actions', box);
+    if (item.kind === 'weapon') {
+      const t = typeOf(save, item.uid);
+      if (!t) return;
+      const on = lo.weapons[t] === item.uid;
+      button(actions, on ? `${WEAPON_TYPE_NAME[t]} 칸에서 빼기` : `${WEAPON_TYPE_NAME[t]} 칸에 넣기`, on ? 'small' : 'primary small', true, () => {
+        edit(host.getSave(), (l) => {
+          l.weapons[t] = on ? '' : item.uid;
+        });
+        host.changed();
+      });
+    } else if (item.kind === 'gear') {
+      const cur = lineOf(lo, item.id);
+      for (const line of RAID_LINES) {
+        button(actions, `${SET_LINE_NAME[line]} 줄에 장착`, line === defaultLine(lo, item.id) && !cur ? 'primary small' : 'small', cur !== line, () => {
+          edit(host.getSave(), (l) => putArmor(l, line, item.id));
+          host.changed();
+        });
+      }
+      if (cur)
+        button(actions, '해제', 'small', true, () => {
+          edit(host.getSave(), (l) => removeArmor(l, item.id));
+          host.changed();
+        });
+    }
+  },
+  wornFor(save, setId) {
+    // 그 세트 부위를 가장 많이 넣은 줄 (없으면 세트 계열 줄)
+    const lo = raidLoadout(save);
+    const count = (l: SetLine): number => ARMOR_SLOTS.filter((s) => GEAR[lo.armor[l][s] ?? '']?.set === setId).length;
+    const best = [...RAID_LINES].sort((a, b) => count(b) - count(a))[0];
+    return lo.armor[count(best) > 0 ? best : (SETS[setId]?.line ?? 'melee')];
+  },
+};
 
 export function renderRaidPanel(host: PanelHost, save: SaveData): void {
   if (!save.cleared.includes(RAID_UNLOCK_PHASE)) {
@@ -83,105 +156,69 @@ export function renderRaidPanel(host: PanelHost, save: SaveData): void {
     });
   }
 
-  // ── 무기 5칸
-  const ws = host.section('무기', 'Tab으로 이 순서대로 돌아갑니다 · 칸을 더블클릭하면 비웁니다');
-  const wslots = el('div', 'eq-weapons lg-slots raid-weapons', ws);
-  for (const type of RAID_WEAPON_ORDER) {
-    const uid = lo.weapons[type];
-    const w = uid ? save.weapons.find((x) => x.uid === uid) : undefined;
-    const wd = w ? WEAPONS[w.defId] : undefined;
-    const cell = el('div', `eq-slot weapon${wd ? '' : ' empty'}`, wslots);
-    el('span', 'eq-slot-label', cell, WEAPON_TYPE_NAME[type]);
-    if (wd && w) {
-      cell.dataset.grade = wd.grade;
-      iconImg(cell, weaponIconUrl(wd));
-      if (w.enhance > 0) el('span', 'eq-enh', cell, `+${w.enhance}`);
-      cell.title = `${wd.name} — 더블클릭하면 비웁니다`;
-      cell.addEventListener('dblclick', () => setWeapon(host, type, ''));
-    }
-    dropZone(
-      cell,
-      (it) => it.kind === 'weapon' && WEAPONS[save.weapons.find((x) => x.uid === it.uid)?.defId ?? '']?.type === type,
-      (it) => it.kind === 'weapon' && setWeapon(host, type, it.uid),
-    );
-  }
-  const wlist = el('div', 'lg-armory', ws);
-  const weapons = [...save.weapons].sort(
-    (a, b) =>
-      RAID_WEAPON_ORDER.indexOf(WEAPONS[a.defId].type) - RAID_WEAPON_ORDER.indexOf(WEAPONS[b.defId].type) ||
-      gradeRank(WEAPONS[b.defId].grade) - gradeRank(WEAPONS[a.defId].grade) ||
-      b.enhance - a.enhance,
-  );
-  for (const w of weapons) {
-    const wd = WEAPONS[w.defId];
-    const cell = el('div', 'eq-cell', wlist);
-    cell.dataset.grade = wd.grade;
-    const url = weaponIconUrl(wd);
-    iconImg(cell, url);
-    if (w.enhance > 0) el('span', 'eq-enh', cell, `+${w.enhance}`);
-    if (lo.weapons[wd.type] === w.uid) el('span', 'eq-on', cell, 'E');
-    cell.title = `${wd.name} — 끌어다 놓거나 더블클릭`;
-    draggable(cell, () => ({ kind: 'weapon', uid: w.uid }), url);
-    cell.addEventListener('dblclick', () => setWeapon(host, wd.type, w.uid));
-  }
+  // ── 출격 장비: 마을 장비창과 같은 화면 (왼쪽 장비 칸, 오른쪽 가방·상세)
+  const sec = host.section('출격 장비', '끌어다 놓거나 더블클릭 · 장착한 방어구를 가방으로 끌어내면 해제');
+  const root = el('div', 'eq', sec);
+  const left = el('div', 'eq-left', root);
+  const right = el('div', 'eq-right', root);
 
-  // ── 방어구 세 벌
-  const as = host.section('방어구 세 벌', '세 줄의 세트 효과가 모두 켜집니다 · 칸을 더블클릭하면 비웁니다');
+  // 방어구 세 줄
+  const doll = el('div', 'eq-doll raid-doll', left);
   for (const line of RAID_LINES) {
-    const row = el('div', 'raid-armor-row', as);
-    el('span', 'raid-armor-line', row, SET_LINE_NAME[line]);
-    const slots = el('div', 'raid-armor-slots', row);
+    el('span', 'raid-armor-line', doll, SET_LINE_NAME[line]);
     for (const slot of ARMOR_SLOTS) {
       const id = lo.armor[line][slot];
-      const def = id ? GEAR[id] : undefined;
-      const cell = el('div', `eq-slot${def ? (def.set ? ' set' : '') : ' empty'}`, slots);
-      el('span', 'eq-slot-label', cell, GEAR_SLOT_NAME[slot]);
-      if (def && id) {
-        cell.dataset.grade = def.grade;
-        iconImg(cell, gearIconUrl(def));
-        const enh = save.gear.enhance[id] ?? 0;
-        if (enh > 0) el('span', 'eq-enh', cell, `+${enh}`);
-        cell.title = `${def.name} · ${gearStatsText(def.stats)} — 더블클릭하면 비웁니다`;
-        cell.addEventListener('dblclick', () =>
-          commit(host, (l) => {
-            l.armor[line][slot] = '';
-          }),
-        );
-      }
-      dropZone(
-        cell,
+      const item: DragItem | null = id ? { kind: 'gear', id, equipped: true } : null;
+      slotCell(
+        host,
+        doll,
+        save,
+        GEAR_SLOT_NAME[slot],
+        item,
         (it) => it.kind === 'gear' && GEAR[it.id]?.slot === slot,
-        (it) => it.kind === 'gear' && setArmor(host, line, slot, it.id),
+        (it) => it.kind === 'gear' && edit(host.getSave(), (l) => putArmor(l, line, it.id)),
+        RAID,
       );
     }
   }
-  const total = raidGearBonus(save, lo.armor);
-  el('p', 'v-muted raid-armor-total', as, `합친 장비 효과 (장신구 포함): ${gearStatsText(total) || '없음'}`);
 
-  const alist = el('div', 'lg-armory', as);
-  const armor = save.gear.owned
-    .map((id) => GEAR[id])
-    .filter((d) => d && ARMOR_SLOTS.includes(d.slot))
-    .sort((a, b) => gradeRank(b.grade) - gradeRank(a.grade) || ARMOR_SLOTS.indexOf(a.slot) - ARMOR_SLOTS.indexOf(b.slot));
-  if (!armor.length) el('p', 'v-short', alist, '가진 방어구가 없습니다.');
-  const worn = new Set(RAID_LINES.flatMap((l) => Object.values(lo.armor[l])));
-  for (const def of armor) {
-    const cell = el('div', 'eq-cell', alist);
-    cell.dataset.grade = def.grade;
-    const url = gearIconUrl(def);
-    iconImg(cell, url);
-    const enh = save.gear.enhance[def.id] ?? 0;
-    if (enh > 0) el('span', 'eq-enh', cell, `+${enh}`);
-    if (worn.has(def.id)) el('span', 'eq-on', cell, 'E');
-    cell.title = `${def.name} · ${gearStatsText(def.stats)} — 끌어다 놓거나 더블클릭`;
-    draggable(cell, () => ({ kind: 'gear', id: def.id }), url);
-    // 더블클릭: 세트 방어구는 그 계열 줄, 아니면 그 부위가 빈 첫 줄 (없으면 근접)
-    cell.addEventListener('dblclick', () => {
-      const setLine = def.set ? SETS[def.set]?.line : undefined;
-      const line = setLine ?? RAID_LINES.find((l) => !lo.armor[l][def.slot]) ?? 'melee';
-      setArmor(host, line, def.slot, def.id);
-    });
+  // 무기 5칸 (Tab 순서)
+  const weapons = el('div', 'eq-weapons raid-weapons', left);
+  for (const type of RAID_WEAPON_ORDER) {
+    const uid = lo.weapons[type];
+    slotCell(
+      host,
+      weapons,
+      save,
+      WEAPON_TYPE_NAME[type],
+      uid ? { kind: 'weapon', uid } : null,
+      (it) => it.kind === 'weapon' && typeOf(save, it.uid) === type,
+      (it) =>
+        it.kind === 'weapon' &&
+        edit(host.getSave(), (l) => {
+          l.weapons[type] = it.uid;
+        }),
+      RAID,
+    ).classList.add('weapon');
   }
+
+  // 줄마다 켜진 세트 효과와 합친 효과
+  for (const line of RAID_LINES) {
+    for (const pr of setProgress(lo.armor[line], save.gear.enhance)) {
+      const box = el('div', 'eq-setsum', left);
+      const head = el('div', 'eq-setsum-head', box);
+      el('span', 'raid-setsum-line', head, SET_LINE_NAME[line]);
+      const name = el('span', 'eq-set-name', head, pr.set.name);
+      name.style.color = GRADES[pr.set.grade].color;
+      el('span', 'eq-set-count', head, `${pr.worn} / 4`);
+      el('span', 'v-muted', head, `강화 합 +${pr.enhanceSum}`);
+      if (pr.active.length) el('div', 'eq-set-on', box, gearStatsText(sumStats(pr.active)));
+      else el('div', 'v-muted', box, '2부위부터 세트 효과가 켜집니다');
+    }
+  }
+  el('p', 'v-muted raid-armor-total', left, `합친 장비 효과 (장신구 포함): ${gearStatsText(raidGearBonus(save, lo.armor)) || '없음'}`);
+
+  renderBagAndDetail(host, right, save, RAID);
 
   // ── 출격
   const run = host.section('출격');

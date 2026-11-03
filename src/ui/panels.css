@@ -1215,25 +1215,26 @@
   margin: 2px 0 8px;
 }
 /* ───────── 마왕성 문 (마왕 레이드) ───────── */
-.raid-weapons {
-  flex-wrap: wrap;
-}
-.raid-armor-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 4px 0;
+/* 방어구 세 줄: 줄 이름 + 4부위 */
+.eq-doll.raid-doll {
+  grid-template-columns: auto repeat(4, auto);
+  justify-content: center;
+  gap: 8px 10px;
 }
 .raid-armor-line {
-  width: 36px;
   font-weight: bold;
-  color: var(--ui-gold, #e8c46a);
+  color: #e8c46a;
+  padding-right: 4px;
 }
-.raid-armor-slots {
-  display: flex;
-  gap: 6px;
+.raid-weapons {
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.raid-setsum-line {
+  font-size: 11px;
+  color: #e8c46a;
 }
 .raid-armor-total {
-  margin: 6px 0 8px;
+  margin: 0;
   font-size: 12px;
 }
