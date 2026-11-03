@@ -240,7 +240,7 @@ export class BattleScene extends Phaser.Scene {
   /** 월드 보스 전투인가, 흐른 시간 */
   worldBoss = false;
   private wbTime = 0;
-  /** 이번 전투에서 쌓은 처치·타격 수 (천공 섬광의 마나검이 된다) */
+  /** 쌓은 처치·타격 수 (천공 섬광의 마나검이 된다). 전투는 가득 찬 채로 시작한다. */
   skyStacks = 0;
   /** 튜토리얼 전투면 진행자 */
   private tutorial: Tutorial | null = null;
@@ -254,7 +254,7 @@ export class BattleScene extends Phaser.Scene {
 
   init(data: { phase: PhaseDef; legion?: LegionRun; worldBoss?: boolean; tutorial?: boolean; trialOnly?: boolean }): void {
     this.isTutorial = !!data.tutorial;
-    this.skyStacks = 0;
+    this.skyStacks = SKY_MAX_BLADES * SKY_STACKS_PER_BLADE;
     this.trialOnly = !!data.trialOnly;
     this.tutorial = null;
     this.phase = data.phase;
@@ -515,8 +515,8 @@ export class BattleScene extends Phaser.Scene {
     let dmg = Math.max(1, Math.round(base * p.damageMul * (1 + p.derived.damageMul) * (1 + m.vuln) * critMul * dev.damageMul * ward));
     if (dev.oneHit) dmg = Math.max(dmg, Math.ceil(m.hp));
     m.hp -= dmg;
-    // 천공 섬광이 쏘는 탄검강은 다음 마나검으로 쌓이지 않는다.
-    if (p.hoverTime <= 0) this.skyStacks++;
+    // 탄검강의 타격도 다음 마나검으로 쌓인다.
+    this.skyStacks++;
     m.onHit(p.x, opts.knock ?? 0);
     if (opts.basic) p.mp = Math.min(p.derived.maxMp, p.mp + 2);
 
@@ -588,7 +588,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private killMonster(m: Monster): void {
-    if (this.player.hoverTime <= 0) this.skyStacks++;
+    this.skyStacks++;
     m.kill();
     sfx.play(m.showsBossBar ? 'boom' : 'kill');
     // 튜토리얼에는 보상이 없다.
