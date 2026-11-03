@@ -1,6 +1,8 @@
 import { keyLabel, SLOT_ACTIONS } from '../core/input';
 import { skillSlotIds, type SaveData } from '../core/save';
 import { PASSIVES, type PassiveDef } from '../data/passives';
+import { CLASS_PASSIVE_TIERS, CLASS_PASSIVES, classPassiveBonus } from '../data/classPassives';
+import { baseStats } from '../game/stats';
 import { SKILL_BY_ID, SKILL_SLOTS, SKILL_TIER_NAME, skillsFor, SKY_FLASH_ID, STARTER_SKILLS, type SkillDef } from '../data/skills';
 import { CLASS_NAME, WEAPON_TYPE_NAME, WEAPONS, type WeaponType } from '../data/weapons';
 import { resetCost } from '../game/stats';
@@ -134,6 +136,22 @@ export function renderSkillPanel(host: PanelHost, save: SaveData): void {
     if (at >= 0) el('span', 'sk-key', cell, keyLabel(save.keymap[SLOT_ACTIONS[at]]));
     if (learned) draggable(cell, () => ({ kind: 'skill', id: sk.id }), skillIconUrl(sk));
   }
+
+  // 직업 패시브: 레벨로 저절로 배우고, 가장 높은 기본 스탯의 계열 하나만 켜진다.
+  el('div', 'sk-book-title', books, '직업 패시브');
+  const cp = classPassiveBonus(baseStats(save), save.level);
+  const clsBox = el('div', 'sk-cls', books);
+  for (const def of CLASS_PASSIVES) {
+    const on = def === cp.def && cp.tier > 0;
+    const row = el('div', `sk-cls-row${on ? ' on' : ''}${def.classes.includes(type) ? ' mine' : ''}`, clsBox);
+    const head = el('div', 'sk-cls-head', row);
+    el('span', 'sk-cls-name', head, def.name);
+    el('span', 'v-muted', head, def.classes.map((c) => CLASS_NAME[c]).join('·'));
+    el('span', on ? 'sk-cls-state on' : 'sk-cls-state', head, on ? `${cp.tier}단계 적용 중` : '꺼짐');
+    el('div', 'v-desc', row, def.desc(on ? cp.rate : CLASS_PASSIVE_TIERS[Math.max(0, cp.tier - 1)][1]));
+  }
+  const tiers = CLASS_PASSIVE_TIERS.map(([lv, r], i) => `${i + 1}단계 Lv ${lv} (${Math.round(r * 100)}%)`).join(' · ');
+  el('p', 'v-muted sk-cls-note', books, `${tiers}. 가장 높은 기본 스탯(힘·민첩·마력)에 맞는 계열 하나만 켜지고, 어떤 무기를 들어도 적용됩니다.`);
 
   el('div', 'sk-book-title', books, '공용 패시브');
   const pgrid = el('div', 'sk-grid', books);
