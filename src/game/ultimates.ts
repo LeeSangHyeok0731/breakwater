@@ -744,13 +744,15 @@ const airstrike: Cast = (b) => {
 
 /**
  * 황금 탄환 [초안]: 세상이 느려지고 황금 탄환 8발을 쏜다. 발마다 적 하나에 조준 원이 줄어들고,
- * 원이 가운데 고리에 닿을 때 공격키를 누르면 PERFECT (기본 사격 1500% + 가까운 적 둘에게 도탄),
- * 조금 이르면 GOOD (800%), 너무 이르거나 놓치면 400%.
- * GOOD이면 서브 총이 하나, PERFECT면 둘 생겨 플레이어 위에 떠 있다가, 이후 발마다 같은 적을 함께 쏘고 (기본 사격의 300%),
+ * 원이 가운데 고리에 닿을 때 공격키를 누르면 PERFECT (기본 사격 3500% + 가까운 적 둘에게 절반 도탄),
+ * 조금 이르면 GOOD (2000%), 너무 이르거나 놓치면 1000%.
+ * GOOD이면 서브 총이 하나, PERFECT면 둘 생겨 플레이어 위에 떠 있다가, 이후 발마다 같은 적을 함께 쏘고 (기본 사격의 800%),
  * 마지막에 화면 안 적들에게 일제 사격한다.
  */
 const GOLD_SHOTS = 8;
-const SUB_MUL = 3;
+/** 판정별 기본 사격 배수 [초안] */
+const GOLD_MUL = { perfect: 35, good: 20, miss: 10 } as const;
+const SUB_MUL = 8;
 
 /** 서브 총 그림 (황금빛 작은 권총) */
 function subGunTexture(b: BattleScene): string {
@@ -829,7 +831,7 @@ const deadEye: Cast = (b) => {
     b.fx.tracer(m0.x, m0.y, tx, ty, 0xfff0a0, grade === 'perfect' ? 5 : 3, 220);
     if (grade === 'perfect') b.fx.bigSlash(m0.x, m0.y, tx, ty, 0xffc040, 8, 300);
     sfx.play('shot', grade === 'perfect' ? 1.5 : 1.1);
-    const mul = grade === 'perfect' ? 15 : grade === 'good' ? 8 : 4;
+    const mul = GOLD_MUL[grade];
     b.fx.text(tx, ty - 30, grade === 'perfect' ? 'PERFECT!' : grade === 'good' ? 'GOOD' : '빗나감', grade === 'perfect' ? 'crit' : 'info');
     if (target?.alive) {
       impactBurst(b, tx, ty, grade === 'perfect' ? 60 : 36, PAL.gold);
@@ -1028,14 +1030,14 @@ function meteorAt(b: BattleScene, x: number, damage: number, loud: boolean): voi
 /**
  * 룬 아마겟돈 [초안]: 머리 위에 뜨는 방향 룬과 같은 방향키를 누를 때마다 운석이 떨어진다. 시간 제한 대신 룬 수로 강해진다.
  * - 단계: 룬 4개 → 2단계, 5개 더 → 3단계, 6개 더(모두 15개) → 4단계에서 마지막 폭발. 단계마다 마법진이 커지고, 룬 하나에 운석이 단계 수만큼 떨어진다 (최대 3개).
- * - 연속 증폭: n번째 룬의 운석은 하나에 마력의 200% × n.
+ * - 연속 증폭: n번째 룬의 운석은 하나에 마력의 300% × n.
  * - 원소 조합: 룬은 불·얼음·번개 색으로 3개씩 묶여 나온다. 한 묶음을 다 맞히면 그 원소 마법이 터진다 (단계에 비례).
- * - 틀리거나 한 룬에 2초가 지나면 영창이 끝나고, 마력의 (200% + 룬당 100%) × 단계 배수의 대폭발이 화면 안 모든 적을 덮친다.
+ * - 틀리거나 한 룬에 2초가 지나면 영창이 끝나고, 마력의 (300% + 룬당 150%) × 단계 배수의 대폭발이 화면 안 모든 적을 덮친다.
  */
 const RUNE_LIMIT = 2;
 const RUNE_STAGES = [4, 9, 15];
 const RUNE_MAX = RUNE_STAGES[RUNE_STAGES.length - 1];
-const RUNE_METEOR_INT = 2;
+const RUNE_METEOR_INT = 3;
 const RUNE_STAGE_MUL = [1, 1.5, 2, 2.5];
 const RUNES: { action: 'left' | 'up' | 'right' | 'down'; glyph: string }[] = [
   { action: 'left', glyph: '←' },
@@ -1062,7 +1064,7 @@ function runeBurst(b: BattleScene, el: RuneElement, stage: number): void {
       later(b, i * 50, () => {
         column(b, m.x, FLOOR_Y, 34, 300, PAL.flame, 520);
         b.fx.boom(m.x, FLOOR_Y - 30, 30, 'fire');
-        if (m.alive) b.hitMonster(m, b.skillBase({ int: 5 * stage }), { knock: 60, quiet: i > 0 });
+        if (m.alive) b.hitMonster(m, b.skillBase({ int: 7.5 * stage }), { knock: 60, quiet: i > 0 });
       }),
     );
   } else if (el === 'ice') {
@@ -1072,7 +1074,7 @@ function runeBurst(b: BattleScene, el: RuneElement, stage: number): void {
     tint(b, 0x7fd8ff, 0.2, 400);
     foes.forEach((m, i) => {
       for (let k = -1; k <= 1; k++) b.fx.iceSpike(m.x + k * 12, FLOOR_Y, 1 + (k === 0 ? 0.4 : 0), 900, i * 30 + Math.abs(k) * 40);
-      if (m.alive) b.hitMonster(m, b.skillBase({ int: 4 * stage }), { stun: 1.5, quiet: i > 0 });
+      if (m.alive) b.hitMonster(m, b.skillBase({ int: 6 * stage }), { stun: 1.5, quiet: i > 0 });
     });
   } else {
     // 연쇄 번개: 하늘에서 내려와 적에서 적으로 튄다.
@@ -1084,7 +1086,7 @@ function runeBurst(b: BattleScene, el: RuneElement, stage: number): void {
         b.fx.lightning(a.x, a.y, m.x, m.y, 0xfff07a, 2, 220);
         b.fx.spark(m.x, m.y, 0xffffff, 2);
         sfx.play('magic', 1.4);
-        if (m.alive) b.hitMonster(m, b.skillBase({ int: 4.5 * stage }), { knock: 30, quiet: i > 0 });
+        if (m.alive) b.hitMonster(m, b.skillBase({ int: 7 * stage }), { knock: 30, quiet: i > 0 });
       });
       from = { x: m.x, y: m.y };
     });
@@ -1202,7 +1204,7 @@ const armageddon: Cast = (b) => {
       if (after < 0.8) return false;
       // 대폭발: 새긴 룬과 마법진 단계만큼 커진다.
       const v = view(b);
-      const power = (2 + count) * RUNE_STAGE_MUL[stage - 1];
+      const power = (3 + count * 1.5) * RUNE_STAGE_MUL[stage - 1];
       sfx.play('boom');
       b.fx.flashScreen(0xfff0c0, 0.45 + Math.min(0.35, count * 0.03), 600);
       b.fx.shake(1.4 + count * 0.12, 420);
