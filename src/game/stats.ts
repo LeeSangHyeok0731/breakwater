@@ -2,6 +2,7 @@ import type { SaveData } from '../core/save';
 import type { WeaponDef, WeaponType } from '../data/weapons';
 import { passiveBonus, type PassiveBonus } from '../data/passives';
 import { gearBonus, type GearStats } from '../data/gear';
+import { classPassiveBonus, gunCritBonus } from '../data/classPassives';
 
 export interface Stats {
   str: number;
@@ -17,8 +18,8 @@ export const CRIT_DAMAGE = 2.0;
 /** 스탯으로 얻는 이동속도 증가 상한 */
 export const DEX_SPEED_CAP = 0.5;
 
-/** 레벨 자동 상승 + 분배한 포인트 + 장비 보너스 */
-export function totalStats(save: SaveData): Stats {
+/** 레벨 자동 상승 + 분배한 포인트 + 장비 보너스 (직업 패시브 전) */
+export function baseStats(save: SaveData): Stats {
   const auto = BASE_STAT + (save.level - 1);
   const g = gearBonus(save.gear.equipped, save.gear.enhance);
   return {
@@ -27,6 +28,13 @@ export function totalStats(save: SaveData): Stats {
     int: auto + save.allocated.int + g.int,
     hp: auto + save.allocated.hp + g.hp,
   };
+}
+
+/** 기본 스탯 + 직업 패시브로 늘어난 스탯. 전투·전투력·창 표시 모두 이 값을 쓴다. */
+export function totalStats(save: SaveData): Stats {
+  const s = baseStats(save);
+  const { add } = classPassiveBonus(s, save.level);
+  return { str: s.str + add.str, dex: s.dex + add.dex, int: s.int + add.int, hp: s.hp };
 }
 
 export interface Derived {
@@ -43,9 +51,14 @@ export interface Derived {
   damageMul: number;
   damageReduce: number;
   cdReduce: number;
+  /** 직업 패시브: 총을 쓸 때만 더하는 치명타 확률·치명타 피해 */
+  gunCritChance: number;
+  gunCritDamage: number;
 }
 
-export function derive(s: Stats, passives: Record<string, number> = {}, gear: GearStats = {}): Derived {
+/** level을 주면 직업 패시브의 총 치명타 보너스도 계산한다. */
+export function derive(s: Stats, passives: Record<string, number> = {}, gear: GearStats = {}, level = 0): Derived {
+  const gun = gunCritBonus(s, level);
   // 장신구 효과는 같은 종류의 패시브 보너스에 더한다.
   const pb = passiveBonus(passives);
   pb.regenMul += gear.regenMul ?? 0;
@@ -64,6 +77,8 @@ export function derive(s: Stats, passives: Record<string, number> = {}, gear: Ge
     damageMul: gear.damageMul ?? 0,
     damageReduce: gear.damageReduce ?? 0,
     cdReduce: gear.cdReduce ?? 0,
+    gunCritChance: gun.chance,
+    gunCritDamage: gun.damage,
   };
 }
 

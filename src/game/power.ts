@@ -16,14 +16,14 @@ function powerOf(hit: number, maxHp: number): number {
 function expectedHit(def: WeaponDef, enhance: number, s: Stats, d: Derived): number {
   const c = Math.min(1, def.critChance + d.passive.critBonus);
   const critDamage = CRIT_DAMAGE + d.critDamage;
-  const mul = def.type === 'gun' ? 1 + (critDamage + c) * 0.8 : 1 + c * critDamage;
+  const mul = def.type === 'gun' ? 1 + (critDamage + d.gunCritDamage + c + d.gunCritChance) * 0.8 : 1 + c * critDamage;
   return basicDamage(def, enhance, s) * mul * (1 + d.damageMul);
 }
 
 /** 내 전투력: 장착한 두 무기 중 센 쪽 기준 */
 export function combatPower(save: SaveData): number {
   const stats = totalStats(save);
-  const d = derive(stats, save.passives, gearBonus(save.gear.equipped, save.gear.enhance));
+  const d = derive(stats, save.passives, gearBonus(save.gear.equipped, save.gear.enhance), save.level);
   let hit = 0;
   for (const uid of save.equipped) {
     const w = save.weapons.find((o) => o.uid === uid);

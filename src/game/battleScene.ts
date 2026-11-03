@@ -305,7 +305,7 @@ export class BattleScene extends Phaser.Scene {
       const def = WEAPONS[owned.defId];
       return { def, enhance: owned.enhance, pages: buildPages(this.save, def.type) };
     });
-    const derived = derive(this.stats, this.save.passives, gearBonus(this.save.gear.equipped, this.save.gear.enhance));
+    const derived = derive(this.stats, this.save.passives, gearBonus(this.save.gear.equipped, this.save.gear.enhance), this.save.level);
     const mods = this.legion?.mods ?? [];
     if (mods.includes('atk')) derived.damageMul += 0.2;
     if (mods.includes('guard')) derived.damageReduce = Math.min(0.6, derived.damageReduce + 0.2);
@@ -512,8 +512,8 @@ export class BattleScene extends Phaser.Scene {
     let crit = false;
     let critMul: number;
     if (w.type === 'gun') {
-      // 총: 치명타 대신 (치명타 데미지 + 치명타 확률)의 80%만큼 항상 증가
-      critMul = 1 + (critDamage + critChance) * 0.8;
+      // 총: 치명타 대신 (치명타 데미지 + 치명타 확률)의 80%만큼 항상 증가. 직업 패시브의 총 숙련이 둘 다 늘린다.
+      critMul = 1 + (critDamage + p.derived.gunCritDamage + critChance + p.derived.gunCritChance) * 0.8;
     } else {
       crit = Math.random() < critChance;
       critMul = crit ? 1 + critDamage : 1;

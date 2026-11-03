@@ -3,7 +3,8 @@ import type { LegionRun } from '../data/legion';
 import { GEAR, GEAR_SLOT_NAME, gearBonus, gearStatsText, SET_LINE_NAME, SETS, setPieces, setProgress, type GearDef, type GearSlot, type GearStats } from '../data/gear';
 import { CLASS_NAME, GRADES, WEAPON_TYPE_NAME, WEAPONS, type Grade, type WeaponDef, type WeaponType } from '../data/weapons';
 import { combatPower } from '../game/power';
-import { derive, DEX_SPEED_CAP, resetCost, totalStats, type Stats } from '../game/stats';
+import { baseStats, derive, DEX_SPEED_CAP, resetCost, totalStats, type Stats } from '../game/stats';
+import { CLASS_PASSIVE_TIERS, classPassiveBonus } from '../data/classPassives';
 import { weaponIconUrl } from '../game/weaponArt';
 import { button, el, iconImg } from './dom';
 import { draggable, dropZone, type DragItem } from './drag';
@@ -40,6 +41,8 @@ const STAT_INFO: { key: StatKey; name: string; desc: string }[] = [
   { key: 'int', name: '마력', desc: '최대 마나와 마나 회복 증가. 마법(스태프) 피해 증가.' },
   { key: 'hp', name: 'HP', desc: '최대 체력 증가 (1당 +10).' },
 ];
+
+const STAT_NAME = { str: '힘', dex: '민첩', int: '마력' } as const;
 
 const ARMOR_SLOTS: GearSlot[] = ['head', 'body', 'legs', 'feet'];
 const ACC_SLOTS: GearSlot[] = ['necklace', 'ring'];
@@ -471,7 +474,8 @@ function setInfo(box: HTMLElement, save: SaveData, setId: string): void {
 
 function renderStats(host: PanelHost, save: SaveData): void {
   const stats = totalStats(save);
-  const d = derive(stats, save.passives, gearBonus(save.gear.equipped, save.gear.enhance));
+  const d = derive(stats, save.passives, gearBonus(save.gear.equipped, save.gear.enhance), save.level);
+  const cp = classPassiveBonus(baseStats(save), save.level);
 
   const s = host.section('스탯', `남은 포인트 ${save.statPoints}`);
   for (const info of STAT_INFO) {
@@ -482,6 +486,8 @@ function renderStats(host: PanelHost, save: SaveData): void {
     el('span', 'v-stat-val', name, String(stats[info.key]));
     const alloc = save.allocated[info.key];
     if (alloc > 0) el('span', 'v-muted', name, `(분배 +${alloc})`);
+    const fromClass = info.key === 'hp' ? 0 : cp.add[info.key];
+    if (fromClass > 0) el('span', 'v-cls', name, `(직업 패시브 +${fromClass})`);
     el('div', 'v-desc', left, info.desc);
     const btns = el('div', 'v-stat-btns', row);
     button(btns, '+1', 'small', save.statPoints >= 1, () => allocate(host, info.key, 1));
@@ -492,6 +498,9 @@ function renderStats(host: PanelHost, save: SaveData): void {
     );
   }
   el('p', 'v-muted v-note', s, '레벨이 오를 때마다 모든 기본 스탯이 1씩 자동으로 오르고, 스탯 포인트 5를 받습니다.');
+  const cls = el('p', 'v-note v-cls-note', s);
+  if (cp.tier > 0) cls.textContent = `직업 패시브 · ${cp.def.name} ${cp.tier}단계 — ${cp.def.desc(cp.rate)} 가장 높은 기본 스탯(${STAT_NAME[cp.def.stat]})으로 정해지고, 어떤 무기를 들어도 적용됩니다.`;
+  else cls.textContent = `직업 패시브는 Lv ${CLASS_PASSIVE_TIERS[0][0]}에 열립니다. 가장 높은 기본 스탯에 맞는 계열 하나가 켜집니다.`;
 
   const ds = host.section('능력치');
   const grid = el('div', 'v-kv', ds);
@@ -507,6 +516,7 @@ function renderStats(host: PanelHost, save: SaveData): void {
   kv('이동속도', `${d.moveSpeed.toFixed(2)} m/s`, `(스탯 보너스 +${(bonus * 100).toFixed(1)}%, 최대 +${DEX_SPEED_CAP * 100}%)`);
   if (d.passive.speedMul > 0) kv('패시브 이동속도', `+${(d.passive.speedMul * 100).toFixed(0)}%`, '(상한 없음)');
   if (d.passive.critBonus > 0) kv('치명타 확률 보너스', `+${(d.passive.critBonus * 100).toFixed(0)}%`);
+  if (d.gunCritDamage > 0) kv('총 숙련 (직업 패시브)', `치명타 피해 +${Math.round(d.gunCritDamage * 100)}% · 치명타 확률 +${(d.gunCritChance * 100).toFixed(1)}%`, '(총을 쓸 때만)');
 
   const rs = host.section('스탯 초기화', '분배한 포인트를 모두 돌려받습니다');
   const cost = resetCost(save.level);
