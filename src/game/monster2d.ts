@@ -267,9 +267,9 @@ export class Monster {
   }
 
   /** 맞았을 때: 번쩍임과 체력바 표시 */
-  onHit(fromX: number, knock: number): void {
+  onHit(fromX: number, knock: number, flash = true): void {
     this.hitCount++;
-    this.scene.fx.flash(this.sprite, 0xffffff, 70);
+    if (flash) this.scene.fx.flash(this.sprite, 0xffffff, 70);
     if (this.def.kind === 'scarecrow') {
       // 허수아비: 체력이 바로 차서 쓰러지지 않고, 밀리는 대신 맞은 쪽으로 흔들린다.
       this.hp = this.maxHp;

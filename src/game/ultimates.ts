@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { sfx } from '../core/audio';
 import { SLOT_ACTIONS } from '../core/input';
+import { koNum } from '../ui/format';
 import { skyShotMana, skyShotStr } from '../data/skills';
 import type { BattleScene } from './battleScene';
 import { DEPTH } from './fx';
@@ -520,19 +521,55 @@ const meteorArrow: Cast = (b) => {
 };
 
 /**
- * 별사냥 [초안]: 6초 동안 활로 맞힌 적에게 별 표식이 쌓이고, 끝나면 표식마다 별똥별이 떨어진다.
- * 한 적을 맞힐수록 늘어나는 양이 1씩 커진다 (1대 1개, 2대 3개, 3대 6개 …). 상한은 없다.
+ * 별사냥 [초안]: 6초 동안 활로 맞힌 적에게 별 표식이 쌓인다. 한 적을 맞힐수록 늘어나는 양이 1씩 커진다
+ * (1대 1개, 2대 3개, 3대 6개 …, 상한 없음). 끝나면 별똥별 화살비가 쏟아진 뒤, 표식이 붙은 적마다
+ * 별 개수만큼의 피해(별 하나에 민첩 150% + 힘 50%)를 담은 커다란 마법 화살 한 발이 꽂힌다. 별이 많을수록 화살이 크다.
  */
 const STAR_TIME = 6;
-const STAR_GAP = 0.04;
-/** 별이 아무리 많아도 이 시간 안에 다 떨어진다. */
-const STAR_FALL_MAX = 3;
-/** 별똥별은 일제 사격으로 쏟아진다: 한 번에 최소 몇 발, 대략 몇 번에 나눠, 몇 초 간격으로 */
-const STAR_VOLLEY_MIN = 6;
-const STAR_VOLLEYS = 18;
-const STAR_VOLLEY_GAP = 0.14;
-/** 일제 사격 한 번에 그리는 화살은 이만큼까지만 (나머지는 그림 없이 같이 맞는다) */
-const STAR_DRAW_PER_VOLLEY = 10;
+const STAR_PER = { dex: 1.5, str: 0.5 };
+/** 장식용 화살비: 몇 번, 몇 초 간격, 한 번에 몇 발 */
+const STAR_VOLLEYS = 6;
+const STAR_VOLLEY_GAP = 0.12;
+const STAR_VOLLEY_ARROWS = 8;
+/** 큰 화살이 차례로 꽂히는 간격 */
+const BIG_ARROW_GAP = 0.18;
+
+/** 별 n개를 담은 커다란 마법 화살: 하늘에서 비스듬히 내리꽂힌다. */
+function bigStarArrow(b: BattleScene, m: Monster, stars: number, last: boolean): void {
+  const v = view(b);
+  // 크기는 별 수의 로그에 비례 (별 1개 2배, 100개 약 6배, 1000개 약 8배)
+  const size = 2 + Math.min(7, Math.log2(stars + 1) * 0.85);
+  const sx = m.x + 70 + size * 8;
+  const sy = v.y - 20;
+  const ang = Math.atan2(m.y - sy, m.x - sx);
+  const arrow = b.add.image(sx, sy, 'fx-arrow').setDepth(DEPTH.projectile + 1).setRotation(ang).setScale(size).setTint(0xffe08a);
+  const glow = b.add.image(sx, sy, 'fx-arrow').setDepth(DEPTH.projectile).setRotation(ang).setScale(size * 1.5).setTint(0xfff0b0).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.6);
+  const tail = b.fx.streak(sx, sy, ang, 40 + size * 14, 0xffe08a, 0, Math.max(1, Math.round(size / 2)));
+  sfx.play('arrow', 1.6);
+  b.tweens.add({
+    targets: [arrow, glow, tail],
+    x: m.x,
+    y: m.y,
+    duration: 260,
+    ease: 'Quad.In',
+    onComplete: () => {
+      arrow.destroy();
+      glow.destroy();
+      tail.destroy();
+      const power = Math.min(1, stars / 300);
+      impactBurst(b, m.x, m.y, 40 + size * 10, PAL.gold, FLOOR_Y);
+      rays(b, m.x, m.y, 10 + Math.round(size), 60 + size * 16, PAL.gold, 420);
+      shockwave(b, m.x, FLOOR_Y, 60 + size * 20, PAL.gold, 500);
+      b.fx.flashScreen(0xfff0c0, 0.2 + power * 0.35, 220);
+      b.fx.shake(0.8 + power * 2, 260);
+      sfx.play('boom', 0.6 + power * 0.4);
+      if (!m.alive) return;
+      const dmg = b.hitMonster(m, b.skillBase(STAR_PER) * stars, { knock: 120, silent: true });
+      b.fx.text(m.x, m.body.top - 10, `★${stars}  ${koNum(dmg)}`, 'crit');
+      if (last) tint(b, 0xffe08a, 0.25, 400);
+    },
+  });
+}
 
 const aurora: Cast = (b) => {
   const p = b.player;
@@ -564,13 +601,10 @@ const aurora: Cast = (b) => {
   };
   let t = 0;
   let falling = false;
-  let queue: Monster[] = [];
-  let gap = 0;
-  let end = 0;
-  let starGap = STAR_GAP;
-  let volleySize = STAR_VOLLEY_MIN;
-  let drawEvery = 1;
-  let dropped = 0;
+  /** 장식용 화살비와 큰 화살의 순서: [시각, 할 일] */
+  let plan: [number, () => void][] = [];
+  let ft = 0;
+  let finishAt = 0;
   const clear = (): void => {
     b.hitHook = null;
     timer.destroy();
@@ -586,68 +620,61 @@ const aurora: Cast = (b) => {
         return true;
       }
       t += dt;
-      for (const [m, e] of marks) e.label.setPosition(m.x, m.body.top - 14).setText(`★${e.n}`).setVisible(m.alive);
+      for (const [m, e] of marks) e.label.setPosition(m.x, m.body.top - 14).setText(`★${e.n}`).setVisible(m.alive && e.n > 0);
       if (!falling) {
         const stars = [...marks.values()].reduce((a, e) => a + e.n, 0);
         timer.setPosition(b.cameras.main.width / 2, 74).setText(`별사냥 ${Math.max(0, STAR_TIME - t).toFixed(1)}초 · 별 ${stars}개`);
         if (t < STAR_TIME) return false;
-        // 끝: 표식을 별자리로 잇고, 표식 수만큼 별똥별이 떨어진다.
+        // 끝: 표식을 별자리로 잇고, 화살비가 쏟아진 뒤 적마다 큰 마법 화살이 꽂힌다.
         falling = true;
         b.hitHook = null;
-        timer.setText('');
-        const live = [...marks.entries()].filter(([m]) => m.alive);
+        const live = [...marks.entries()].filter(([m, e]) => m.alive && e.n > 0).sort((a, c) => a[1].n - c[1].n);
+        timer.setText(stars ? `별 ${stars}개` : '');
         const lines = b.add.graphics().setDepth(DEPTH.fx);
         lines.lineStyle(1, 0xffe08a, 0.9);
         for (let i = 1; i < live.length; i++) lines.lineBetween(live[i - 1][0].x, live[i - 1][0].y, live[i][0].x, live[i][0].y);
         b.tweens.add({ targets: lines, alpha: 0, delay: 600, duration: 500, onComplete: () => lines.destroy() });
-        for (const [m, e] of live) for (let i = 0; i < e.n; i++) queue.push(m);
-        queue = Phaser.Utils.Array.Shuffle(queue);
-        // 한 번에 여러 발씩 일제히 쏟아진다: 일제 사격 수를 정하고, 그 간격으로 다 떨어지게 한다.
-        volleySize = Math.max(STAR_VOLLEY_MIN, Math.ceil(queue.length / STAR_VOLLEYS));
-        starGap = Math.min(STAR_VOLLEY_GAP, STAR_FALL_MAX / Math.max(1, Math.ceil(queue.length / volleySize)));
-        drawEvery = Math.max(1, Math.ceil(volleySize / STAR_DRAW_PER_VOLLEY));
-        if (queue.length) timer.setText(`별똥별 ${queue.length}개`);
-        if (queue.length) {
+        if (live.length) {
           b.fx.flashScreen(0xffe08a, 0.25, 260);
           sfx.play('magic', 1.2);
+          // 장식용 화살비 (피해 없음): 표식이 붙은 적 근처로 여러 발씩 쏟아진다.
+          for (let k = 0; k < STAR_VOLLEYS; k++) {
+            plan.push([
+              0.3 + k * STAR_VOLLEY_GAP,
+              () => {
+                const v = view(b);
+                sfx.play('arrow', 0.6);
+                for (let i = 0; i < STAR_VOLLEY_ARROWS; i++) {
+                  const [m] = live[Math.floor(Math.random() * live.length)];
+                  const ex = m.x + (Math.random() - 0.5) * 60;
+                  arrowRain(b, ex + 20 + Math.random() * 90, v.y + 4 + Math.random() * 30, ex, FLOOR_Y - 3 - Math.random() * 30, 200 + Math.random() * 60, 0xffe08a, () => undefined);
+                }
+              },
+            ]);
+          }
+          // 큰 마법 화살: 별이 적은 적부터 차례로, 가장 큰 화살이 마지막에 꽂힌다.
+          const t0 = 0.3 + STAR_VOLLEYS * STAR_VOLLEY_GAP + 0.15;
+          live.forEach(([m, e], i) => {
+            const n = e.n;
+            plan.push([t0 + i * BIG_ARROW_GAP, () => {
+              e.n = 0;
+              bigStarArrow(b, m, n, i === live.length - 1);
+            }]);
+          });
         }
-        gap = 0.4;
+        plan.sort((a, c) => a[0] - c[0]);
+        finishAt = (plan.length ? plan[plan.length - 1][0] : 0) + 0.6;
         return false;
       }
-      gap -= dt;
-      while (gap <= 0 && queue.length) {
-        gap += starGap;
-        // 일제 사격 한 번: 여러 발이 하늘 여기저기서 동시에 쏟아진다.
-        const v = view(b);
-        sfx.play('arrow', 0.6);
-        for (let k = 0; k < volleySize && queue.length; k++) {
-          const m = queue.shift()!;
-          const e = marks.get(m);
-          if (e) e.n = Math.max(0, e.n - 1);
-          const hit = (): void => {
-            if (m.alive) b.hitMonster(m, b.skillBase({ dex: 1.5, str: 0.5 }), { knock: 4, quiet: queue.length > 0 || k > 0 });
-          };
-          // 별이 많으면 몇 개에 하나만 그리고, 나머지는 그림 없이 같이 맞는다.
-          if (dropped++ % drawEvery === 0) {
-            const sx = m.x + 20 + Math.random() * 90;
-            const ex = m.x + (Math.random() - 0.5) * 16;
-            const ey = m.y + (Math.random() - 0.5) * 20;
-            arrowRain(b, sx, v.y + 4 + Math.random() * 30, ex, ey, 200 + Math.random() * 60, 0xffe08a, () => {
-              flare(b, ex, ey, 18, PAL.gold, 200);
-              hit();
-            });
-          } else b.time.delayedCall(220, hit);
-        }
-      }
-      if (queue.length) return false;
-      end += dt;
-      if (end < 0.5) return false;
+      ft += dt;
+      while (plan.length && plan[0][0] <= ft) plan.shift()![1]();
+      // 마지막 화살이 꽂히고 터지는 것까지 기다린다.
+      if (plan.length || ft < finishAt) return false;
       clear();
       return true;
     },
   };
 };
-
 // ───────────────────────── 총잡이 ─────────────────────────
 
 /** 도탄 난사: 탄환 4발이 적에서 적으로 튕기며 최대 8마리씩 맞힌다. */
