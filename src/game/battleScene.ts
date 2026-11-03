@@ -38,6 +38,8 @@ export interface HitOpts {
   quiet?: boolean;
   /** 피해 없이 디버프만 건다 */
   noDamage?: boolean;
+  /** 피해 숫자·타격음·번쩍임을 모두 생략한다 (한꺼번에 수백 번 때리는 궁극기가 직접 묶어서 보여 준다) */
+  silent?: boolean;
 }
 
 export interface BoltSpec {
@@ -513,8 +515,9 @@ export class BattleScene extends Phaser.Scene {
     return sum * enhanceMultiplier(w.def.type, w.enhance);
   }
 
-  hitMonster(m: Monster, base: number, opts: HitOpts = {}): void {
-    if (!m.alive || m.spawnTime > 0.3) return;
+  /** 피해를 주고 실제로 들어간 피해를 돌려준다 (막히거나 피해가 없으면 0). */
+  hitMonster(m: Monster, base: number, opts: HitOpts = {}): number {
+    if (!m.alive || m.spawnTime > 0.3) return 0;
     const p = this.player;
     if (opts.stun && !m.boss) m.stun = Math.max(m.stun, m.elite || m.def.miniboss ? opts.stun * 0.5 : opts.stun);
     if (opts.vuln) {
@@ -528,7 +531,7 @@ export class BattleScene extends Phaser.Scene {
     if (opts.noDamage) {
       this.fx.spark(m.x, m.y, 0xc060ff, 1, Math.PI / 4);
       this.fx.burst(m.x, m.y, 0xb04aff, 6, 50, 400);
-      return;
+      return 0;
     }
     // 횟수 보호막: 피해 대신 한 번씩 깎인다.
     if (m.hitShield !== 0) {
@@ -545,7 +548,7 @@ export class BattleScene extends Phaser.Scene {
         this.fx.text(m.x, m.body.top - 30, '무효', 'quiet');
         sfx.play('block', 0.3);
       }
-      return;
+      return 0;
     }
     const w = p.weapon.def;
     const critChance = w.critChance + p.derived.passive.critBonus;
@@ -569,8 +572,12 @@ export class BattleScene extends Phaser.Scene {
     this.training?.record(m, dmg, crit, this.src);
     // 탄검강의 타격도 다음 마나검으로 쌓인다.
     this.skyStacks++;
-    m.onHit(p.x, opts.knock ?? 0);
+    m.onHit(p.x, opts.knock ?? 0, !opts.silent);
     if (opts.basic) p.mp = Math.min(p.derived.maxMp, p.mp + 2);
+    if (opts.silent) {
+      if (m.hp <= 0) this.killMonster(m);
+      return dmg;
+    }
 
     this.fx.text(m.x, m.body.top - 2, String(dmg), crit ? 'crit' : opts.quiet ? 'quiet' : 'normal');
     if (!opts.quiet) {
@@ -587,6 +594,7 @@ export class BattleScene extends Phaser.Scene {
     } else sfx.play('hit', 0.35);
 
     if (m.hp <= 0) this.killMonster(m);
+    return dmg;
   }
 
   /** 사각형 범위 안의 적을 모두 때린다. 맞은 수를 돌려준다. */
