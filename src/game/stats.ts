@@ -2,7 +2,7 @@ import type { SaveData } from '../core/save';
 import type { WeaponDef, WeaponType } from '../data/weapons';
 import { passiveBonus, type PassiveBonus } from '../data/passives';
 import { gearBonus, type GearStats } from '../data/gear';
-import { classPassiveBonus } from '../data/classPassives';
+import { classPassiveBonus, gunCritBonus } from '../data/classPassives';
 
 export interface Stats {
   str: number;
@@ -51,9 +51,14 @@ export interface Derived {
   damageMul: number;
   damageReduce: number;
   cdReduce: number;
+  /** 직업 패시브: 총을 쓸 때만 더하는 치명타 확률·치명타 피해 */
+  gunCritChance: number;
+  gunCritDamage: number;
 }
 
-export function derive(s: Stats, passives: Record<string, number> = {}, gear: GearStats = {}): Derived {
+/** level을 주면 직업 패시브의 총 치명타 보너스도 계산한다. */
+export function derive(s: Stats, passives: Record<string, number> = {}, gear: GearStats = {}, level = 0): Derived {
+  const gun = gunCritBonus(s, level);
   // 장신구 효과는 같은 종류의 패시브 보너스에 더한다.
   const pb = passiveBonus(passives);
   pb.regenMul += gear.regenMul ?? 0;
@@ -72,6 +77,8 @@ export function derive(s: Stats, passives: Record<string, number> = {}, gear: Ge
     damageMul: gear.damageMul ?? 0,
     damageReduce: gear.damageReduce ?? 0,
     cdReduce: gear.cdReduce ?? 0,
+    gunCritChance: gun.chance,
+    gunCritDamage: gun.damage,
   };
 }
 

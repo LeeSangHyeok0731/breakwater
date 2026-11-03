@@ -151,7 +151,7 @@ export function renderSkillPanel(host: PanelHost, save: SaveData): void {
     el('div', 'v-desc', row, def.desc(on ? cp.rate : CLASS_PASSIVE_TIERS[Math.max(0, cp.tier - 1)][1]));
   }
   const tiers = CLASS_PASSIVE_TIERS.map(([lv, r], i) => `${i + 1}단계 Lv ${lv} (${Math.round(r * 100)}%)`).join(' · ');
-  el('p', 'v-muted sk-cls-note', books, `${tiers}. 가장 높은 기본 스탯(힘·민첩·마력)에 맞는 계열 하나만 켜지고, 어떤 무기를 들어도 적용됩니다.`);
+  el('p', 'v-muted sk-cls-note', books, `${tiers}. 가장 높은 기본 스탯(힘·민첩·마력)에 맞는 계열 하나만 켜지고, 어떤 무기를 들어도 적용됩니다. 모든 계열에 총 숙련이 붙어, 총을 쓸 때 치명타 피해가 (가장 높은 스탯 × 비율)%, 치명타 확률이 비율의 10%만큼 늘어납니다.`);
 
   el('div', 'sk-book-title', books, '공용 패시브');
   const pgrid = el('div', 'sk-grid', books);

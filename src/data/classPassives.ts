@@ -68,6 +68,17 @@ export interface ClassPassiveBonus {
   add: StatLike;
 }
 
+/**
+ * 총 숙련 (모든 직업 패시브에 붙는다): 총은 스탯이 피해에 반영되지 않고 치명타 확률·피해로 강해지므로,
+ * 총을 쓸 때만 주 스탯 × 비율 %만큼 치명타 피해, 비율의 10%만큼 치명타 확률이 늘어난다.
+ * 주 스탯은 가장 높은 스탯이다 (직업 패시브로 늘어난 스탯은 주 스탯을 넘지 않는다).
+ */
+export function gunCritBonus(s: StatLike, level: number): { chance: number; damage: number } {
+  const { rate } = classPassiveTier(level);
+  const main = Math.max(s.str, s.dex, s.int);
+  return { chance: rate * 0.1, damage: (main * rate) / 100 };
+}
+
 /** 이 스탯과 레벨에서 켜지는 직업 패시브와 늘어나는 스탯 */
 export function classPassiveBonus(s: StatLike, level: number): ClassPassiveBonus {
   const def = CLASS_PASSIVES.find((p) => p.line === classLineOf(s))!;

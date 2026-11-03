@@ -474,7 +474,7 @@ function setInfo(box: HTMLElement, save: SaveData, setId: string): void {
 
 function renderStats(host: PanelHost, save: SaveData): void {
   const stats = totalStats(save);
-  const d = derive(stats, save.passives, gearBonus(save.gear.equipped, save.gear.enhance));
+  const d = derive(stats, save.passives, gearBonus(save.gear.equipped, save.gear.enhance), save.level);
   const cp = classPassiveBonus(baseStats(save), save.level);
 
   const s = host.section('스탯', `남은 포인트 ${save.statPoints}`);
@@ -516,6 +516,7 @@ function renderStats(host: PanelHost, save: SaveData): void {
   kv('이동속도', `${d.moveSpeed.toFixed(2)} m/s`, `(스탯 보너스 +${(bonus * 100).toFixed(1)}%, 최대 +${DEX_SPEED_CAP * 100}%)`);
   if (d.passive.speedMul > 0) kv('패시브 이동속도', `+${(d.passive.speedMul * 100).toFixed(0)}%`, '(상한 없음)');
   if (d.passive.critBonus > 0) kv('치명타 확률 보너스', `+${(d.passive.critBonus * 100).toFixed(0)}%`);
+  if (d.gunCritDamage > 0) kv('총 숙련 (직업 패시브)', `치명타 피해 +${Math.round(d.gunCritDamage * 100)}% · 치명타 확률 +${(d.gunCritChance * 100).toFixed(1)}%`, '(총을 쓸 때만)');
 
   const rs = host.section('스탯 초기화', '분배한 포인트를 모두 돌려받습니다');
   const cost = resetCost(save.level);
