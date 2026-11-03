@@ -57,7 +57,7 @@ let iaiPath: { x0: number; len: number; y: number } | null = null;
 export function updatePlayerCombat(b: BattleScene, dt: number): void {
   const p = b.player;
   const input = b.keys;
-  if (p.dead || p.hoverTime > 0) return;
+  if (p.dead || p.hoverTime > 0 || p.locked) return;
 
   if (input.pressed('swap') && p.swapCd <= 0 && p.dodgeTime <= 0 && !(p.action && CHANNELS.has(p.action.kind))) {
     p.swapWeapon();
@@ -832,6 +832,7 @@ function tryCast(b: BattleScene, skill: SkillDef | null, slot: number): void {
   p.charge = -1;
   p.guarding = false;
   if (skill.weapon === 'staff') sfx.play('magic', 1.2);
+  b.lastCastSlot = slot;
   castSkill(b, skill);
 }
 

@@ -244,6 +244,12 @@ export class BattleScene extends Phaser.Scene {
   private wbTime = 0;
   /** 쌓은 처치·타격 수 (천공 섬광의 마나검이 된다). 전투는 가득 찬 채로 시작한다. */
   skyStacks = 0;
+  /** 이어지는 궁극기 (충전·표식·타이밍·룬 입력): tick이 true를 돌려주면 끝난다. lock이면 플레이어가 움직이거나 공격할 수 없다. */
+  ult: { tick: (dt: number) => boolean; lock: boolean } | null = null;
+  /** 방금 스킬을 쓴 슬롯 (누르고 있는 궁극기가 그 키를 본다) */
+  lastCastSlot = 0;
+  /** 플레이어의 타격이 몬스터에 들어갈 때마다 불린다 (별사냥 표식) */
+  hitHook: ((m: Monster) => void) | null = null;
   /** 튜토리얼 전투면 진행자 */
   private tutorial: Tutorial | null = null;
   private isTutorial = false;
@@ -389,6 +395,8 @@ export class BattleScene extends Phaser.Scene {
 
     const p = this.player;
     p.updateTimers(dt);
+    if (this.ult && this.ult.tick(dt)) this.ult = null;
+    p.locked = !!this.ult?.lock;
     if (dev.infiniteMp) p.mp = p.derived.maxMp;
     if (dev.noCooldown) for (const id of p.cooldowns.keys()) p.cooldowns.set(id, 0);
     p.onPlatform = p.grounded && p.feet < FLOOR_Y - 4;
@@ -523,6 +531,7 @@ export class BattleScene extends Phaser.Scene {
     let dmg = Math.max(1, Math.round(base * p.damageMul * (1 + p.derived.damageMul) * (1 + m.vuln) * critMul * dev.damageMul * ward));
     if (dev.oneHit) dmg = Math.max(dmg, Math.ceil(m.hp));
     m.hp -= dmg;
+    this.hitHook?.(m);
     // 탄검강의 타격도 다음 마나검으로 쌓인다.
     this.skyStacks++;
     m.onHit(p.x, opts.knock ?? 0);
