@@ -1,7 +1,7 @@
 import { keyLabel, SLOT_ACTIONS } from '../core/input';
 import { skillSlotIds, type SaveData } from '../core/save';
 import { PASSIVES, type PassiveDef } from '../data/passives';
-import { SKILL_BY_ID, SKILL_SLOTS, SKILL_TIER_NAME, skillsFor, STARTER_SKILLS, type SkillDef } from '../data/skills';
+import { SKILL_BY_ID, SKILL_SLOTS, SKILL_TIER_NAME, skillsFor, SKY_FLASH_ID, STARTER_SKILLS, type SkillDef } from '../data/skills';
 import { CLASS_NAME, WEAPON_TYPE_NAME, WEAPONS, type WeaponType } from '../data/weapons';
 import { resetCost } from '../game/stats';
 import { button, el, iconImg } from './dom';
@@ -203,7 +203,7 @@ function renderDetail(host: PanelHost, box: HTMLElement, save: SaveData, pick: P
     if (sk.tier) el('span', `v-badge tier${sk.tier}`, sub, SKILL_TIER_NAME[sk.tier]);
     el('span', 'v-muted', sub, learned ? '습득' : '미습득');
     const meta = el('div', 'v-meta', box);
-    el('span', '', meta, `마나 ${sk.mana}`);
+    el('span', '', meta, sk.id === SKY_FLASH_ID ? `한 발 마나 ${sk.mana}+` : `마나 ${sk.mana}`);
     el('span', '', meta, `쿨타임 ${sk.cooldown}초`);
     el('span', save.level < sk.reqLevel ? 'v-short' : '', meta, `요구 레벨 ${sk.reqLevel}`);
     el('p', 'v-desc', box, sk.desc);

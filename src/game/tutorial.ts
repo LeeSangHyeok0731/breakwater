@@ -1,7 +1,7 @@
 import { keyLabel, type Action } from '../core/input';
 import { sfx } from '../core/audio';
 import type { PhaseDef } from '../data/phases';
-import { chunkSkills, SKILL_BY_ID, SKILL_TIER_NAME, SKILLS, skillsFor, type SkillDef } from '../data/skills';
+import { chunkSkills, SKILL_BY_ID, SKILL_TIER_NAME, SKILLS, skillsFor, SKY_MAX_BLADES, SKY_STACKS_PER_BLADE, type SkillDef } from '../data/skills';
 import { CLASS_NAME, WEAPONS, type WeaponDef, type WeaponType } from '../data/weapons';
 import '../ui/tutorial.css';
 import type { BattleScene } from './battleScene';
@@ -27,6 +27,8 @@ export const TUTORIAL_PHASE: PhaseDef = {
 
 const MOVE_GOAL = 160;
 const STEP_PAUSE = 0.7;
+/** 체험장의 최소 최대 마나: 천공 섬광이 한 발 마나 9, 힘의 약 197%로 66발 */
+const TRIAL_MIN_MP = 600;
 const FIGHT_COUNT = 3;
 /** 직업 체험장 */
 const TRIAL_CLASSES: WeaponType[] = ['sword', 'dao', 'bow', 'gun', 'staff'];
@@ -221,8 +223,8 @@ export class Tutorial {
     p.weapons = equipWeapons(TRIAL_CLASSES.map((type) => ({ def: trialWeapon(type), enhance: 0, pages: chunkSkills(skillsFor(type)) })));
     p.active = 0;
     p.cooldowns.clear();
-    // 낮은 레벨의 최대 마나로는 궁극기(마나 120)를 못 쓴다.
-    p.derived.maxMp = Math.max(p.derived.maxMp, ...SKILLS.map((s) => s.mana));
+    // 낮은 레벨의 최대 마나로는 궁극기를 못 쓰고, 천공 섬광도 금방 끝난다.
+    p.derived.maxMp = Math.max(p.derived.maxMp, TRIAL_MIN_MP, ...SKILLS.map((s) => s.mana));
 
     ensureScarecrow(b);
     for (const x of SCARECROW_XS) b.spawnMonster('scarecrow', false, x);
@@ -240,6 +242,8 @@ export class Tutorial {
     const p = b.player;
     p.hp = p.derived.maxHp;
     p.mp = p.derived.maxMp;
+    // 체험장에서는 천공 섬광을 언제나 30자루로 써 본다.
+    b.skyStacks = SKY_MAX_BLADES * SKY_STACKS_PER_BLADE;
 
     const i = p.active;
     const w = p.weapon;

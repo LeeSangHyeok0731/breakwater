@@ -10,7 +10,7 @@ import { DIFFICULTY, LEGIONS, rewardMul, SILENCE_STACKS, SILENCE_TIME, type Legi
 import { barProgress, totalReward, WORLD_BOSS_BARS, WORLD_BOSS_TIME } from '../data/worldBoss';
 import { koNum } from '../ui/format';
 import { column, impactBurst, PAL, rays, shockwave, tint } from './vfx';
-import { chunkSkills, SKILL_BY_ID, SKILL_SLOTS, skillsFor, type SkillDef } from '../data/skills';
+import { chunkSkills, SKILL_BY_ID, SKILL_SLOTS, skillsFor, SKY_FLASH_ID, SKY_MAX_BLADES, SKY_STACKS_PER_BLADE, skyShotMana, type SkillDef } from '../data/skills';
 import { CLASS_NAME, GRADES, WEAPONS, type WeaponType } from '../data/weapons';
 import { Hud, type HudSlot, type HudState } from '../ui/hud';
 import { updatePlayerCombat } from './combat2d';
@@ -240,6 +240,8 @@ export class BattleScene extends Phaser.Scene {
   /** 월드 보스 전투인가, 흐른 시간 */
   worldBoss = false;
   private wbTime = 0;
+  /** 쌓은 처치·타격 수 (천공 섬광의 마나검이 된다). 전투는 가득 찬 채로 시작한다. */
+  skyStacks = 0;
   /** 튜토리얼 전투면 진행자 */
   private tutorial: Tutorial | null = null;
   private isTutorial = false;
@@ -252,6 +254,7 @@ export class BattleScene extends Phaser.Scene {
 
   init(data: { phase: PhaseDef; legion?: LegionRun; worldBoss?: boolean; tutorial?: boolean; trialOnly?: boolean }): void {
     this.isTutorial = !!data.tutorial;
+    this.skyStacks = SKY_MAX_BLADES * SKY_STACKS_PER_BLADE;
     this.trialOnly = !!data.trialOnly;
     this.tutorial = null;
     this.phase = data.phase;
@@ -512,6 +515,8 @@ export class BattleScene extends Phaser.Scene {
     let dmg = Math.max(1, Math.round(base * p.damageMul * (1 + p.derived.damageMul) * (1 + m.vuln) * critMul * dev.damageMul * ward));
     if (dev.oneHit) dmg = Math.max(dmg, Math.ceil(m.hp));
     m.hp -= dmg;
+    // 탄검강의 타격도 다음 마나검으로 쌓인다.
+    this.skyStacks++;
     m.onHit(p.x, opts.knock ?? 0);
     if (opts.basic) p.mp = Math.min(p.derived.maxMp, p.mp + 2);
 
@@ -583,6 +588,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private killMonster(m: Monster): void {
+    this.skyStacks++;
     m.kill();
     sfx.play(m.showsBossBar ? 'boom' : 'kill');
     // 튜토리얼에는 보상이 없다.
@@ -597,7 +603,8 @@ export class BattleScene extends Phaser.Scene {
     this.pending.gold += m.def.gold * mul;
     this.pending.exp += m.def.exp * mul;
     this.pending.kills++;
-    p.mp = Math.min(p.derived.maxMp, p.mp + m.def.mana * (m.elite ? 5 : 1));
+    // 천공 섬광 시전 중에 잡아도 마나를 돌려받지 않는다.
+    if (p.hoverTime <= 0) p.mp = Math.min(p.derived.maxMp, p.mp + m.def.mana * (m.elite ? 5 : 1));
     for (const d of m.def.drops) {
       if (Math.random() < (m.elite ? Math.min(1, d.chance * 2) : d.chance) * share) this.addMaterial(d.id, m.elite ? 2 : 1, m.x, m.body.top);
     }
@@ -1586,7 +1593,10 @@ export class BattleScene extends Phaser.Scene {
       const key = keyLabel(keymap[SLOT_ACTIONS[i]]);
       if (!s) return { key, short: '', name: '', mana: 0, cdLeft: 0, cdRatio: 0, usable: false, empty: true };
       const cdLeft = p.cooldowns.get(s.id) ?? 0;
-      return { key, short: s.short, name: s.name, mana: s.mana, cdLeft, cdRatio: cdLeft / (s.cooldown * (1 - p.derived.cdReduce)), usable: cdLeft <= 0 && p.mp >= s.mana, empty: false };
+      // 천공 섬광 칸에는 지금 소환할 수 있는 마나검 수를 적는다.
+      const blades = s.id === SKY_FLASH_ID ? this.skyBladeCount() : -1;
+      const mana = blades >= 0 ? skyShotMana(p.derived.maxMp) : s.mana;
+      return { key, short: blades >= 0 ? `${blades}검` : s.short, name: s.name, mana, cdLeft, cdRatio: cdLeft / (s.cooldown * (1 - p.derived.cdReduce)), usable: cdLeft <= 0 && p.mp >= mana && blades !== 0, empty: false };
     });
     const mission = this.phase.mission;
     let waveText: string;
@@ -1651,6 +1661,18 @@ export class BattleScene extends Phaser.Scene {
   }
 
   /** 겹친 체력바: 남은 줄, 지금 줄의 남은 비율과 색, 아래 줄 색 */
+  /** 지금 천공 섬광으로 소환할 수 있는 마나검 수 */
+  skyBladeCount(): number {
+    return Math.min(SKY_MAX_BLADES, Math.floor(this.skyStacks / SKY_STACKS_PER_BLADE));
+  }
+
+  /** 천공 섬광을 쓴다: 마나검 수를 돌려주고 쌓은 처치·타격을 비운다. */
+  takeSkyBlades(): number {
+    const n = this.skyBladeCount();
+    this.skyStacks = 0;
+    return n;
+  }
+
   /** 체력이 많은 보스·미니보스의 겹친 체력바 */
   private bossStack(m: Monster): { left: number; ratio: number; color: string; under: string } {
     const st = hpStack(Math.max(0, m.hp));

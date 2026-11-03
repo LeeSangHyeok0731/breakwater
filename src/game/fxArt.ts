@@ -497,7 +497,7 @@ export function createFxArt(scene: Phaser.Scene): void {
   });
   anim(scene, 'fx-muzzle', 3, 24);
 
-  // 영검 (만검귀종): 칼끝이 아래. 회색조라 색을 입혀 쓴다.
+  // 마나검 (천공 섬광): 칼끝이 아래. 회색조라 색을 입혀 쓴다.
   sheet(scene, 'fx-sword', 11, 36, 1, (px) => {
     for (let y = 9; y < 34; y++) {
       const w = y > 29 ? 34 - y : 2;

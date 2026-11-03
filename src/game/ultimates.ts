@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { sfx } from '../core/audio';
+import { skyShotMana, skyShotStr } from '../data/skills';
 import type { BattleScene } from './battleScene';
 import { DEPTH } from './fx';
 import type { Monster } from './monster2d';
@@ -124,42 +125,111 @@ const crossJudgment: Cast = (b) => {
   });
 };
 
-/** 만검귀종: 하늘이 갈라지며 영검 30자루가 쏟아진다. */
-const thousandBlades: Cast = (b) => {
+/** 천공 섬광 [초안]: 소환까지 걸리는 시간, 모든 검이 한 번씩 쏘는 최대 시간(ms) */
+const SKY_SUMMON_MS = 700;
+const SKY_ROUND_MS = 640;
+/** 공중에 머무는 몸 높이 (땅 기준 px) */
+const SKY_HOVER = 110;
+
+/** 천공 섬광: 날아올라 마나검을 펼치고, 마나가 바닥날 때까지 검들이 번갈아 탄검강을 쏜다. */
+const skyFlash: Cast = (b) => {
   const p = b.player;
-  p.startAction('upper', 0.7, []);
-  b.fx.dim(0x000818, 0.55, 2400);
-  b.fx.flashScreen(0x9fd8ff, 0.3, 200);
-  const v0 = view(b);
-  b.fx.lightning(v0.x, v0.y + 14, v0.right, v0.y + 20, 0x9fd8ff, 2, 600);
-  skyCircles(b, 0x9fd8ff, 2200);
-  for (let i = 0; i < 30; i++) {
-    later(b, 250 + i * 55, () => {
-      const v = view(b);
-      const targets = onScreen(b);
-      // 절반은 적을 노리고, 나머지는 화면 곳곳에 꽂힌다.
-      const m = targets.length && i % 2 === 0 ? targets[(i / 2) % targets.length | 0] : null;
-      const x = m ? m.x + (Math.random() - 0.5) * 10 : v.x + 20 + Math.random() * (v.width - 40);
-      const y = m ? Math.min(FLOOR_Y - 4, m.body.bottom - 4) : FLOOR_Y - 4;
-      drop(b, 'fx-sword', x + 30, v.y - 30, x, y, 200, () => {
-        b.fx.spark(x, y, 0x9fd8ff, 2);
-        b.fx.ring(x, Math.min(y + 6, FLOOR_Y), 26, 0x9fd8ff, 220);
-        b.fx.burst(x, y, 0xdff4ff, 5, 80, 260);
-        column(b, x, Math.min(y + 6, FLOOR_Y), 8, 160, i % 3 === 0 ? PAL.violet : PAL.sky, 320);
-        flare(b, x, y, 20, PAL.sky, 200);
-        b.hitArea(x - 26, y - 40, 52, 56, b.skillBase({ str: 3 }), { knock: 30, quiet: i % 3 !== 0 });
-        if (i % 4 === 0) sfx.play('hit', 0.5);
-      }, 0x9fd8ff, 0x9fd8ff);
+  const count = b.takeSkyBlades();
+  // 시전 순간의 마나로 발사 수를 정한다. 시전 중에는 마나가 차지 않는다.
+  const cost = skyShotMana(p.derived.maxMp);
+  const damage = b.skillBase({ str: skyShotStr(p.derived.maxMp) });
+  const shots = Math.floor(p.mp / cost);
+  const gapMs = Math.min(SKY_ROUND_MS, count * 60) / count;
+  const lastShot = SKY_SUMMON_MS + shots * gapMs;
+  const hoverY = Math.min(p.y, FLOOR_Y - SKY_HOVER);
+  p.startHover(hoverY, (lastShot + 300) / 1000);
+  b.fx.dim(0x000818, 0.5, lastShot + 300);
+  b.fx.flashScreen(0x9fd8ff, 0.25, 200);
+  shockwave(b, p.x, p.feet, 170, PAL.sky, 500, 1, 6);
+  sfx.play('magic', 1.2);
+
+  const swords: SkySword[] = [];
+  for (let i = 0; i < count; i++) {
+    // 몸 위쪽 부채꼴에 세 줄로 펼친다.
+    const row = i % 3;
+    const ang = -Math.PI * (0.08 + (0.84 * (i + 0.5)) / count);
+    const x = p.x + Math.cos(ang) * (46 + row * 20);
+    const y = hoverY - 4 + Math.sin(ang) * (40 + row * 18);
+    const appear = 120 + (i * 480) / count;
+    later(b, appear, () => swords.push(skySword(b, x, y, lastShot + 400 - appear)));
+  }
+  for (let n = 0; n < shots; n++) {
+    later(b, SKY_SUMMON_MS + n * gapMs, () => {
+      p.mp = Math.max(0, p.mp - cost);
+      skyShot(b, swords[n % swords.length], damage, n === shots - 1);
     });
   }
-  later(b, 250 + 30 * 55 + 250, () => {
-    b.fx.flashScreen(0xdff4ff, 0.35, 300);
-    b.fx.shake(1.6, 260);
+  later(b, lastShot + 120, () => {
+    for (const s of swords) s.vanish();
+    b.fx.flashScreen(0xdff4ff, 0.3, 260);
+    b.fx.shake(1.4, 240);
     const v = view(b);
-    shockwave(b, v.centerX, FLOOR_Y, v.width * 0.7, PAL.sky, 700);
-    tint(b, 0x2a7aff, 0.25, 500);
+    shockwave(b, v.centerX, v.centerY, v.width * 0.7, PAL.sky, 600);
+    tint(b, 0x2a7aff, 0.2, 420);
   });
 };
+
+interface SkySword {
+  sword: Phaser.GameObjects.Image;
+  glow: Phaser.GameObjects.Image;
+  x: number;
+  y: number;
+  vanish(): void;
+}
+
+/** 마나검 한 자루: 나타나 검강을 두르고, 시전이 끝나면 사라진다. */
+function skySword(b: BattleScene, x: number, y: number, lifeMs: number): SkySword {
+  const sword = b.add.image(x, y - 14, 'fx-sword').setDepth(DEPTH.projectile).setTint(0x9fd8ff).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0);
+  // 검강: 칼날을 감싸는 더 큰 빛
+  const glow = b.add.image(x, y, 'fx-sword').setDepth(DEPTH.projectile - 1).setTint(0x4f9dff).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0).setScale(1.5);
+  const parts = [sword, glow];
+  b.tweens.add({ targets: sword, y, alpha: 1, duration: 200, ease: 'Quad.Out' });
+  later(b, 300, () => {
+    b.tweens.add({ targets: glow, alpha: 0.75, duration: 160 });
+    b.fx.spark(x, y, 0xbfe8ff, 1);
+  });
+  const cleanup = (): void => {
+    for (const part of parts) if (part.active) part.destroy();
+  };
+  // later는 쓰러지면 건너뛰므로, 검이 남지 않게 따로 지운다.
+  b.time.delayedCall(lifeMs, cleanup);
+  return {
+    sword,
+    glow,
+    x,
+    y,
+    vanish: () => {
+      if (!sword.active) return;
+      b.fx.burst(x, y, 0xbfe8ff, 6, 70, 260);
+      b.tweens.add({ targets: parts, alpha: 0, duration: 140, onComplete: cleanup });
+    },
+  };
+}
+
+/** 탄검강 한 발: 몬스터를 조준해 칼끝에서 쏜다. 몬스터가 없으면 앞쪽 땅을 때린다. */
+function skyShot(b: BattleScene, { sword, glow, x, y }: SkySword, damage: number, last: boolean): void {
+  const targets = onScreen(b);
+  const m = targets.length ? targets[Math.floor(Math.random() * targets.length)] : null;
+  const v = view(b);
+  const tx = m ? m.x : v.x + 30 + Math.random() * (v.width - 60);
+  const ty = m ? m.y : FLOOR_Y - 4;
+  const ang = Math.atan2(ty - y, tx - x);
+  // 그림의 칼끝은 아래를 향한다.
+  sword.setRotation(ang - Math.PI / 2);
+  glow.setRotation(ang - Math.PI / 2);
+  b.tweens.add({ targets: [sword, glow], x: x - Math.cos(ang) * 6, y: y - Math.sin(ang) * 6, duration: 50, yoyo: true });
+  const far = Math.hypot(tx - x, ty - y) + 90;
+  b.fx.tracer(x, y, x + Math.cos(ang) * far, y + Math.sin(ang) * far, last ? 0xdff4ff : 0x7fc4ff, 3, 130);
+  flare(b, tx, ty, 16, PAL.sky, 140);
+  b.fx.spark(tx, ty, 0xbfe8ff, 1);
+  b.hitscan(x, y, ang, far, damage, { pierce: true, color: 0x9fd8ff, width: 0, quiet: true });
+  sfx.play('magic', 0.45);
+}
 
 // ───────────────────────── 도객 ─────────────────────────
 
@@ -616,7 +686,7 @@ const armageddon: Cast = (b) => {
 const ULTIMATES: Record<string, Cast> = {
   sword_heaven_cleave: heavenCleave,
   sword_cross_judgment: crossJudgment,
-  sword_thousand_blades: thousandBlades,
+  sword_thousand_blades: skyFlash,
   dao_moon_storm: moonStorm,
   dao_heaven_fall: heavenFall,
   dao_blood_moon: bloodMoon,

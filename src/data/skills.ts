@@ -19,6 +19,35 @@ export const SKILL_TIER_NAME: Record<2 | 3, string> = { 2: '상급', 3: '궁극'
 /** 무기 하나의 스킬 슬롯 수 (Q W E A S D F G) */
 export const SKILL_SLOTS = 8;
 
+/** 천공 섬광 [초안]: 스킬 id (옛 세이브를 위해 만검귀종 때의 id를 그대로 쓴다), 마나검 한 자루에 드는 처치·타격 수, 최대 자루 */
+export const SKY_FLASH_ID = 'sword_thousand_blades';
+export const SKY_STACKS_PER_BLADE = 10;
+export const SKY_MAX_BLADES = 30;
+/**
+ * 탄검강 [초안]: 최대 마나 SKY_MANA_BASE까지는 한 발에 마나 5, 힘의 80%.
+ * 그보다 최대 마나가 크면 한 발의 마나는 배수에서 늘어난 몫의 SKY_COST_GROWTH만큼 커지고,
+ * 피해는 배수의 SKY_POWER_EXP 제곱만큼 커진다. 마나를 키울수록 발 수와 한 발 피해가 함께 는다.
+ */
+export const SKY_SHOT_MANA = 5;
+const SKY_SHOT_STR = 0.8;
+const SKY_MANA_BASE = 300;
+const SKY_POWER_EXP = 1.3;
+const SKY_COST_GROWTH = 0.7;
+
+function skyScale(maxMp: number): number {
+  return Math.max(1, maxMp / SKY_MANA_BASE);
+}
+
+/** 최대 마나에 따른 탄검강 한 발의 마나 */
+export function skyShotMana(maxMp: number): number {
+  return Math.round(SKY_SHOT_MANA * (1 + (skyScale(maxMp) - 1) * SKY_COST_GROWTH));
+}
+
+/** 최대 마나에 따른 탄검강 한 발의 힘 계수 */
+export function skyShotStr(maxMp: number): number {
+  return SKY_SHOT_STR * skyScale(maxMp) ** SKY_POWER_EXP;
+}
+
 export const SKILLS: SkillDef[] = [
   {
     id: 'sword_whirl',
@@ -315,14 +344,14 @@ export const SKILLS: SkillDef[] = [
   },
   {
     id: 'sword_thousand_blades',
-    name: '만검귀종',
-    short: '만검',
+    name: '천공 섬광',
+    short: '섬광',
     weapon: 'sword',
     tier: 3,
-    mana: 120,
+    mana: SKY_SHOT_MANA,
     cooldown: 60,
     reqLevel: 10,
-    desc: '하늘이 갈라지며 영검 30자루가 화면 전체에 쏟아진다. 검이 꽂힐 때마다 주변 적에게 힘의 300% 피해.',
+    desc: '공중으로 날아올라, 쌓은 처치·타격 10회당 마나검 한 자루(최대 30자루)를 소환한다. 전투는 30자루가 찬 채로 시작한다. 검들이 번갈아 몬스터를 조준해 탄검강을 쏘며, 마나가 바닥날 때까지 이어진다. 탄검강은 직선의 적을 꿰뚫고, 최대 마나 300까지는 한 발에 마나 5를 써서 힘의 80% 피해를 준다. 최대 마나가 그보다 크면 한 발의 마나가 늘고, 피해는 그보다 더 크게 는다. 검이 많을수록 빠르게 쏜다. 시전 중에는 마나가 차지 않는다. 쓰면 쌓은 처치·타격이 모두 사라지고, 탄검강의 타격부터 다시 쌓인다. 한 자루도 없으면 쓸 수 없다.',
   },
   {
     id: 'dao_moon_storm',
