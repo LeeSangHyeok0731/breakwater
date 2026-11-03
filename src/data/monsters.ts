@@ -35,6 +35,13 @@ export type MonsterKind =
   | 'void_angel'
   | 'void_knight'
   | 'void_king'
+  // 챕터 6: 용들의 둥지
+  | 'fire_whelp'
+  | 'dragon_cultist'
+  | 'lava_lizard'
+  | 'dragon_egg'
+  | 'wyvern'
+  | 'flame_dragon'
   // 군단장
   | 'silent_knight'
   | 'corrupted_elf'
@@ -659,6 +666,123 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
     flying: false,
     gold: 3000,
     exp: 4000,
+    mana: 50,
+    drops: [
+      { id: 'lord_heart', chance: 1 },
+      { id: 'elite_sigil', chance: 1 },
+      { id: 'abyss_shard', chance: 1 },
+    ],
+  },
+  // ───────── 챕터 6: 용들의 둥지 ─────────
+  fire_whelp: {
+    kind: 'fire_whelp',
+    name: '새끼 화룡',
+    hp: 120,
+    speed: 4.5,
+    damage: 16,
+    range: 18,
+    attackCd: 2.8,
+    radius: 0.6,
+    height: 1.2,
+    flying: true,
+    gold: 22,
+    exp: 34,
+    mana: 4,
+    drops: [
+      { id: 'golem_core', chance: 0.2 },
+      { id: 'abyss_shard', chance: 0.06 },
+    ],
+  },
+  dragon_cultist: {
+    kind: 'dragon_cultist',
+    name: '용 숭배자',
+    hp: 100,
+    speed: 2.4,
+    damage: 15,
+    range: 20,
+    attackCd: 3.6,
+    radius: 0.45,
+    height: 2.4,
+    flying: false,
+    gold: 22,
+    exp: 34,
+    mana: 4,
+    drops: [
+      { id: 'mana_crystal', chance: 0.4 },
+      { id: 'abyss_shard', chance: 0.05 },
+    ],
+  },
+  lava_lizard: {
+    kind: 'lava_lizard',
+    name: '용암 살쾡이',
+    hp: 140,
+    speed: 4,
+    damage: 18,
+    range: 6,
+    attackCd: 2.4,
+    radius: 0.7,
+    height: 1.2,
+    flying: false,
+    gold: 20,
+    exp: 32,
+    mana: 4,
+    drops: [
+      { id: 'golem_core', chance: 0.3 },
+      { id: 'bone_shard', chance: 0.3 },
+    ],
+  },
+  dragon_egg: {
+    kind: 'dragon_egg',
+    name: '용의 알',
+    // 움직이지도 공격하지도 않지만, 시간이 지나면 깨어나 새끼 화룡 둘이 된다.
+    hp: 260,
+    speed: 0,
+    damage: 0,
+    range: 0,
+    attackCd: 99,
+    radius: 0.5,
+    height: 1.4,
+    flying: false,
+    gold: 18,
+    exp: 26,
+    mana: 6,
+    drops: [{ id: 'abyss_shard', chance: 0.08 }],
+  },
+  wyvern: {
+    kind: 'wyvern',
+    name: '둥지 와이번',
+    miniboss: true,
+    hp: 3300,
+    speed: 4,
+    damage: 34,
+    range: 3,
+    attackCd: 1.6,
+    radius: 1.2,
+    height: 3,
+    flying: false,
+    gold: 420,
+    exp: 650,
+    mana: 25,
+    drops: [
+      { id: 'elite_sigil', chance: 1 },
+      { id: 'abyss_shard', chance: 0.7 },
+    ],
+  },
+  flame_dragon: {
+    kind: 'flame_dragon',
+    name: '홍염룡 이그니스',
+    // 보스 페이즈 배율(체력 6.8, 공격 3.6)을 곱하면 체력 약 30000, 공격 101
+    boss: true,
+    hp: 4400,
+    speed: 2.6,
+    damage: 28,
+    range: 5,
+    attackCd: 1.9,
+    radius: 2.4,
+    height: 5,
+    flying: false,
+    gold: 3600,
+    exp: 4800,
     mana: 50,
     drops: [
       { id: 'lord_heart', chance: 1 },

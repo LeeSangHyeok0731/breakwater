@@ -11,7 +11,7 @@ export type Mission =
   | { kind: 'survive'; seconds: number }
   | { kind: 'kills'; target: number };
 
-export type Theme = 'day' | 'dusk' | 'night' | 'lava' | 'church' | 'castle' | 'horror' | 'void';
+export type Theme = 'day' | 'dusk' | 'night' | 'lava' | 'church' | 'castle' | 'horror' | 'void' | 'nest';
 
 export interface PhaseDef {
   id: string;
@@ -727,6 +727,145 @@ const BASE_PHASES: PhaseDef[] = [
     waves: [[{ kind: 'void_king', count: 1 }]],
     clearReward: { gold: 7000, exp: 6000, materials: { abyss_shard: 10, elite_sigil: 5, lord_heart: 1 }, sweepTickets: 3 },
   },
+  // ───────────────────────── 챕터 6: 용들의 둥지 ─────────────────────────
+  {
+    id: '6-1',
+    name: '둥지로 가는 길',
+    type: 'normal',
+    chapter: 6,
+    desc: '용암이 흐르는 동굴 입구. 새끼 화룡이 불덩이를 뱉고, 용 숭배자가 발밑에 불의 낙인을 찍는다.',
+    requires: '5-5',
+    hpMul: 6.2,
+    dmgMul: 3.3,
+    width: 1600,
+    platforms: [[220, 250, 160], [520, 200, 128], [760, 250, 192], [1060, 196, 160], [1300, 250, 160]],
+    theme: 'nest',
+    waves: [
+      [
+        { kind: 'fire_whelp', count: 3 },
+        { kind: 'lava_lizard', count: 2 },
+      ],
+      [
+        { kind: 'dragon_cultist', count: 2 },
+        { kind: 'lava_lizard', count: 3 },
+      ],
+      [
+        { kind: 'fire_whelp', count: 3 },
+        { kind: 'dragon_cultist', count: 2 },
+        { kind: 'void_hound', count: 2 },
+      ],
+      [
+        { kind: 'lava_lizard', count: 3 },
+        { kind: 'fire_whelp', count: 2 },
+        { kind: 'flame_beast', count: 1 },
+      ],
+      [
+        { kind: 'fire_whelp', count: 3 },
+        { kind: 'dragon_cultist', count: 2 },
+        { kind: 'lava_lizard', count: 2 },
+        { kind: 'fire_whelp', count: 1, elite: true },
+        { kind: 'dragon_cultist', count: 1, elite: true },
+      ],
+    ],
+    clearReward: { gold: 5600, exp: 4700, materials: { abyss_shard: 6, golem_core: 6 }, sweepTickets: 1 },
+  },
+  {
+    id: '6-2',
+    name: '알이 잠든 부화장',
+    type: 'normal',
+    chapter: 6,
+    desc: '용의 알이 가득한 부화장. 알은 시간이 지나면 깨어나 새끼 화룡이 되니 먼저 깨뜨려라. 마지막 웨이브에는 둥지 와이번이 내려온다.',
+    requires: '6-1',
+    hpMul: 6.4,
+    dmgMul: 3.4,
+    width: 1700,
+    platforms: [[180, 252, 128], [400, 200, 160], [660, 146, 128], [900, 210, 192], [1180, 250, 128], [1380, 190, 160]],
+    theme: 'nest',
+    waves: [
+      [
+        { kind: 'dragon_egg', count: 1 },
+        { kind: 'lava_lizard', count: 3 },
+      ],
+      [
+        { kind: 'dragon_egg', count: 1 },
+        { kind: 'dragon_cultist', count: 2 },
+        { kind: 'fire_whelp', count: 2 },
+      ],
+      [
+        { kind: 'dragon_egg', count: 2 },
+        { kind: 'lava_lizard', count: 2 },
+        { kind: 'flame_beast', count: 1 },
+      ],
+      [
+        { kind: 'fire_whelp', count: 2 },
+        { kind: 'dragon_egg', count: 1 },
+        { kind: 'wyvern', count: 1 },
+      ],
+    ],
+    clearReward: { gold: 6400, exp: 5400, materials: { abyss_shard: 6, elite_sigil: 3 }, sweepTickets: 1 },
+  },
+  {
+    id: '6-3',
+    name: '들끓는 화구',
+    type: 'special',
+    chapter: 6,
+    desc: '특별 스테이지. 화구 가장자리에서 둥지의 수호자들이 끝없이 몰려온다. 140초 동안 버텨라.',
+    requires: '6-2',
+    hpMul: 6.3,
+    dmgMul: 3.35,
+    width: 1280,
+    platforms: [[140, 250, 160], [420, 196, 192], [760, 196, 192], [1000, 250, 160], [560, 136, 160]],
+    theme: 'nest',
+    waves: [],
+    mission: { kind: 'survive', seconds: 140 },
+    spawnPool: [
+      { kind: 'lava_lizard', weight: 4 },
+      { kind: 'fire_whelp', weight: 3 },
+      { kind: 'dragon_cultist', weight: 2 },
+      { kind: 'dragon_egg', weight: 0.4 },
+      { kind: 'flame_beast', weight: 0.4 },
+    ],
+    clearReward: { gold: 6800, exp: 5700, materials: { abyss_shard: 7, angel_feather: 4 }, sweepTickets: 1 },
+  },
+  {
+    id: '6-4',
+    name: '비늘이 쌓인 골짜기',
+    type: 'special',
+    chapter: 6,
+    desc: '특별 스테이지. 벗겨진 용 비늘이 산처럼 쌓인 골짜기. 몬스터 110마리를 처치하라.',
+    requires: '6-3',
+    hpMul: 6.6,
+    dmgMul: 3.5,
+    width: 1600,
+    platforms: [[200, 250, 192], [480, 196, 128], [720, 250, 160], [980, 190, 192], [1280, 246, 160]],
+    theme: 'nest',
+    waves: [],
+    mission: { kind: 'kills', target: 110 },
+    spawnPool: [
+      { kind: 'lava_lizard', weight: 4 },
+      { kind: 'fire_whelp', weight: 3 },
+      { kind: 'dragon_cultist', weight: 2 },
+      { kind: 'void_hound', weight: 1.5 },
+      { kind: 'flame_beast', weight: 0.5 },
+      { kind: 'lava_lizard', weight: 0.3, elite: true },
+    ],
+    clearReward: { gold: 7400, exp: 6200, materials: { abyss_shard: 7, elite_sigil: 3, golem_core: 6 }, sweepTickets: 1 },
+  },
+  {
+    id: '6-5',
+    name: '홍염룡의 둥지',
+    type: 'boss',
+    chapter: 6,
+    desc: '둥지 가장 깊은 곳의 홍염룡 이그니스. 화염 숨결은 뒤로 돌아가거나 발판 위로 피하고, 꼬리 후려치기는 점프로 넘어라. 하늘로 날아오르면 내리꽂힐 자리를 보고 피하라.',
+    requires: '6-4',
+    hpMul: 6.8,
+    dmgMul: 3.6,
+    width: 1100,
+    platforms: [[110, 240, 160], [830, 240, 160], [470, 176, 160]],
+    theme: 'nest',
+    waves: [[{ kind: 'flame_dragon', count: 1 }]],
+    clearReward: { gold: 9500, exp: 8000, materials: { abyss_shard: 12, elite_sigil: 6, lord_heart: 1 }, sweepTickets: 3 },
+  },
 ];
 
 /** 등장 몬스터 수 배율 [초안]. 보스·미니보스·정예는 그대로 둔다. */
@@ -756,6 +895,7 @@ export const CHAPTER_BOOK: Record<number, { title: string; tagline: string; colo
   3: { title: '마왕성', tagline: '파도의 근원을 찾아 불타는 성문 앞에 섰다.', color: '#7a3320', boss: 'abyss_lord' },
   4: { title: '저주받은 마을', tagline: '종이 울리지 않는 마을에 밤의 여왕이 군림한다.', color: '#35513d', boss: 'night_queen' },
   5: { title: '공허의 문', tagline: '모든 파도가 시작된 곳, 세계의 끝에 문이 열렸다.', color: '#44306e', boss: 'void_king' },
+  6: { title: '용들의 둥지', tagline: '공허가 닫히자 잠든 용들이 깨어나 하늘을 불태웠다.', color: '#8a2a14', boss: 'flame_dragon' },
 };
 
 export const PHASE_BY_ID: Record<string, PhaseDef> = Object.fromEntries(PHASES.map((p) => [p.id, p]));

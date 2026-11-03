@@ -42,6 +42,7 @@ const THEME_TINT: Record<Theme, { bg: number; far: number; near: number; ground:
   castle: { bg: 0xd0e0d8, far: 0xffffff, near: 0xffffff, ground: 0xffffff },
   horror: { bg: 0xffffff, far: 0xd8e0c8, near: 0xffffff, ground: 0xffffff },
   void: { bg: 0x7a6aff, far: 0xffffff, near: 0xffffff, ground: 0xb8a0ff },
+  nest: { bg: 0xffffff, far: 0xffffff, near: 0xffffff, ground: 0xffffff },
 };
 
 /** 테마별 바닥·발판 타일 */
@@ -58,11 +59,12 @@ interface TileSet {
   under: number;
 }
 
-const TILES: Record<'cemetery' | 'church' | 'castle' | 'horror', TileSet> = {
+const TILES: Record<'cemetery' | 'church' | 'castle' | 'horror' | 'nest', TileSet> = {
   cemetery: { key: 'cem-tiles', groundH: 48, groundDrop: 0, platH: 32, platTop: 7, under: 0x140c18 },
   church: { key: 'church-tiles', groundH: 40, groundDrop: 7, platH: 32, platTop: 1, under: 0x1a1426 },
   castle: { key: 'castle-tiles', groundH: 48, groundDrop: 7, platH: 22, platTop: 1, under: 0x0c1814 },
   horror: { key: 'horror-tiles', groundH: 32, groundDrop: 7, platH: 16, platTop: 1, under: 0x1a120e },
+  nest: { key: 'nest-tiles', groundH: 48, groundDrop: 7, platH: 22, platTop: 1, under: 0x120808 },
 };
 
 function seeded(seed: number): () => number {
@@ -120,8 +122,16 @@ export function buildLevel(scene: Phaser.Scene, width: number, platforms: [numbe
   const tint = THEME_TINT[theme];
   const layers: ParallaxLayer[] = [];
   const tiles =
-    theme === 'church' ? TILES.church : theme === 'castle' || theme === 'void' ? TILES.castle : theme === 'horror' ? TILES.horror : TILES.cemetery;
-  const bgColor: Partial<Record<Theme, string>> = { lava: '#1a0606', church: '#100c1c', castle: '#08100e', horror: '#1a2418', void: '#06040e' };
+    theme === 'church'
+      ? TILES.church
+      : theme === 'castle' || theme === 'void'
+        ? TILES.castle
+        : theme === 'horror'
+          ? TILES.horror
+          : theme === 'nest'
+            ? TILES.nest
+            : TILES.cemetery;
+  const bgColor: Partial<Record<Theme, string>> = { lava: '#1a0606', church: '#100c1c', castle: '#08100e', horror: '#1a2418', void: '#06040e', nest: '#140808' };
   scene.cameras.main.setBackgroundColor(bgColor[theme] ?? '#120a1e');
 
   if (theme === 'church') {
@@ -130,6 +140,10 @@ export function buildLevel(scene: Phaser.Scene, width: number, platforms: [numbe
   } else if (theme === 'castle' || theme === 'void') {
     // 공허의 문: 같은 성을 보랏빛으로 물들인다.
     layers.push(layer(scene, 'castle-bg', 0, VIEW_H, 0.3, tint.bg, DEPTH.bg));
+  } else if (theme === 'nest') {
+    // 용들의 둥지: 달아오른 동굴 안쪽과 종유석·바위 기둥
+    layers.push(layer(scene, 'nest-far', 0, VIEW_H, 0.06, tint.bg, DEPTH.bg));
+    layers.push(layer(scene, 'nest-mid', 30, GROUND_Y - 10, 0.3, tint.far, DEPTH.bg + 1));
   } else if (theme === 'horror') {
     // 저주받은 마을: 구름 낀 하늘과 먼 마을 실루엣
     layers.push(layer(scene, 'horror-clouds', 0, GROUND_Y + 10, 0.05, tint.bg, DEPTH.bg));
@@ -200,6 +214,26 @@ export function buildLevel(scene: Phaser.Scene, width: number, platforms: [numbe
     for (let x = 60 + rand() * 60; x < width - 40; x += 140 + rand() * 160) {
       const key = ['shrine', 'arch', 'skulls', 'ivy'][Math.floor(rand() * 4)];
       scene.add.image(x, groundTop + 1, 'horror-tiles', key).setOrigin(0.5, 1).setDepth(DEPTH.deco);
+    }
+  } else if (theme === 'nest') {
+    // 장식: 바위 기둥, 알 무더기·용의 뼈·빛나는 불의 수정, 그리고 위로 날리는 불티
+    for (let x = 100 + rand() * 120; x < width - 80; x += 300 + rand() * 200) {
+      scene.add.image(x, groundTop + 2, 'nest-spire').setOrigin(0.5, 1).setDepth(DEPTH.deco - 3).setTint(0xb09088);
+    }
+    for (let x = 50 + rand() * 60; x < width - 40; x += 130 + rand() * 150) {
+      const key = ['nest-eggs', 'nest-bones', 'nest-crystal', 'nest-crystal'][Math.floor(rand() * 4)];
+      scene.add.image(x, groundTop + 1, key).setOrigin(0.5, 1).setDepth(DEPTH.deco);
+      if (key === 'nest-crystal') {
+        const glow = scene.add.image(x, groundTop - 10, key).setOrigin(0.5, 0.6).setDepth(DEPTH.deco).setBlendMode(Phaser.BlendModes.ADD).setScale(1.6).setAlpha(0.35);
+        scene.tweens.add({ targets: glow, alpha: 0.12, duration: 900 + rand() * 600, yoyo: true, repeat: -1 });
+      }
+    }
+    for (let i = 0; i < 26; i++) {
+      const ember = scene.add
+        .rectangle(rand() * width, GROUND_Y - rand() * 260, 2, 2, rand() < 0.5 ? 0xffb040 : 0xff6a1a)
+        .setDepth(DEPTH.deco - 1)
+        .setBlendMode(Phaser.BlendModes.ADD);
+      scene.tweens.add({ targets: ember, y: ember.y - 120 - rand() * 80, x: ember.x + (rand() - 0.5) * 60, alpha: 0, duration: 2600 + rand() * 2400, repeat: -1, delay: rand() * 2000 });
     }
   } else if (theme === 'church') {
     // 장식: 해골이 새겨진 돌기둥이 일정하게 늘어선다.

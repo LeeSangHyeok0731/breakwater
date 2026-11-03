@@ -7,6 +7,7 @@ import { CHAPTER2 } from './mobs/chapter2';
 import { ABYSS_PATTERNS, CHAPTER3 } from './mobs/chapter3';
 import { CHAPTER4 } from './mobs/chapter4';
 import { CHAPTER5 } from './mobs/chapter5';
+import { CHAPTER6 } from './mobs/chapter6';
 import { silentKnight } from './legion/knight';
 import { corruptedElf } from './legion/elf';
 import { darkLord } from './legion/darklord';
@@ -16,7 +17,7 @@ import { hpStack, isStacked } from './hpStack';
 
 /** 챕터 2·3 몬스터의 행동 (몬스터 하나를 한 프레임 움직인다) */
 export type Behavior = (m: Monster, dt: number) => void;
-const BEHAVIORS: Partial<Record<MonsterKind, Behavior>> = { ...CHAPTER2, ...CHAPTER3, ...CHAPTER4, ...CHAPTER5, silent_knight: silentKnight, corrupted_elf: corruptedElf, dark_lord: darkLord, world_golem: worldGolem };
+const BEHAVIORS: Partial<Record<MonsterKind, Behavior>> = { ...CHAPTER2, ...CHAPTER3, ...CHAPTER4, ...CHAPTER5, ...CHAPTER6, silent_knight: silentKnight, corrupted_elf: corruptedElf, dark_lord: darkLord, world_golem: worldGolem };
 
 export interface Look {
   walk: string;
@@ -68,6 +69,13 @@ const LOOKS: Record<MonsterKind, Look> = {
   dark_lord: { walk: 'darklord:hero-run', attack: 'darklord:hero-idle', idle: 'darklord:hero-idle', facesLeft: false, body: [16, 44], scale: 2.2 },
   world_golem: { walk: 'demon-idle', attack: 'demon-idle', facesLeft: true, body: [44, 56], scale: 3 },
   void_king: { walk: 'vking-idle', attack: 'vking-attack', facesLeft: true, body: [70, 96], scale: 1.3 },
+  fire_whelp: { walk: 'whelp-fly', attack: 'whelp-spit', facesLeft: false, body: [30, 22] },
+  dragon_cultist: { walk: 'cult-idle', attack: 'cult-cast', facesLeft: false, body: [18, 44] },
+  lava_lizard: { walk: 'lizard-walk', facesLeft: true, body: [40, 24], scale: 0.9 },
+  dragon_egg: { walk: 'egg-idle', attack: 'egg-hatch', facesLeft: false, body: [18, 26], scale: 1.2 },
+  // 와이번·홍염룡은 파츠 리그로 그리고, 이 스프라이트는 이야기책 그림과 맞았을 때 번쩍임에만 쓴다.
+  wyvern: { walk: 'wyvern-pose', facesLeft: false, body: [70, 56] },
+  flame_dragon: { walk: 'flame-dragon-pose', facesLeft: false, body: [120, 80] },
   scarecrow: { walk: SCARECROW_ANIM, facesLeft: false, body: [24, 50] },
 };
 

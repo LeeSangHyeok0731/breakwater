@@ -116,6 +116,8 @@ export interface FieldSpec {
   rain?: boolean;
   /** 겉모습: 서리(얼음 가시), 불길, 화살비, 독, 기본 */
   style?: 'frost' | 'fire' | 'rain' | 'poison' | 'plain';
+  /** 적이 남긴 장판: 그 위 땅에 선 플레이어가 틱마다 받는 피해 (가드 불가) */
+  hurt?: number;
 }
 
 interface Field extends FieldSpec {
@@ -320,8 +322,14 @@ export class BattleScene extends Phaser.Scene {
     });
     this.monsterGroup = this.physics.add.group();
     this.physics.add.collider(this.monsterGroup, this.level.solids);
-    this.physics.add.collider(this.monsterGroup, this.level.platforms, undefined, (m, plat) =>
-      onTop((m as Phaser.GameObjects.Zone).body as Phaser.Physics.Arcade.Body, (plat as Phaser.GameObjects.Zone).body as Phaser.Physics.Arcade.StaticBody),
+    // 거대한 용처럼 발판을 무시하는 몬스터는 몸통 zone에 noPlatform을 단다.
+    this.physics.add.collider(
+      this.monsterGroup,
+      this.level.platforms,
+      undefined,
+      (m, plat) =>
+        !(m as Phaser.GameObjects.Zone).getData('noPlatform') &&
+        onTop((m as Phaser.GameObjects.Zone).body as Phaser.Physics.Arcade.Body, (plat as Phaser.GameObjects.Zone).body as Phaser.Physics.Arcade.StaticBody),
     );
 
     const cam = this.cameras.main;
@@ -1427,10 +1435,10 @@ export class BattleScene extends Phaser.Scene {
       this.fieldFx(f, dt);
       if (f.tickTimer <= 0) {
         f.tickTimer = f.tickEvery;
-        if (poison) {
-          // 독 웅덩이: 플레이어를 해친다 (가드 불가).
+        if (poison || f.hurt) {
+          // 독 웅덩이·용암 불길: 플레이어를 해친다 (가드 불가).
           if (p.x > f.x && p.x < f.x + f.w && p.grounded && !p.onPlatform) {
-            this.damagePlayer(6, { x: p.x, melee: false, unblockable: true });
+            this.damagePlayer(f.hurt ?? 6, { x: p.x, melee: false, unblockable: true });
           }
         } else {
           for (const m of this.monsters) {
