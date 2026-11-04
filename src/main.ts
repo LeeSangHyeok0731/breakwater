@@ -80,8 +80,14 @@ const village = new VillageUI(uiRoot, () => save, {
     input.setKeymap(save.keymap);
     sfx.setVolume(save.sfxVolume);
   },
-  onImport: (s) => replaceSave(s),
-  onReset: () => replaceSave(newSave()),
+  onImport: (s) => {
+    replaceSave(s);
+    refreshTown();
+  },
+  onReset: () => {
+    replaceSave(newSave());
+    refreshTown();
+  },
   portrait: heroPortrait,
   monsterArt: (kind) => monsterArt(game, kind),
   art: (key: string) => {
@@ -150,6 +156,23 @@ window.addEventListener('keydown', (e) => {
   devPanel.toggle();
   if (devPanel.isOpen) input.enabled = false;
 });
+
+// ───────── 오류 표시 ─────────
+// 게임 루프에서 오류가 나면 화면이 그대로 멈추므로, 원인을 바로 볼 수 있게 화면에 띄운다.
+let errorBox: HTMLElement | null = null;
+function showError(err: unknown): void {
+  // 첫 오류가 원인이다. 뒤따르는 오류로 덮지 않는다.
+  if (errorBox) return;
+  const text = err instanceof Error ? (err.stack ?? err.message) : String(err);
+  errorBox = document.createElement('pre');
+  errorBox.style.cssText =
+    'position:fixed;left:8px;right:8px;bottom:8px;max-height:45vh;overflow:auto;z-index:99999;margin:0;padding:10px 12px;' +
+    'background:rgba(40,0,0,.92);color:#ffd6d6;border:1px solid #ff5a5a;font:12px/1.4 monospace;white-space:pre-wrap;user-select:text;';
+  document.body.appendChild(errorBox);
+  errorBox.textContent = `오류가 났습니다. 이 내용을 그대로 캡처해서 보내 주세요.\n\n${text}`.slice(0, 6000);
+}
+window.addEventListener('error', (e) => showError(e.error ?? e.message));
+window.addEventListener('unhandledrejection', (e) => showError(e.reason));
 
 // 화면 비율이 바뀌면 가로 해상도를 다시 맞춘다 (세로 360 고정).
 // window resize는 F11 전환 중 레이아웃이 끝나기 전에 와서 중간 크기를 읽을 수 있으므로,
@@ -253,6 +276,14 @@ Object.assign(ctx, {
     writeSave(save);
   },
 });
+
+/** 세이브를 통째로 바꾼 뒤 마을을 새 세이브로 다시 짓는다 (캐릭터가 옛 무기를 든 채 남지 않게). */
+function refreshTown(): void {
+  if (!game.scene.isActive('town')) return;
+  const town = game.scene.getScene('town') as TownScene;
+  // 처음부터 다시 하면 전투 기지도 닫혀 있으므로 마을로 돌아간다.
+  town.scene.restart({ area: 'town' });
+}
 
 /** 마을과 전투 기지를 오간다. */
 function travel(area: Area): void {
