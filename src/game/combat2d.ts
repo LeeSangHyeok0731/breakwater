@@ -397,6 +397,7 @@ function performHit(b: BattleScene, kind: ActionKind, index: number): void {
       b.spawnPlayerBolt({
         x: s.x,
         y: s.y,
+        from: m,
         vx: f * Math.cos(ang) * 420,
         vy: Math.sin(ang) * 420,
         damage: b.skillBase({ dex: 1.0, str: 1.0 }),
@@ -422,16 +423,16 @@ function performHit(b: BattleScene, kind: ActionKind, index: number): void {
     case 'snipe': {
       const m = p.muzzle();
       const s = p.shotPoint();
-      b.hitscan(s.x, s.y, p.facing === 1 ? 0 : Math.PI, 600, base * 6, { pierce: true, color: 0xfff0a0, width: 4 });
+      b.hitscan(s.x, s.y, p.facing === 1 ? 0 : Math.PI, 600, base * 6, { pierce: true, color: 0xfff0a0, width: 4, from: m });
       b.fx.muzzle(m.x, m.y, p.facing, 2);
       // 화면을 꿰뚫는 굵은 빛줄기와 총구 섬광
-      b.fx.bigSlash(s.x, s.y, s.x + p.facing * 600, s.y, 0xffd040, 12, 420);
+      b.fx.bigSlash(m.x, m.y, s.x + p.facing * 600, s.y, 0xffd040, 12, 420);
       flare(b, m.x, m.y, 44, PAL.gold, 300);
       rays(b, m.x, m.y, 12, 110, PAL.gold, 360);
       shockwave(b, m.x, m.y, 80, PAL.gold, 360, 1, 5);
       b.fx.pop(m.x + p.facing * 10, m.y, 0xfff6c0, 2.6, 0.45);
       b.fx.sparks(m.x, m.y, 0xffd040, 16, p.facing === 1 ? 0 : Math.PI, 0.5, 420, 360, 100);
-      for (let i = 1; i <= 5; i++) b.fx.pop(s.x + p.facing * i * 90, s.y, 0xfff0a0, 1.2 - i * 0.12, 0.4);
+      for (let i = 1; i <= 5; i++) b.fx.pop(m.x + p.facing * i * 90, m.y + ((s.y - m.y) * i) / 6.5, 0xfff0a0, 1.2 - i * 0.12, 0.4);
       twinkles(b, s.x + p.facing * 200, s.y, 180, 0xfff6c0, 6, 300);
       b.fx.casing(p.x + p.facing * 8, p.y - 8, p.facing, p.feet);
       b.fx.shake(1);
@@ -519,6 +520,7 @@ function fireArrow(b: BattleScene, c: number): void {
     b.spawnPlayerBolt({
       x: s.x,
       y: s.y,
+      from: m,
       vx: p.facing * (360 + 160 * c),
       vy: 0,
       damage: b.weaponBase() * (1 + 2.5 * c),
@@ -651,6 +653,7 @@ function comboSlash(b: BattleScene, n: number, index: number, dmg: number, color
 function arrowCombo(b: BattleScene, n: number): void {
   const p = b.player;
   const s = p.shotPoint();
+  const m = p.muzzle();
   const count = [1, 1, 2, 3, 5][n - 1];
   const each = [1, 1, 0.8, 0.75, 0.7][n - 1];
   const spread = n >= 5 ? 0.09 : 0.06;
@@ -661,6 +664,7 @@ function arrowCombo(b: BattleScene, n: number): void {
     b.spawnPlayerBolt({
       x: s.x,
       y: s.y,
+      from: m,
       vx: p.facing * Math.cos(a) * speed,
       vy: Math.sin(a) * speed,
       damage: b.weaponBase() * each,
@@ -672,7 +676,6 @@ function arrowCombo(b: BattleScene, n: number): void {
     });
   }
   // 시위를 놓는 순간: 활 앞에 세로로 서는 충격 고리와 앞으로 튀는 빛 조각. 단계가 오를수록 커진다.
-  const m = p.muzzle();
   const tone = finale ? 0xffe08a : shotColor(p.weapon.def);
   const fwd = p.facing === 1 ? 0 : Math.PI;
   b.fx.pop(m.x + p.facing * 4, m.y, tone, 0.7 + n * 0.14, 0.45);
@@ -783,7 +786,7 @@ function gunShot(b: BattleScene, mul: number, spread: number): void {
   const base = p.facing === 1 ? 0 : Math.PI;
   const ang = base + (Math.random() - 0.5) * 2 * (spread + (p.ads ? 0 : 0.03));
   const s = p.shotPoint();
-  b.hitscan(s.x, s.y, ang, p.ads ? 520 : 420, b.weaponBase() * mul * (p.ads ? 1.25 : 1), { pierce: false, color: shotColor(p.weapon.def), width: 2 });
+  b.hitscan(s.x, s.y, ang, p.ads ? 520 : 420, b.weaponBase() * mul * (p.ads ? 1.25 : 1), { pierce: false, color: shotColor(p.weapon.def), width: 2, from: m });
   b.fx.muzzle(m.x, m.y, p.facing, 1, ang - (p.facing === 1 ? 0 : Math.PI), muzzleTint(p.weapon.def));
   // 총구 앞에 서는 작은 충격 고리와 튀는 불티
   b.fx.pop(m.x + p.facing * 5, m.y, 0xfff0c0, 0.75, 0.45, ang - base);
@@ -1102,6 +1105,7 @@ function castSkill(b: BattleScene, skill: SkillDef): void {
         b.spawnPlayerBolt({
           x: s.x,
           y: s.y,
+          from: m,
           vx: f * Math.cos(ang) * 380,
           vy: Math.sin(ang) * 380,
           damage: b.skillBase({ dex: 0.9, str: 0.4 }),
@@ -1138,9 +1142,9 @@ function castSkill(b: BattleScene, skill: SkillDef): void {
     case 'bow_pierce': {
       const m = p.muzzle();
       const s = p.shotPoint();
-      b.spawnPlayerBolt({ x: s.x, y: s.y, vx: f * 520, vy: 0, damage: b.skillBase({ dex: 2.5, str: 1.0 }), kind: 'arrow', color: 0xffe08a, size: 3, pierce: true });
+      b.spawnPlayerBolt({ x: s.x, y: s.y, from: m, vx: f * 520, vy: 0, damage: b.skillBase({ dex: 2.5, str: 1.0 }), kind: 'arrow', color: 0xffe08a, size: 3, pierce: true });
       // 화살이 지나갈 길에 금빛 섬광이 먼저 그어진다.
-      b.fx.bigSlash(s.x, s.y, s.x + f * 560, s.y, 0xffc040, 7, 360);
+      b.fx.bigSlash(m.x, m.y, s.x + f * 560, s.y, 0xffc040, 7, 360);
       flare(b, m.x, m.y, 40, PAL.gold, 300);
       rays(b, m.x, m.y, 10, 90, PAL.gold, 340);
       // 관통: 활 앞에 금빛 마법진이 서고 공기가 갈라진다.
@@ -1148,7 +1152,7 @@ function castSkill(b: BattleScene, skill: SkillDef): void {
       b.fx.spark(m.x + f * 8, m.y, 0xffffff, 2);
       b.fx.burst(m.x, m.y, 0xffe08a, 4, 140, 300);
       b.fx.sparks(m.x, m.y, 0xffe08a, 14, f === 1 ? 0 : Math.PI, 0.4, 420, 320, 0);
-      for (let i = 1; i <= 4; i++) b.fx.pop(s.x + f * i * 110, s.y, 0xfff0c0, 1.6 - i * 0.2, 0.4);
+      for (let i = 1; i <= 4; i++) b.fx.pop(m.x + f * i * 110, m.y + ((s.y - m.y) * i) / 5, 0xfff0c0, 1.6 - i * 0.2, 0.4);
       b.fx.shake(0.4);
       sfx.play('arrow', 1.4);
       p.startAction('shoot', 0.3);
