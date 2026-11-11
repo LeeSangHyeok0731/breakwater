@@ -63,55 +63,212 @@ function band(pal: number[], d: number): number {
 // ───────────────────────── 베기 잔상 ─────────────────────────
 
 /** 베기 잔상의 반지름 (그림 기준). 실제 크기는 scale = radius / SLASH_R */
-export const SLASH_R = 26;
+export const SLASH_R = 40;
+const SLASH_FRAME = 112;
+const SLASH_FRAMES = 7;
+const SLASH_C = { x: 40, y: 56 };
 /** 잔상 그림에서 원의 중심 (기준점) */
-export const SLASH_ORIGIN = { x: 24 / 64, y: 0.5 };
+export const SLASH_ORIGIN = { x: SLASH_C.x / SLASH_FRAME, y: 0.5 };
 
-/** 초승달 모양의 잔상. 바깥 날이 가장 밝고 안쪽으로 흐려진다. 5칸: 휘두르기 → 사라지기 */
-function drawSlash(px: Px, f: number, spanDeg: number, core: boolean): void {
-  const cx = 24;
-  const cy = 32;
+/** 무기의 기운에 따라 잔상의 생김새가 달라진다. */
+export const SLASH_STYLES = ['plain', 'steel', 'flame', 'moon', 'blood', 'holy', 'thunder'] as const;
+export type SlashStyle = (typeof SLASH_STYLES)[number];
+
+export function slashKey(wide: boolean, style: SlashStyle = 'plain'): string {
+  return `fx-slash${wide ? '-w' : ''}${style === 'plain' ? '' : `-${style}`}`;
+}
+
+/** 칸마다 잔상이 차지하는 구간 [꼬리, 머리] (0 = 휘두르기 시작, 1 = 끝) */
+const SLASH_SEG: [number, number][] = [
+  [0, 0.4],
+  [0, 0.82],
+  [0, 1],
+  [0.12, 1],
+  [0.36, 1],
+  [0.58, 1],
+  [0.78, 1],
+];
+
+/**
+ * 붓으로 그은 듯한 베기 잔상. 칼끝(머리)은 뾰족하고, 뒤로 갈수록 결이 갈라져 흩어진다.
+ * 7칸: 그어 나가기(0~2) → 꼬리부터 풀리기(3~4) → 부스러기(5~6). 색은 계단식 명암 + 격자 디더로 도트 느낌을 살린다.
+ * core는 그 위에 얹는 하얀 날.
+ */
+function drawSlash(px: Px, f: number, spanDeg: number, core: boolean, style: SlashStyle): void {
+  const { x: cx, y: cy } = SLASH_C;
+  const R = SLASH_R;
   const A = (spanDeg * Math.PI) / 180;
-  const seg = [
-    [0, 0.45],
-    [0, 0.9],
-    [0.04, 1],
-    [0.35, 1],
-    [0.7, 1],
-  ][f];
-  const fade = [0.95, 1, 0.95, 0.75, 0.45][f];
-  const width = [0.6, 1, 1, 0.75, 0.5][f];
-  for (let y = 0; y < 64; y++) {
-    for (let x = 0; x < 64; x++) {
+  const [tail, head] = SLASH_SEG[f];
+  const grow = [0.55, 0.9, 1, 0.95, 0.8, 0.62, 0.45][f];
+  const fade = [0.9, 1, 1, 0.9, 0.75, 0.55, 0.35][f];
+  const coreFade = [1, 1, 1, 0.8, 0.5, 0.25, 0][f];
+  /** 사라지면서 바깥으로 살짝 번진다. */
+  const drift = Math.max(0, f - 2) * 1.2;
+  const melt = Math.max(0, f - 3) * 0.2;
+  const T = (style === 'moon' || style === 'steel' ? 11 : style === 'blood' ? 16 : 14) * grow;
+
+  /** 바깥 날의 굴곡: 불꽃은 혀처럼 솟고, 번개는 톱니, 피는 울퉁불퉁하다. */
+  const edge = (u: number): number => reach(u) + wobble(u);
+  /** 정확한 원호가 되지 않게: 휘두르기 시작은 몸 가까이, 칼끝으로 갈수록 바깥으로 뻗는다. */
+  const reach = (u: number): number => (u - 0.62) * 11;
+  const wobble = (u: number): number => {
+    if (style === 'flame') return 4.5 * Math.pow(Math.max(0, Math.sin(u * 26 - f * 1.4)), 2) * (0.5 + hash(Math.round(u * 13), f, 5));
+    if (style === 'thunder') {
+      const z = u * 11 + f * 0.37;
+      return (Math.abs((z % 1) - 0.5) * 2 - 0.5) * 3.2 * (0.5 + hash(Math.floor(z), 8, 1));
+    }
+    if (style === 'blood') return 1.5 * Math.sin(u * 17 + f);
+    // 완전한 원호가 아니라 손으로 그은 듯 살짝 일렁인다.
+    return 1.4 * Math.sin(u * 2.6 + 0.5);
+  };
+  /** 호 위의 점: u = 구간 위치, r = 반지름 */
+  const at = (u: number, r: number): [number, number] => {
+    const ang = u * 2 * A - A;
+    return [cx + Math.cos(ang) * r, cy + Math.sin(ang) * r];
+  };
+  const tone = (v: number): number => (core ? 0xffffff : gray(v));
+  const dot = (u: number, r: number, v: number, alpha = 1): void => {
+    const [x, y] = at(u, r);
+    px(x, y, tone(v), alpha);
+  };
+  const inSeg = (u: number): boolean => u >= tail && u <= head;
+
+  for (let y = 0; y < SLASH_FRAME; y++) {
+    for (let x = 0; x < SLASH_FRAME; x++) {
       const dx = x - cx;
       const dy = y - cy;
       const r = Math.hypot(dx, dy);
+      if (r < R - 30 || r > R + 18) continue;
       const u = (Math.atan2(dy, dx) + A) / (2 * A);
-      if (u < seg[0] || u > seg[1]) continue;
-      // 가운데가 가장 두껍고, 휘두르는 앞쪽(u가 큰 쪽)이 더 진하다.
-      const thick = 9.5 * Math.pow(Math.sin(Math.PI * u), 0.7) * width;
-      const inner = SLASH_R - thick;
-      if (r > SLASH_R + 0.5 || r < inner) continue;
-      const lead = 0.55 + 0.45 * u;
+      if (!inSeg(u)) continue;
+      const v = (u - tail) / (head - tail);
+      // 머리 쪽에 치우친 두께: 칼끝은 뾰족하고 꼬리는 길게 가늘어진다.
+      const thick = Math.max(1.2, T * 1.25 * Math.pow(Math.sin(Math.PI * Math.pow(v, 1.5)), 0.75));
+      const outer = R + drift + edge(u);
+      if (r > outer + 0.5) continue;
+      /** 1 = 바깥 날, 0 = 안쪽 끝 */
+      const t = 1 - (outer - r) / thick;
+      if (t < 0) continue;
+      // 결: 잔상을 붓털 한 올 한 올(반지름 1px 줄)의 묶음으로 본다. 안쪽 올일수록 늦게 시작해 일찍 끝나고,
+      // 중간에 끊긴 데가 있어 빗으로 쓸어 놓은 듯 갈라진다.
+      const strand = Math.round(outer - r);
+      const deep = Math.min(1, strand / (T * 1.25));
+      if (v < Math.pow(deep, 0.8) * (0.12 + 0.75 * hash(strand, spanDeg, 3))) continue;
+      if (v > 1 - deep * (0.04 + 0.4 * hash(strand, spanDeg, 4))) continue;
+      if (deep > 0.3) {
+        const gap = hash(strand, spanDeg, 5);
+        if (v > gap && v < gap + 0.05 + deep * 0.08) continue;
+      }
+      if (melt > 0 && hash(x, y, f) < melt * (1.3 - t)) continue;
       if (core) {
-        if (r >= SLASH_R - 1.3) px(x, y, 0xffffff, fade * lead);
+        if (t > 1 - 2.2 / thick && v > 0.25) px(x, y, 0xffffff, Math.min(1, (v - 0.25) * 2.5) * coreFade);
         continue;
       }
-      const t = (r - inner) / Math.max(1, thick);
-      px(x, y, gray(120 + 135 * t), fade * (0.45 + 0.55 * t) * lead);
+      // 올마다 밝기가 조금씩 달라 안쪽에도 밝은 줄이 선다.
+      const q = t + ((x + y) & 1 ? 0.06 : -0.06) + (hash(strand, spanDeg, 6) > 0.72 ? 0.3 : 0);
+      const level = q > 0.72 ? 255 : q > 0.45 ? 200 : q > 0.2 ? 140 : 96;
+      const alpha = (q > 0.45 ? 1 : q > 0.2 ? 0.8 : 0.55) * fade * (0.5 + 0.5 * Math.min(1, v * 2.5));
+      px(x, y, gray(level), alpha);
     }
   }
-  if (core) return;
+
   // 바람 결: 안쪽에 끊어진 가는 선
-  if (f >= 1 && f <= 3) {
+  if (!core && f >= 1 && f <= 4) {
     for (let k = 0; k < 3; k++) {
-      const rr = SLASH_R - 10 - k * 3;
-      for (let a = -A * 0.8; a < A * 0.8; a += 0.03) {
-        const u = (a + A) / (2 * A);
-        if (u < seg[0] || u > seg[1] || hash(k, Math.round(a * 20), f) < 0.45) continue;
-        px(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr, gray(170), 0.5 * fade);
+      const rr = R - T - 3 - k * 3 + drift;
+      for (let u = tail; u < head - 0.08; u += 0.006) {
+        if (hash(k, Math.round(u * 24), 2) < 0.5) continue;
+        dot(u, rr, 165, 0.5 * fade);
       }
     }
+  }
+  // 날 밖으로 튀는 빛 부스러기
+  if (!core && f >= 2 && f <= 5) {
+    const n = style === 'flame' ? 16 : 8;
+    for (let k = 0; k < n; k++) {
+      const u = hash(k, 1, spanDeg);
+      if (!inSeg(u) || hash(k, 3, f) < 0.25) continue;
+      const rr = R + 3 + hash(k, 2, spanDeg) * 6 + (f - 2) * 1.8;
+      dot(u, rr, 255, fade);
+      if (k % 3 === 0) dot(u, rr + 1, 200, fade * 0.7);
+    }
+  }
+
+  switch (style) {
+    case 'steel':
+      // 칼끝의 반짝임
+      if (f === 2 || f === 3) {
+        const [gx, gy] = at(0.9, R + drift);
+        const L = f === 2 ? 6 : 4;
+        for (let i = -L; i <= L; i++) {
+          const a = 1 - Math.abs(i) / (L + 1);
+          px(gx + i, gy, tone(255), a);
+          px(gx, gy + i, tone(255), a);
+        }
+      }
+      break;
+    case 'moon':
+      // 안쪽에 겹치는 가는 달 그림자와 별빛
+      if (f >= 1 && f <= 4) {
+        for (let u = tail + 0.12; u < head - 0.08; u += 0.004) {
+          const w = Math.sin(((u - tail) / (head - tail)) * Math.PI);
+          dot(u, R - 17 + drift, 215, 0.75 * fade * w);
+          if (w > 0.6) dot(u, R - 18 + drift, 150, 0.5 * fade);
+        }
+        for (let k = 0; k < 4; k++) {
+          const u = 0.2 + k * 0.2;
+          if (!inSeg(u) || (k + f) % 2) continue;
+          const [sx, sy] = at(u, R + 6 + k * 1.5 + drift);
+          for (let i = -2; i <= 2; i++) {
+            px(sx + i, sy, tone(255), 1 - Math.abs(i) * 0.3);
+            px(sx, sy + i, tone(255), 1 - Math.abs(i) * 0.3);
+          }
+        }
+      }
+      break;
+    case 'blood':
+      // 날에서 떨어져 나가는 핏방울
+      if (!core && f >= 2) {
+        for (let k = 0; k < 8; k++) {
+          const u = 0.12 + k * 0.11;
+          if (u > head) continue;
+          const [bx, by] = at(u, R + 2 + (f - 1) * (1.6 + hash(k, 4) * 1.6));
+          const rad = f >= 5 ? 0.8 : 1.6 - (k % 2) * 0.6;
+          for (let oy = -2; oy <= 2; oy++) for (let ox = -2; ox <= 2; ox++) if (Math.hypot(ox, oy) <= rad) px(bx + ox, by + oy, gray(ox + oy < 0 ? 255 : 190), fade);
+        }
+      }
+      break;
+    case 'holy': {
+      // 날에서 뻗는 빛살
+      const len = [0, 5, 9, 8, 6, 3, 0][f];
+      for (let k = 0; k < 10; k++) {
+        const u = (k + 0.5) / 10;
+        if (!inSeg(u) || len === 0) continue;
+        const L = len * (0.6 + hash(k, 6) * 0.7);
+        for (let i = 0; i <= L; i++) {
+          if (core && i > L * 0.5) break;
+          dot(u, R + drift + 1 + i, 255 - (i / L) * 90, (1 - (i / (L + 1)) * 0.7) * fade);
+        }
+      }
+      break;
+    }
+    case 'thunder':
+      // 날에서 갈라져 나가는 잔 번개
+      if (f >= 1 && f <= 3) {
+        for (let k = 0; k < 4; k++) {
+          let u = 0.18 + k * 0.22;
+          if (!inSeg(u)) continue;
+          let rr = R + drift + 1;
+          for (let i = 0; i < 11; i++) {
+            u += (hash(k, i, f) - 0.5) * 0.03;
+            rr += 0.9;
+            dot(u, rr, i < 6 ? 255 : 200, (1 - i / 14) * fade);
+          }
+        }
+      }
+      break;
+    default:
+      break;
   }
 }
 
@@ -165,6 +322,23 @@ function drawBoom(px: Px, f: number, pal: number[]): void {
   }
 }
 
+// ───────────────────────── 마나 구체 ─────────────────────────
+
+/** 마나 구체의 색 계열 (지팡이마다 다르다) */
+export type OrbLook = 'arcane' | 'rune' | 'magma' | 'abyss';
+
+/** 심 → 바깥 순서 */
+const ORB_PALETTES: Record<OrbLook, number[]> = {
+  arcane: [0xffffff, 0xbff6ff, 0x3fc8ff, 0x2a7ad8],
+  rune: [0xffffff, 0xecd0ff, 0xb070ff, 0x6a3ad8],
+  magma: [0xffffff, 0xffe6a0, 0xff8a2a, 0xd0301a],
+  abyss: [0xffe8ff, 0xf090ff, 0xb030e0, 0x5a1a9a],
+};
+
+export function orbKey(look: OrbLook = 'arcane'): string {
+  return look === 'arcane' ? 'fx-orb' : `fx-orb-${look}`;
+}
+
 // ───────────────────────── 등록 ─────────────────────────
 
 export function createFxArt(scene: Phaser.Scene): void {
@@ -173,53 +347,126 @@ export function createFxArt(scene: Phaser.Scene): void {
   // 한 점 (파티클)
   sheet(scene, 'fx-px', 1, 1, 1, (px) => px(0, 0, 0xffffff));
 
-  // 베기 잔상: 좁은 것(가로 베기), 넓은 것(세로·회전 베기), 그리고 각각의 하얀 날
-  sheet(scene, 'fx-slash', 64, 64, 5, (px, f) => drawSlash(px, f, 62, false));
-  sheet(scene, 'fx-slash-core', 64, 64, 5, (px, f) => drawSlash(px, f, 62, true));
-  sheet(scene, 'fx-slash-w', 64, 64, 5, (px, f) => drawSlash(px, f, 100, false));
-  sheet(scene, 'fx-slash-w-core', 64, 64, 5, (px, f) => drawSlash(px, f, 100, true));
-  for (const k of ['fx-slash', 'fx-slash-core', 'fx-slash-w', 'fx-slash-w-core']) anim(scene, k, 5, 30);
+  // 베기 잔상: 좁은 것(가로 베기)·넓은 것(세로·회전 베기) × 무기 기운별 생김새, 그리고 각각의 하얀 날
+  for (const style of SLASH_STYLES) {
+    for (const wide of [false, true]) {
+      const key = slashKey(wide, style);
+      const span = wide ? 100 : 62;
+      sheet(scene, key, SLASH_FRAME, SLASH_FRAME, SLASH_FRAMES, (px, f) => drawSlash(px, f, span, false, style));
+      sheet(scene, `${key}-core`, SLASH_FRAME, SLASH_FRAME, SLASH_FRAMES, (px, f) => drawSlash(px, f, span, true, style));
+      anim(scene, key, SLASH_FRAMES, 34);
+      anim(scene, `${key}-core`, SLASH_FRAMES, 34);
+    }
+  }
 
-  // 타격 스파크: 십자 빛줄기가 뻗었다가 가늘어진다.
-  sheet(scene, 'fx-spark', 24, 24, 5, (px, f) => {
-    const c = 12;
-    const L = [6, 10, 11, 10, 7][f];
-    const a = [1, 1, 0.85, 0.6, 0.35][f];
-    const thick = f < 2 ? 1 : 0;
-    for (const [dx, dy] of [
-      [1, 0],
-      [-1, 0],
+  // 타격 스파크: 길이가 제각각인 여덟 갈래 빛이 터졌다가 가늘어지며 부스러기를 뿌린다.
+  sheet(scene, 'fx-spark', 32, 32, 6, (px, f) => {
+    const c = 16;
+    const L = [5, 11, 14, 13, 10, 6][f];
+    const a = [1, 1, 1, 0.85, 0.6, 0.35][f];
+    const W = [2, 2.5, 1.5, 1, 0.5, 0][f];
+    const Q = Math.PI / 4;
+    const rays: [number, number][] = [
+      [Q, 0.42],
+      [3 * Q, 0.3],
+      [-3 * Q, 0.45],
+      [-Q, 0.32],
       [0, 1],
-      [0, -1],
-    ]) {
-      for (let r = 0; r <= L; r++) {
-        const fall = 1 - r / (L + 1);
-        px(c + dx * r, c + dy * r, gray(255), a * fall);
-        if (thick && r < L * 0.6) {
-          px(c + dx * r + dy, c + dy * r + dx, gray(200), a * fall * 0.8);
-          px(c + dx * r - dy, c + dy * r - dx, gray(200), a * fall * 0.8);
+      [2 * Q, 0.62],
+      [4 * Q, 0.8],
+      [-2 * Q, 0.7],
+    ];
+    for (const [ang, k] of rays) {
+      const len = L * k;
+      const cs = Math.cos(ang);
+      const sn = Math.sin(ang);
+      // 칸이 지날수록 뿌리 쪽부터 비어 가며 바깥으로 날아간다.
+      const from = f >= 4 ? len * 0.45 : f === 3 ? len * 0.2 : 0;
+      for (let r = from; r <= len; r += 0.5) {
+        const w = W * (1 - r / (len + 0.01)) * (k > 0.5 ? 1 : 0.5);
+        for (let o = -w; o <= w; o += 0.5) {
+          px(c + cs * r - sn * o, c + sn * r + cs * o, gray(Math.abs(o) < 0.6 ? 255 : 205), a * (1 - (0.5 * r) / (len + 0.01)));
         }
       }
     }
-    const D = Math.round(L * 0.5);
-    for (const [dx, dy] of [
-      [1, 1],
-      [-1, 1],
-      [1, -1],
-      [-1, -1],
-    ]) {
-      for (let r = 1; r <= D; r++) px(c + dx * r, c + dy * r, gray(220), a * (1 - r / (D + 1)));
-    }
-    if (f <= 1) for (let y = -1; y <= 1; y++) for (let x = -1; x <= 1; x++) px(c + x, c + y, 0xffffff, 1);
+    const blob = [3, 3.2, 2.2, 1.4, 0, 0][f];
+    for (let y = -4; y <= 4; y++) for (let x = -4; x <= 4; x++) if (Math.hypot(x, y) <= blob) px(c + x, c + y, 0xffffff, 1);
     if (f >= 2) {
-      // 바깥으로 흩어지는 점
-      for (let k = 0; k < 8; k++) {
-        const ang = (k / 8) * Math.PI * 2 + 0.4;
-        px(c + Math.cos(ang) * (L + 1), c + Math.sin(ang) * (L + 1), gray(230), a);
+      for (let k = 0; k < 9; k++) {
+        const ang = hash(k, 11) * Math.PI * 2;
+        const rr = L * (0.55 + hash(k, 12) * 0.5) + (f - 2) * 1.2;
+        if (rr > 15) continue;
+        px(c + Math.cos(ang) * rr, c + Math.sin(ang) * rr, gray(235), a);
       }
     }
   });
-  anim(scene, 'fx-spark', 5, 28);
+  anim(scene, 'fx-spark', 6, 30);
+
+  // 터지는 고리: 군데군데 끊긴 채 퍼져 나간다 (타격·발사 순간).
+  sheet(scene, 'fx-pop', 32, 32, 5, (px, f) => {
+    const R = [4, 8, 11, 13, 14.5][f];
+    const th = [3, 3, 2.2, 1.6, 1][f];
+    const gap = [0, 0.1, 0.25, 0.45, 0.65][f];
+    for (let y = 0; y < 32; y++) {
+      for (let x = 0; x < 32; x++) {
+        const dx = x - 15.5;
+        const dy = y - 15.5;
+        const r = Math.hypot(dx, dy);
+        if (r > R || r < R - th) continue;
+        if (hash(Math.round(Math.atan2(dy, dx) * 5), 21, f >> 1) < gap) continue;
+        px(x, y, gray(r > R - 1.2 ? 255 : 175), r > R - 1.2 ? 1 : 0.7);
+      }
+    }
+  });
+  anim(scene, 'fx-pop', 5, 26);
+
+  // 반짝임: 작은 십자 별
+  sheet(scene, 'fx-twinkle', 9, 9, 4, (px, f) => {
+    const L = [1, 3, 4, 2][f];
+    for (let i = -L; i <= L; i++) {
+      const a = 1 - Math.abs(i) / (L + 1.5);
+      px(4 + i, 4, gray(255), a);
+      px(4, 4 + i, gray(255), a);
+    }
+    if (f === 1 || f === 2) {
+      for (const [x, y] of [
+        [3, 3],
+        [5, 3],
+        [3, 5],
+        [5, 5],
+      ]) px(x, y, gray(210), 0.7);
+    }
+    px(4, 4, 0xffffff, 1);
+  });
+  anim(scene, 'fx-twinkle', 4, 18);
+
+  // 베인 자국: 양 끝이 뾰족한 빛의 바늘
+  sheet(scene, 'fx-cut', 64, 9, 1, (px) => {
+    for (let x = 0; x < 64; x++) {
+      const half = 4 * Math.pow(1 - Math.abs(x - 31.5) / 32, 1.3);
+      for (let y = 0; y < 9; y++) {
+        const d = Math.abs(y - 4);
+        if (d > half) continue;
+        px(x, y, gray(d < 1 ? 255 : d < 2.2 ? 205 : 145), 1);
+      }
+    }
+  });
+
+  // 혜성 꼬리 (화살 뒤에 끌리는 빛): 오른쪽 끝이 머리. 가장자리 줄은 짧게 끊겨 흩날린다.
+  sheet(scene, 'fx-comet', 40, 9, 3, (px, f) => {
+    for (let x = 0; x < 40; x++) {
+      const t = x / 39;
+      const half = 0.4 + 3.6 * Math.pow(t, 1.6);
+      for (let y = 0; y < 9; y++) {
+        const d = Math.abs(y - 4);
+        if (d > half) continue;
+        if (t < hash(y, f, 31) * 0.55 * (d / 4) + (d > 0 && hash(x + f * 3, y, 32) < 0.25 ? 0.5 : 0)) continue;
+        px(x, y, gray(d < 1 ? 255 : 190), Math.pow(t, 1.2));
+      }
+    }
+    for (let y = 3; y <= 5; y++) for (let x = 36; x < 40; x++) px(x, y, 0xffffff, 1);
+  });
+  anim(scene, 'fx-comet', 3, 20, -1);
 
   // 연기 뭉치
   sheet(scene, 'fx-smoke', 16, 16, 5, (px, f) => {
@@ -329,23 +576,33 @@ export function createFxArt(scene: Phaser.Scene): void {
     }
   });
 
-  // 마나 구체 (청록)
-  sheet(scene, 'fx-orb', 16, 16, 4, (px, f) => {
-    for (let y = 0; y < 16; y++) {
-      for (let x = 0; x < 16; x++) {
-        const r = Math.hypot(x - 7.5, y - 7.5);
-        if (r <= 2.2) px(x, y, 0xffffff);
-        else if (r <= 3.6) px(x, y, 0xbff6ff);
-        else if (r <= 5) px(x, y, 0x3fc8ff, 0.85);
-        else if (r <= 6) px(x, y, 0x2a7ad8, 0.45);
+  // 마나 구체: 하얀 심을 두 갈래 소용돌이가 감싸고 돈다. 지팡이마다 색이 다르다.
+  for (const look of Object.keys(ORB_PALETTES) as OrbLook[]) {
+    const pal = ORB_PALETTES[look];
+    const key = orbKey(look);
+    sheet(scene, key, 24, 24, 6, (px, f) => {
+      const c = 11.5;
+      const spin = (f / 6) * Math.PI * 2;
+      for (let y = 0; y < 24; y++) {
+        for (let x = 0; x < 24; x++) {
+          const r = Math.hypot(x - c, y - c);
+          if (r > 11) continue;
+          const swirl = Math.sin(Math.atan2(y - c, x - c) * 2 + r * 0.7 - spin);
+          if (r <= 2.6) px(x, y, pal[0]);
+          else if (r <= 4.2 + 0.5 * swirl) px(x, y, pal[1]);
+          else if (r <= 6 + 1.2 * swirl) px(x, y, pal[2], 0.9);
+          else if (r <= 7.6 + 2.4 * swirl && (x + y + f) & 1) px(x, y, pal[3], 0.65);
+        }
       }
-    }
-    for (let k = 0; k < 4; k++) {
-      const t = (k / 4) * Math.PI * 2 + (f / 4) * (Math.PI / 2);
-      px(7.5 + Math.cos(t) * 7, 7.5 + Math.sin(t) * 7, 0xd8fbff);
-    }
-  });
-  anim(scene, 'fx-orb', 4, 16, -1);
+      // 소용돌이 끝에서 떨어져 나와 도는 알갱이
+      for (let k = 0; k < 5; k++) {
+        const t = spin * (k % 2 ? 1 : -1) + k * 1.256;
+        const rad = 8.5 + (k % 3);
+        px(c + Math.cos(t) * rad, c + Math.sin(t) * rad, k % 2 ? pal[1] : pal[0]);
+      }
+    });
+    anim(scene, key, 6, 18, -1);
+  }
 
   // 적의 마력탄 (자홍)
   sheet(scene, 'fx-orb-enemy', 12, 12, 4, (px, f) => {
@@ -360,45 +617,60 @@ export function createFxArt(scene: Phaser.Scene): void {
   });
   anim(scene, 'fx-orb-enemy', 4, 14, -1);
 
-  // 화살: 촉·살대·깃
-  sheet(scene, 'fx-arrow', 18, 5, 1, (px) => {
-    for (let x = 3; x <= 13; x++) px(x, 2, x % 3 === 0 ? 0x9a7040 : 0xd0a46a);
-    for (const [x, y] of [
-      [13, 1],
-      [13, 3],
-      [14, 1],
-      [14, 2],
-      [14, 3],
-      [15, 2],
-      [16, 2],
-    ]) px(x, y, 0xe8eef6);
-    px(13, 2, 0xb8c0ca);
-    px(15, 1, 0x5a6270);
-    px(15, 3, 0x5a6270);
-    for (let x = 0; x <= 3; x++) {
-      px(x, 0, 0xc83a2a);
-      px(x, 4, 0xc83a2a);
+  // 화살: 미늘 달린 촉·살대·깃
+  sheet(scene, 'fx-arrow', 22, 7, 1, (px) => {
+    for (let x = 4; x <= 16; x++) {
+      px(x, 3, x % 4 === 0 ? 0x8a6034 : 0xd0a46a);
+      if (x % 4 === 2) px(x, 2, 0xf0d09a, 0.7);
+    }
+    // 촉
+    for (const y of [1, 5]) px(16, y, 0x5a6270);
+    for (const x of [16, 17, 18]) for (const y of [2, 3, 4]) px(x, y, y === 2 ? 0xffffff : y === 3 ? 0xd8e0ea : 0x98a2b0);
+    px(19, 3, 0xe8eef6);
+    px(19, 2, 0xb8c0ca, 0.8);
+    px(19, 4, 0x7a8492, 0.8);
+    px(20, 3, 0xffffff);
+    px(21, 3, 0xffffff, 0.8);
+    // 깃
+    for (let x = 0; x <= 4; x++) {
       px(x, 1, 0xff6a4a);
-      px(x, 3, 0xff6a4a);
+      px(x, 5, 0xc83a2a);
+      if (x < 4) {
+        px(x, 0, 0xc83a2a, x === 0 ? 0.6 : 1);
+        px(x, 6, 0x8a2218, x === 0 ? 0.6 : 1);
+      }
+      px(x, 2, 0xffb090);
+      px(x, 4, 0xff6a4a);
     }
   });
 
-  // 검기: 앞으로 볼록한 초승달 (청백)
-  sheet(scene, 'fx-wave', 20, 44, 2, (px, f) => {
+  // 검기: 앞으로 볼록한 초승달 (청백). 뒤쪽 날은 결이 갈라져 바람에 날린다.
+  sheet(scene, 'fx-wave', 28, 48, 4, (px, f) => {
     const pal = [0xffffff, 0xd8f6ff, 0x8fdcff, 0x4aa0f0, 0x2a5ad0];
-    for (let y = 0; y < 44; y++) {
-      for (let x = 0; x < 20; x++) {
-        const r = Math.hypot(x - 1, y - 22);
-        const t = Math.abs(y - 22) / 21;
-        if (t > 1) continue;
-        const thick = 7 * Math.sqrt(1 - t * t) + 0.5;
-        const outer = 17 + (f ? 0.6 : 0);
-        if (r > outer || r < outer - thick) continue;
-        px(x, y, band(pal, (outer - r) / thick), 1 - t * 0.4);
+    const cx = 8;
+    const cy = 23.5;
+    for (let y = 0; y < 48; y++) {
+      const t = Math.abs(y - cy) / 23;
+      if (t > 1) continue;
+      const thick = 7.5 * Math.sqrt(1 - t * t) + 0.5;
+      const outer = 18 + (f % 2 ? 0.7 : 0);
+      // 이 줄에서 뒤로 끌리는 결의 길이
+      const wisp = hash(y, f >> 1, 41) > 0.45 ? 3 + hash(y, f, 42) * 9 * (1 - t) : 0;
+      for (let x = 0; x < 28; x++) {
+        const r = Math.hypot(x - cx, y - cy);
+        if (r > outer) continue;
+        const d = (outer - r) / thick;
+        if (d <= 1) px(x, y, band(pal, d + ((x + y) & 1 ? 0.05 : -0.05)), 1 - t * 0.4);
+        else if (outer - r < thick + wisp && x > cx - 6) px(x, y, (x + f) & 1 ? pal[3] : pal[4], 0.6 * (1 - (outer - r - thick) / (wisp + 0.01)));
       }
     }
+    // 날 앞에서 튀는 빛
+    for (let k = 0; k < 4; k++) {
+      const a = (hash(k, f, 43) - 0.5) * 1.8;
+      px(cx + Math.cos(a) * 20.5, cy + Math.sin(a) * 20.5, pal[1]);
+    }
   });
-  anim(scene, 'fx-wave', 2, 16, -1);
+  anim(scene, 'fx-wave', 4, 18, -1);
 
   // 운석: 용암 금이 간 돌덩이와 불꼬리 (오른쪽 아래로 떨어진다)
   sheet(scene, 'fx-meteor', 40, 40, 4, (px, f) => {
@@ -478,24 +750,47 @@ export function createFxArt(scene: Phaser.Scene): void {
   scene.anims.create({ key: 'fx-ice-rise', frames: scene.anims.generateFrameNumbers('fx-ice', { start: 0, end: 3 }), frameRate: 24 });
   scene.anims.create({ key: 'fx-ice-break', frames: scene.anims.generateFrameNumbers('fx-ice', { start: 4, end: 5 }), frameRate: 10 });
 
-  // 총구 화염: 앞으로 뻗는 불꽃 → 작은 불꽃 → 연기
-  sheet(scene, 'fx-muzzle', 18, 12, 3, (px, f) => {
+  // 총구 화염: 앞으로 길게, 양옆으로 짧게 갈라지는 불꽃 → 잦아들기 → 연기
+  sheet(scene, 'fx-muzzle', 28, 20, 4, (px, f) => {
     const fire = PALETTES.fire;
-    if (f < 2) {
-      const L = f === 0 ? 16 : 9;
-      for (let x = 0; x <= L; x++) {
-        const w = (1 - x / (L + 1)) * (f === 0 ? 4 : 2.5);
-        for (let y = -Math.ceil(w); y <= Math.ceil(w); y++) {
-          if (Math.abs(y) > w) continue;
-          px(1 + x, 6 + y, band(fire.slice(0, 4), x / (L + 1) + Math.abs(y) / 6));
+    if (f === 3) {
+      for (let y = 0; y < 20; y++) for (let x = 0; x < 14; x++) if (Math.hypot(x - 6, y - 10) < 4.5 && hash(x, y, 3) > 0.35) px(x, y, 0xb0a8a0, 0.55);
+      return;
+    }
+    /** [각도, 길이, 밑동 폭] */
+    const tongues: [number, number, number][][] = [
+      [
+        [0, 25, 5],
+        [0.6, 12, 3],
+        [-0.6, 11, 3],
+        [1.25, 7, 2],
+        [-1.3, 6, 2],
+      ],
+      [
+        [0, 18, 4],
+        [0.7, 8, 2.2],
+        [-0.65, 9, 2.2],
+      ],
+      [[0, 10, 2.5]],
+    ];
+    for (let y = 0; y < 20; y++) {
+      for (let x = 0; x < 28; x++) {
+        const dx = x - 1;
+        const dy = y - 9.5;
+        let best = 9;
+        for (const [ang, len, w] of tongues[f]) {
+          const along = dx * Math.cos(ang) + dy * Math.sin(ang);
+          const across = Math.abs(-dx * Math.sin(ang) + dy * Math.cos(ang));
+          if (along < 0 || along > len) continue;
+          const half = w * Math.pow(1 - along / len, 0.7) * (0.85 + 0.3 * hash(Math.round(along), Math.round(ang * 10), f));
+          if (across > half) continue;
+          best = Math.min(best, (along / len) * 0.8 + (across / w) * 0.35);
         }
+        if (best < 9) px(x, y, band(fire.slice(0, 5), best));
       }
-      for (const dy of [-1, 1]) for (let r = 1; r <= (f === 0 ? 4 : 2); r++) px(3 + r, 6 + dy * (r + 1), fire[1], 0.8);
-    } else {
-      for (let y = 0; y < 12; y++) for (let x = 0; x < 10; x++) if (Math.hypot(x - 4, y - 6) < 3.5 && hash(x, y, 3) > 0.3) px(x, y, 0xb0a8a0, 0.6);
     }
   });
-  anim(scene, 'fx-muzzle', 3, 24);
+  anim(scene, 'fx-muzzle', 4, 26);
 
   // 마나검 (천공 섬광): 칼끝이 아래. 회색조라 색을 입혀 쓴다.
   sheet(scene, 'fx-sword', 11, 36, 1, (px) => {

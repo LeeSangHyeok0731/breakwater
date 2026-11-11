@@ -1,4 +1,5 @@
 import type { WeaponDef } from '../data/weapons';
+import type { OrbLook } from './fxArt';
 
 // 무기마다 다른 도트 그림. 같은 그리기 함수로
 // 1) 전투에서 손에 드는 그림(활·총·스태프, weaponSprites.ts가 Phaser 텍스처로 등록)과
@@ -305,6 +306,18 @@ const SHOT_COLOR: Record<string, number> = {
 
 export function shotColor(def: WeaponDef): number {
   return SHOT_COLOR[heldStyle(def)] ?? 0xffd890;
+}
+
+/** 지팡이마다 다른 마나 구체의 색 계열 */
+const ORB_LOOK: Record<string, OrbLook> = { apprentice: 'arcane', rune: 'rune', magma: 'magma', abyss: 'abyss' };
+
+export function orbLook(def: WeaponDef): OrbLook {
+  return (def.type === 'staff' && ORB_LOOK[heldStyle(def)]) || 'arcane';
+}
+
+/** 총구 화염에 입히는 색 (없으면 불꽃색 그대로) */
+export function muzzleTint(def: WeaponDef): number | undefined {
+  return heldStyle(def) === 'arcane' ? 0xd0a8ff : undefined;
 }
 
 // ───────────────────────── UI 아이콘 ─────────────────────────

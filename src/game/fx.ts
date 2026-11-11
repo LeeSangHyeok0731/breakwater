@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { SLASH_ORIGIN, SLASH_R, type Palette } from './fxArt';
+import { SLASH_ORIGIN, SLASH_R, slashKey, type Palette, type SlashStyle } from './fxArt';
 
 export type TextKind = 'normal' | 'crit' | 'player' | 'info' | 'heal' | 'quiet';
 
@@ -30,14 +30,23 @@ export interface SlashOpts {
   rot?: number;
   /** 세로 배율 (1보다 작으면 납작) */
   squash?: number;
+  /** 앞쪽으로 늘이는 가로 배율 (1보다 크면 길게 뻗는다) */
+  stretch?: number;
   /** 재생 속도 배율 */
   speed?: number;
+  /** 무기 기운에 따른 생김새 (불꽃 혀·번개 톱니·핏방울 등) */
+  style?: SlashStyle;
 }
+
+/** 한꺼번에 떠 있을 수 있는 불티 수. 넘으면 새 불티는 생략한다 (수십 마리를 동시에 칠 때). */
+const MAX_SPARKS = 260;
 
 /** 타격감 연출: 데미지 숫자, 피격 번쩍임, 히트스톱, 파티클, 화면 흔들림, 스킬 이펙트 */
 export class Fx {
   /** 남은 히트스톱 시간. 0보다 크면 게임 진행을 멈춘다. */
   hitstop = 0;
+  /** 지금 날아다니는 불티 수 */
+  private live = 0;
 
   constructor(private readonly scene: Phaser.Scene) {
     if (!scene.textures.exists('dot')) {
@@ -138,7 +147,7 @@ export class Fx {
    * wide: 크게 휘두르기. 나머지는 SlashOpts 참고.
    */
   slash(x: number, y: number, facing: 1 | -1, radius: number, color: number, wide = false, o: SlashOpts = {}): void {
-    const key = wide ? 'fx-slash-w' : 'fx-slash';
+    const key = slashKey(wide, o.style);
     const scale = radius / SLASH_R;
     const make = (k: string, tint: number): void => {
       const s = this.scene.add
@@ -148,7 +157,7 @@ export class Fx {
         .setOrigin(facing === 1 ? SLASH_ORIGIN.x : 1 - SLASH_ORIGIN.x, SLASH_ORIGIN.y)
         .setFlipX(facing === -1)
         .setFlipY(!!o.up)
-        .setScale(scale, scale * (o.squash ?? 1))
+        .setScale(scale * (o.stretch ?? 1), scale * (o.squash ?? 1))
         .setRotation((o.rot ?? 0) * facing);
       s.setTint(tint);
       s.play(k);
@@ -161,7 +170,93 @@ export class Fx {
     make(`${key}-core`, mix(color, 16) | mix(color, 8) | mix(color, 0));
   }
 
-  /** 맞은 자리의 십자 빛 */
+  /** 베인 자국: 양 끝이 뾰족한 빛줄기가 쭉 그어졌다가 가늘어지며 사라진다. */
+  cut(x: number, y: number, angle: number, length: number, color: number): void {
+    for (const [tint, thick] of [
+      [color, 1],
+      [0xffffff, 0.45],
+    ]) {
+      const s = this.scene.add
+        .image(x, y, 'fx-cut')
+        .setTint(tint)
+        .setDepth(DEPTH.fx + 1)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setRotation(angle)
+        .setScale((length / 64) * 0.25, thick);
+      this.scene.tweens.add({ targets: s, scaleX: length / 64, duration: 60, ease: 'Quad.Out' });
+      this.scene.tweens.add({ targets: s, scaleY: 0, alpha: 0.3, delay: 70, duration: 150, ease: 'Quad.In', onComplete: () => s.destroy() });
+    }
+  }
+
+  /**
+   * 불티: 날아가는 방향으로 길쭉한 빛 조각이 튀었다가 떨어진다.
+   * angle 쪽으로 ±spread 안에서 흩어진다 (spread가 π면 사방).
+   */
+  sparks(x: number, y: number, color: number, count = 5, angle = 0, spread = Math.PI, speed = 160, life = 280, gravity = 260): void {
+    for (let i = 0; i < count; i++) {
+      if (this.live >= MAX_SPARKS) return;
+      const a = angle + (Math.random() - 0.5) * 2 * spread;
+      const v = speed * (0.45 + Math.random() * 0.75);
+      const vx = Math.cos(a) * v;
+      const vy = Math.sin(a) * v;
+      const len = 5 + Math.random() * 7;
+      const T = (life * (0.6 + Math.random() * 0.7)) / 1000;
+      const s = this.scene.add
+        .image(x, y, 'fx-streak')
+        .setOrigin(1, 0.5)
+        .setTint(i % 3 === 0 ? 0xffffff : color)
+        .setDepth(DEPTH.fx)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setScale(len / 32, 1)
+        .setRotation(a);
+      this.live++;
+      this.scene.tweens.addCounter({
+        from: 0,
+        to: 1,
+        duration: T * 1000,
+        onUpdate: (tw) => {
+          const k = tw.getValue() ?? 1;
+          const t = k * T;
+          // 처음에 확 튀고 점점 느려진다.
+          const e = (1 - (1 - k) * (1 - k)) * T * 0.75;
+          s.setPosition(x + vx * e, y + vy * e + 0.5 * gravity * t * t)
+            .setRotation(Math.atan2(vy * (1 - k) + gravity * t, vx * (1 - k) + 0.001))
+            .setScale((len / 32) * (1 - k * 0.7), 1)
+            .setAlpha(1 - k * k);
+        },
+        onComplete: () => {
+          s.destroy();
+          this.live--;
+        },
+      });
+    }
+  }
+
+  /** 터지는 고리 (도트). squash로 납작하게 세우면 활시위·총구 앞의 충격 고리가 된다. */
+  pop(x: number, y: number, color: number, scale = 1, squash = 1, rot = 0): void {
+    const s = this.scene.add
+      .sprite(x, y, 'fx-pop')
+      .setTint(color)
+      .setDepth(DEPTH.fx)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setScale(scale * squash, scale)
+      .setRotation(rot);
+    s.play('fx-pop');
+    s.once('animationcomplete', () => s.destroy());
+  }
+
+  /** 작은 별 반짝임 */
+  twinkle(x: number, y: number, color: number, delay = 0): void {
+    const s = this.scene.add.sprite(x, y, 'fx-twinkle').setTint(color).setDepth(DEPTH.fx + 1).setBlendMode(Phaser.BlendModes.ADD).setVisible(delay <= 0);
+    s.once('animationcomplete', () => s.destroy());
+    if (delay <= 0) s.play('fx-twinkle');
+    else
+      this.scene.time.delayedCall(delay, () => {
+        if (s.active) s.setVisible(true).play('fx-twinkle');
+      });
+  }
+
+  /** 맞은 자리에서 터지는 여덟 갈래 빛 */
   spark(x: number, y: number, color: number, scale = 1, rot = 0): void {
     const s = this.scene.add
       .sprite(x, y, 'fx-spark')
@@ -327,8 +422,35 @@ export class Fx {
     this.scene.tweens.add({ targets: g, alpha: 0, duration: ms, onComplete: () => g.destroy() });
   }
 
-  /** 총구 화염 */
-  muzzle(x: number, y: number, facing: 1 | -1, scale = 1, rot = 0): void {
+  /**
+   * 날아가는 총알의 빛: 총구 쪽은 뾰족하고 맞은 쪽이 굵은 쐐기. 꼬리가 머리를 따라잡으며 사라진다.
+   */
+  shot(x1: number, y1: number, x2: number, y2: number, color: number, width: number, ms = 110): void {
+    const g = this.scene.add.graphics().setDepth(DEPTH.projectile).setBlendMode(Phaser.BlendModes.ADD);
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len;
+    const ny = dx / len;
+    const draw = (k: number): void => {
+      g.clear();
+      const s = Math.pow(k, 0.6) * 0.92;
+      const sx = x1 + dx * s;
+      const sy = y1 + dy * s;
+      const a = 1 - k * k;
+      const wedge = (w: number, c: number, alpha: number): void => {
+        g.fillStyle(c, alpha * a).fillTriangle(sx, sy, x2 + nx * w, y2 + ny * w, x2 - nx * w, y2 - ny * w);
+      };
+      wedge(width * 1.6 + 1.5, color, 0.3);
+      wedge(width * 0.8 + 0.5, color, 0.9);
+      wedge(Math.max(0.6, width * 0.3), 0xffffff, 1);
+    };
+    draw(0);
+    this.scene.tweens.addCounter({ from: 0, to: 1, duration: ms, onUpdate: (tw) => draw(tw.getValue() ?? 1), onComplete: () => g.destroy() });
+  }
+
+  /** 총구 화염. tint를 주면 그 색으로 물든다 (비전 소총의 보랏빛 등). */
+  muzzle(x: number, y: number, facing: 1 | -1, scale = 1, rot = 0, tint?: number): void {
     const s = this.scene.add
       .sprite(x, y, 'fx-muzzle')
       .setFlipX(facing === -1)
@@ -337,6 +459,7 @@ export class Fx {
       .setBlendMode(Phaser.BlendModes.ADD)
       .setScale(Math.max(1, Math.round(scale)))
       .setRotation(rot * facing);
+    if (tint !== undefined) s.setTint(tint);
     s.play('fx-muzzle');
     s.once('animationcomplete', () => s.destroy());
   }
