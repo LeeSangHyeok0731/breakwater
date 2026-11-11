@@ -63,7 +63,15 @@ export interface BoltSpec {
   life?: number;
   /** 피해 출처 (스킬 id·'basic'·'special'). 비우면 쏜 순간의 출처를 쓴다. */
   src?: string;
+  /**
+   * 눈에 보이는 출발점 (무기 끝). 판정은 (x, y)의 몸 높이 선을 그대로 따라가고,
+   * 그림만 여기서 출발해 잠깐 사이에 판정 선으로 내려앉는다.
+   */
+  from?: { x: number; y: number };
 }
+
+/** 무기 끝에서 나간 투사체 그림이 판정 선에 내려앉기까지의 시간 (초) */
+const BOLT_SETTLE = 0.28;
 
 type BoltObject = Phaser.GameObjects.Image | Phaser.GameObjects.Sprite;
 
@@ -76,6 +84,12 @@ interface Bolt extends BoltSpec {
   radius: number;
   hit: Set<Monster>;
   life: number;
+  /** 쏜 뒤 지난 시간 */
+  age: number;
+  /** 출발할 때 그림이 판정 선보다 얼마나 위(-)·아래(+)에 있었는지 */
+  offY: number;
+  /** 지금 그림의 세로 어긋남 */
+  lift: number;
 }
 
 /** 적 탄의 생김새·성질 */
@@ -677,7 +691,18 @@ export class BattleScene extends Phaser.Scene {
   }
 
   /** 총알·저격·레이저처럼 즉시 판정하는 선 */
-  hitscan(x: number, y: number, angle: number, len: number, damage: number, o: { pierce: boolean; color: number; width: number; quiet?: boolean }): void {
+  /**
+   * o.from: 눈에 보이는 출발점 (총구). 판정은 (x, y)에서 나가는 몸 높이 선으로 하고, 빛줄기만 총구에서 그린다.
+   * 맞은 적이 있으면 빛줄기는 총구 높이에서 가장 가까운 그 적의 몸으로 향하고, 없으면 총구 높이로 곧게 나간다.
+   */
+  hitscan(
+    x: number,
+    y: number,
+    angle: number,
+    len: number,
+    damage: number,
+    o: { pierce: boolean; color: number; width: number; quiet?: boolean; from?: { x: number; y: number } },
+  ): void {
     const line = new Phaser.Geom.Line(x, y, x + Math.cos(angle) * len, y + Math.sin(angle) * len);
     const hits: { m: Monster; d: number }[] = [];
     for (const m of this.monsters) {
@@ -695,20 +720,36 @@ export class BattleScene extends Phaser.Scene {
     if (o.width > 0) {
       sfx.play('shot', o.width > 3 ? 1.3 : 0.8);
       const ex = x + Math.cos(angle) * end;
-      const ey = y + Math.sin(angle) * end;
+      let ey = y + Math.sin(angle) * end;
+      if (o.from) {
+        const rise = o.from.y - y;
+        x = o.from.x;
+        y = o.from.y;
+        if (o.pierce) {
+          // 관통탄은 총구 높이에서 판정 선으로 아주 완만하게 내려간다.
+        } else if (targets.length) {
+          const tb = targets[0].m.body;
+          ey = Phaser.Math.Clamp(ey + rise, tb.y + 3, tb.bottom - 3);
+        } else ey += rise;
+      }
       if (o.width > 3) {
         // 저격: 굵은 빛줄기가 오래 남고, 지나간 자리에 연기가 핀다.
         this.fx.tracer(x, y, ex, ey, o.color, o.width, 320);
         this.fx.flashScreen(0xfff0c0, 0.25, 140);
         for (let d = 24 + Math.random() * 20; d < end; d += 26 + Math.random() * 40) {
           const k = d;
-          this.time.delayedCall(40 + Math.random() * 120, () => this.fx.smoke(x + Math.cos(angle) * k, y + Math.sin(angle) * k + (Math.random() - 0.5) * 5, 1, 0x8a8480, -6 - Math.random() * 8));
+          const sx = x + ((ex - x) * k) / end;
+          const sy = y + ((ey - y) * k) / end;
+          this.time.delayedCall(40 + Math.random() * 120, () => this.fx.smoke(sx, sy + (Math.random() - 0.5) * 5, 1, 0x8a8480, -6 - Math.random() * 8));
         }
         this.fx.spark(ex, ey, o.color, 2);
       } else {
         this.fx.shot(x, y, ex, ey, o.color, o.width, 130);
         // 맞은 자리에서 뒤로 튀는 불티
-        if (targets.length) this.fx.sparks(ex, ey, o.color, 3, angle + Math.PI, 0.7, 150, 220);
+        if (targets.length) {
+          this.fx.sparks(ex, ey, o.color, 3, angle + Math.PI, 0.7, 150, 220);
+          this.fx.spark(ex, ey, o.color);
+        }
       }
     }
   }
@@ -1237,6 +1278,10 @@ export class BattleScene extends Phaser.Scene {
   spawnPlayerBolt(o: BoltSpec): void {
     const size = o.size ?? 1;
     const ang = Math.atan2(o.vy, o.vx);
+    const offY = o.from ? o.from.y - o.y : 0;
+    // 그림과 발사 연출은 무기 끝에서 시작한다.
+    const logical = o;
+    if (o.from) o = { ...o, y: o.from.y };
     let obj: BoltObject;
     let radius = 6;
     let trail: Phaser.GameObjects.Sprite | undefined;
@@ -1277,13 +1322,13 @@ export class BattleScene extends Phaser.Scene {
         break;
     }
     obj.setDepth(DEPTH.projectile);
-    this.bolts.push({ ...o, src: o.src ?? this.src, obj, trail, fxTimer: 0, radius, hit: new Set(), life: o.life ?? 1.6 });
+    this.bolts.push({ ...logical, src: o.src ?? this.src, obj, trail, fxTimer: 0, radius, hit: new Set(), life: o.life ?? 1.6, age: 0, offY, lift: offY });
   }
 
   /** 날아가는 동안의 꼬리·잔상 */
   private boltTrail(b: Bolt, dt: number): void {
     b.fxTimer -= dt;
-    if (b.trail) b.trail.setPosition(b.x, b.y).setRotation(Math.atan2(b.vy, b.vx));
+    if (b.trail) b.trail.setPosition(b.obj.x, b.obj.y).setRotation(b.obj.rotation);
     if (b.fxTimer > 0) return;
     switch (b.kind) {
       case 'orb': {
@@ -1305,8 +1350,8 @@ export class BattleScene extends Phaser.Scene {
       case 'arrow':
         b.fxTimer = 0.05;
         if ((b.size ?? 1) >= 1.5 || b.pierce) {
-          if (Math.random() < 0.5) this.fx.twinkle(b.x - b.vx * 0.03, b.y + (Math.random() - 0.5) * 8, b.color ?? 0xffe08a);
-          else this.fx.burst(b.x, b.y, b.color ?? 0xffe08a, 1, 20, 220);
+          if (Math.random() < 0.5) this.fx.twinkle(b.x - b.vx * 0.03, b.obj.y + (Math.random() - 0.5) * 8, b.color ?? 0xffe08a);
+          else this.fx.burst(b.x, b.obj.y, b.color ?? 0xffe08a, 1, 20, 220);
         }
         break;
       case 'wave': {
@@ -1344,8 +1389,14 @@ export class BattleScene extends Phaser.Scene {
       b.vy += (b.gravity ?? 0) * dt;
       b.x += b.vx * dt;
       b.y += b.vy * dt;
-      b.obj.setPosition(b.x, b.y);
-      if (b.kind === 'arrow') b.obj.setRotation(Math.atan2(b.vy, b.vx));
+      // 무기 끝에서 나간 그림은 부드럽게 판정 선으로 내려앉는다 (판정은 처음부터 몸 높이 선).
+      b.age += dt;
+      const k = Math.max(0, 1 - b.age / BOLT_SETTLE);
+      const lift = b.offY * k * k * (3 - 2 * k);
+      const sink = dt > 0 ? (lift - b.lift) / dt : 0;
+      b.lift = lift;
+      b.obj.setPosition(b.x, b.y + lift);
+      if (b.kind === 'arrow') b.obj.setRotation(Math.atan2(b.vy + sink, b.vx));
       if (b.kind === 'grenade') b.obj.setRotation(b.obj.rotation + dt * 14 * Math.sign(b.vx || 1));
       this.boltTrail(b, dt);
       let alive = b.life > 0 && b.x > -40 && b.x < W + 40;
@@ -1370,7 +1421,7 @@ export class BattleScene extends Phaser.Scene {
               this.fx.sparks(b.x, b.y, look.color, 5, 0, Math.PI, 150, 320, 120);
             } else if (b.kind === 'arrow') {
               // 박히는 순간 뒤로 튀는 파편
-              this.fx.sparks(b.x, b.y, b.color ?? 0xe8dcc0, 4, back, 0.8, 170, 240);
+              this.fx.sparks(b.x, b.obj.y, b.color ?? 0xe8dcc0, 4, back, 0.8, 170, 240);
             }
           }
           alive = false;
