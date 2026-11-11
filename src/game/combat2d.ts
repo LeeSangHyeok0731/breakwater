@@ -5,7 +5,8 @@ import { SKY_FLASH_ID, skyShotMana, type SkillDef } from '../data/skills';
 import type { BattleScene, HitOpts } from './battleScene';
 import { DEPTH } from './fx';
 import { BASIC_ACTIONS, type ActionKind } from './player2d';
-import { meleeLook, shotColor } from './weaponArt';
+import { meleeLook, muzzleTint, orbLook, shotColor } from './weaponArt';
+import type { SlashStyle } from './fxArt';
 import { castUltimate } from './ultimates';
 import { aura, column, crescent, flare, impactBurst, PAL, rays, shards, shockwave, tint, type Palette3 } from './vfx';
 
@@ -194,12 +195,15 @@ function performHit(b: BattleScene, kind: ActionKind, index: number): void {
       comboSlash(b, p.combo || 1, index, base * mul, color);
       break;
     case 'airSlash':
-      b.fx.slash(p.x + f * 14, p.y - 4, f, 40, color, true);
+      b.fx.slash(p.x + f * 14, p.y - 4, f, 44, color, true, { style: slashStyle(b) });
+      b.fx.sparks(p.x + f * 40, p.y + 14, color, 4, Math.PI / 2 - f * 0.6, 0.5, 170, 260);
       swingFx(b, p.x + f * 36, p.y - 4);
       box(b, -8, swordReach(p, 76), 76, 6, base * 1.0 * mul, { basic: true, knock: 70 });
       break;
     case 'crouchSlash':
-      b.fx.slash(p.x + f * 18, p.y + 10, f, 34, color);
+      b.fx.slash(p.x + f * 18, p.y + 10, f, 36, color, false, { style: slashStyle(b), squash: 0.7 });
+      b.fx.sparks(p.x + f * 44, p.feet - 2, color, 4, f === 1 ? -0.5 : Math.PI + 0.5, 0.5, 150, 260);
+      b.fx.smoke(p.x + f * 30, p.feet - 4, 1, 0x9a8a70, -6);
       swingFx(b, p.x + f * 36, p.y + 10);
       box(b, 0, swordReach(p, 70), 24, -10, base * 0.9 * mul, { basic: true, knock: 60 });
       break;
@@ -401,6 +405,11 @@ function performHit(b: BattleScene, kind: ActionKind, index: number): void {
   }
 }
 
+/** 지금 든 근접 무기의 잔상 생김새 (기운이 없는 무기는 기본 붓결) */
+function slashStyle(b: BattleScene): SlashStyle {
+  return meleeLook(b.player.weapon.def).aura ?? 'plain';
+}
+
 /** 무기의 개성이 드러나는 휘두르기 연출: 화염검은 불씨, 월광도는 달빛 가루, 강철 장검은 칼끝 반짝임 */
 function swingFx(b: BattleScene, x: number, y: number): void {
   switch (meleeLook(b.player.weapon.def).aura) {
@@ -439,9 +448,10 @@ function releaseOrb(b: BattleScene): void {
   p.charge = -1;
   sfx.play('magic', 1 + c);
   const m = p.shotPoint();
+  const look = orbLook(p.weapon.def);
   if (c > 0.95) {
-    b.fx.spark(m.x, m.y, 0x7fe8ff, 2);
-    b.fx.burst(m.x, m.y, 0xbff6ff, 10, 120, 300);
+    b.fx.spark(m.x, m.y, ORB_TONE[look][1], 2);
+    b.fx.sparks(m.x, m.y, ORB_TONE[look][1], 10, p.facing === 1 ? 0 : Math.PI, 1.2, 220, 300, 0);
   }
   b.spawnPlayerBolt({
     x: m.x,
@@ -450,6 +460,7 @@ function releaseOrb(b: BattleScene): void {
     vy: 0,
     damage: b.weaponBase() * (1 + 2.5 * c),
     kind: 'orb',
+    orb: look,
     size: 1 + c * 1.6,
     basic: true,
     aoe: c > 0.35 ? 30 + 40 * c : 0,
@@ -524,30 +535,42 @@ function comboSlash(b: BattleScene, n: number, index: number, dmg: number, color
   const sword = p.weapon.def.type === 'sword';
   // 검사는 더 멀리 닿는다. 그림도 판정에 맞춰 함께 커진다.
   const r = (v: number): number => swordReach(p, v);
+  const style = slashStyle(b);
+  /** 앞쪽 기준 각도 (라디안, 아래가 +)를 실제 방향으로 */
+  const dir = (a: number): number => (f === 1 ? a : Math.PI - a);
   switch (n) {
     case 1:
-      b.fx.slash(p.x + f * r(18), p.y - 2, f, r(40), color, true);
+      // 내려 베기: 칼끝이 지나간 아래쪽으로 불티가 쏟아진다.
+      b.fx.slash(p.x + f * r(18), p.y - 2, f, r(42), color, true, { style });
+      b.fx.sparks(p.x + f * r(46), p.y + 12, color, 4, dir(0.9), 0.5, 170, 260);
       swingFx(b, p.x + f * r(40), p.y - 2);
       box(b, 0, r(72), 48, 2, dmg, { basic: true, knock: 90 });
       break;
     case 2:
-      // 역베기: 아래에서 위로, 조금 더 넓게
-      b.fx.slash(p.x + f * r(18), p.y - 2, f, r(44), color, false, { up: true });
+      // 역베기: 아래에서 위로, 조금 더 넓게. 불티는 위로 솟는다.
+      b.fx.slash(p.x + f * r(18), p.y - 2, f, r(46), color, false, { up: true, style, rot: -0.15 });
+      b.fx.sparks(p.x + f * r(46), p.y - 16, color, 5, dir(-1.0), 0.5, 190, 300);
       swingFx(b, p.x + f * r(44), p.y - 4);
       box(b, 0, r(80), 54, 4, dmg, { basic: true, knock: 90 });
       break;
     case 3:
-      // 두 번 연달아
-      b.fx.slash(p.x + f * r(18), p.y - 2, f, r(42), color, index === 0, { up: index === 1, speed: 1.3 });
+      // 두 번 연달아: 엇갈린 X자
+      b.fx.slash(p.x + f * r(18), p.y - 2, f, r(44), color, index === 0, { up: index === 1, speed: 1.3, style, rot: index === 0 ? 0.3 : -0.3 });
+      b.fx.sparks(p.x + f * r(48), p.y - 2, color, 4, dir(index === 0 ? 0.8 : -0.8), 0.6, 190, 260);
+      if (index === 1) b.fx.twinkle(p.x + f * r(46), p.y - 2, 0xffffff);
       swingFx(b, p.x + f * r(44), p.y - 2);
       p.body.setVelocityX(f * 60);
       box(b, 0, r(84), 56, 2, dmg * 0.7, { basic: true, knock: index === 1 ? 100 : 30 });
       break;
     case 4:
-      // 크게 휘두르기: 한 걸음 내디디며 넓게
+      // 크게 휘두르기: 한 걸음 내디디며 넓게. 몸의 잔상이 뒤따른다.
       p.body.setVelocityX(f * 140);
-      b.fx.slash(p.x + f * r(20), p.y - 4, f, r(56), color, true);
-      b.fx.slash(p.x + f * r(16), p.y - 2, f, r(44), 0xffffff, false, { speed: 1.3 });
+      p.afterimage(color);
+      b.time.delayedCall(50, () => p.afterimage(color));
+      b.fx.slash(p.x + f * r(20), p.y - 4, f, r(60), color, true, { style });
+      b.fx.slash(p.x + f * r(16), p.y - 2, f, r(46), 0xffffff, false, { speed: 1.3, style });
+      b.fx.sparks(p.x + f * r(58), p.y + 6, color, 8, dir(0.5), 0.9, 220, 320);
+      b.fx.smoke(p.x + f * 10, p.feet - 4, 1, 0x9a8a70, -6);
       swingFx(b, p.x + f * r(56), p.y - 4);
       b.fx.shake(0.4, 90);
       box(b, 0, r(100), 66, 4, dmg * 1.3, { basic: true, knock: 150 });
@@ -556,14 +579,19 @@ function comboSlash(b: BattleScene, n: number, index: number, dmg: number, color
       // 마무리: 회전하며 세 번, 가장 넓고 멀리. 마지막은 터진다.
       const last = index === 2;
       p.body.setVelocityX(f * (last ? 180 : 70));
-      b.fx.slash(p.x + f * r(16), p.y - 4, f, r(50 + index * 8), last ? 0xffe08a : color, index !== 1, { up: index === 1, speed: 1.4 });
-      if (index === 1) b.fx.slash(p.x - f * r(10), p.y - 4, (-f) as 1 | -1, r(40), color, true, { speed: 1.4 });
+      p.afterimage(last ? 0xffe08a : color);
+      b.fx.slash(p.x + f * r(16), p.y - 4, f, r(52 + index * 8), last ? 0xffe08a : color, index !== 1, { up: index === 1, speed: 1.4, style });
+      if (index === 1) b.fx.slash(p.x - f * r(10), p.y - 4, (-f) as 1 | -1, r(42), color, true, { speed: 1.4, style });
+      b.fx.sparks(p.x + f * r(50), p.y, color, 5, dir(index === 1 ? -0.7 : 0.7), 0.8, 210, 280);
       swingFx(b, p.x + f * r(60), p.y - 4);
       box(b, r(index === 1 ? -40 : 0), r(index === 1 ? 160 : 120), 76, 6, dmg * 0.8, { basic: true, knock: last ? 220 : 40 });
       if (last) {
-        b.fx.slash(p.x + f * r(30), p.y - 4, f, r(70), 0xffffff, true, { squash: 0.6 });
+        b.fx.slash(p.x + f * r(30), p.y - 4, f, r(72), 0xffffff, true, { squash: 0.6, style });
         b.fx.ring(p.x + f * r(50), p.feet, r(80), 0xffe08a, 320);
-        b.fx.burst(p.x + f * r(60), p.y - 4, 0xffe08a, 16, 180, 380);
+        b.fx.pop(p.x + f * r(56), p.y - 4, 0xfff0c0, 2.2);
+        b.fx.sparks(p.x + f * r(56), p.y - 4, 0xffe08a, 14, dir(0), 1.3, 280, 420);
+        rays(b, p.x + f * r(56), p.y - 4, 8, r(64), PAL.gold, 300);
+        for (let i = 0; i < 4; i++) b.fx.twinkle(p.x + f * r(30 + i * 22), p.y - 22 + ((i * 17) % 34), 0xfff6c0, 60 + i * 50);
         // 검사의 마무리: 적을 꿰뚫고 날아가는 큰 검기
         if (sword) {
           b.spawnPlayerBolt({ x: p.x + f * 20, y: p.y - 4, vx: f * 380, vy: 0, damage: dmg, basic: true, kind: 'wave', pierce: true, life: 0.75, size: 2.4, color });
@@ -601,10 +629,20 @@ function arrowCombo(b: BattleScene, n: number): void {
       pierce: finale,
     });
   }
-  if (count > 1) {
-    const m = p.muzzle();
-    b.fx.spark(m.x, m.y, finale ? 0xffe08a : 0xffffff, finale ? 2 : 1);
-    if (finale) b.fx.shake(0.4, 90);
+  // 시위를 놓는 순간: 활 앞에 세로로 서는 충격 고리와 앞으로 튀는 빛 조각. 단계가 오를수록 커진다.
+  const m = p.muzzle();
+  const tone = finale ? 0xffe08a : shotColor(p.weapon.def);
+  const fwd = p.facing === 1 ? 0 : Math.PI;
+  b.fx.pop(m.x + p.facing * 4, m.y, tone, 0.7 + n * 0.14, 0.45);
+  b.fx.sparks(m.x, m.y, tone, 2 + n, fwd, 0.35 + n * 0.05, 200 + n * 20, 220, 60);
+  if (count > 1) b.fx.spark(m.x, m.y, finale ? 0xffe08a : 0xffffff, finale ? 2 : 1);
+  if (n >= 3) b.fx.twinkle(m.x + p.facing * 10, m.y - 8, 0xffffff, 40);
+  if (finale) {
+    flare(b, m.x + p.facing * 6, m.y, 22, PAL.gold, 220);
+    rays(b, m.x + p.facing * 6, m.y, 7, 46, PAL.gold, 260);
+    b.fx.pop(m.x + p.facing * 12, m.y, 0xfff6c0, 1.9, 0.45);
+    for (let i = 0; i < 3; i++) b.fx.twinkle(m.x + p.facing * (16 + i * 14), m.y + (i - 1) * 12, 0xfff6c0, 50 + i * 40);
+    b.fx.shake(0.4, 90);
   }
 }
 
@@ -621,8 +659,12 @@ function gunCombo(b: BattleScene, n: number): void {
     p.body.setVelocityX(-p.facing * 120);
     b.fx.shake(0.8, 120);
     const m = p.muzzle();
-    b.fx.muzzle(m.x, m.y, p.facing, 2);
-    b.fx.burst(m.x, m.y, 0xffe08a, 10, 160, 260);
+    const fwd = p.facing === 1 ? 0 : Math.PI;
+    b.fx.muzzle(m.x, m.y, p.facing, 2, 0, muzzleTint(p.weapon.def));
+    b.fx.pop(m.x + p.facing * 8, m.y, 0xfff0c0, 2, 0.45);
+    b.fx.sparks(m.x, m.y, shotColor(p.weapon.def), 14, fwd, 0.55, 320, 300, 120);
+    flare(b, m.x + p.facing * 6, m.y, 20, PAL.gold, 180);
+    for (let i = -1; i <= 1; i++) b.time.delayedCall(60 + (i + 1) * 40, () => b.fx.smoke(m.x + p.facing * (8 + (i + 1) * 8), m.y + i * 4, 1, 0x9a948a, -10));
     return;
   }
   const shots = n === 3 ? 2 : 3;
@@ -632,6 +674,14 @@ function gunCombo(b: BattleScene, n: number): void {
       if (b.player.weapon.def.type === 'gun' && !b.player.dead) gunShot(b, 0.85, 0.03);
     });
 }
+
+/** 마나 구체 색 계열별 벡터 팔레트 */
+const ORB_TONE: Record<ReturnType<typeof orbLook>, Palette3> = {
+  arcane: PAL.arcane,
+  rune: PAL.violet,
+  magma: PAL.flame,
+  abyss: PAL.rose,
+};
 
 /** 스태프 평타: 단계마다 연달아 쏘는 마력구가 늘고, 5단의 마지막은 커다란 구체 */
 function manaCombo(b: BattleScene, n: number, base: number): void {
@@ -644,10 +694,18 @@ function manaCombo(b: BattleScene, n: number, base: number): void {
       if (p.dead || p.weapon.def.type !== 'staff') return;
       const big = n >= 5 && i === count - 1;
       const m = p.shotPoint();
+      const look = orbLook(p.weapon.def);
+      const tone = ORB_TONE[look];
+      const fwd = p.facing === 1 ? 0 : Math.PI;
       sfx.play('magic', big ? 1.5 : 1);
+      // 쏘는 순간 지팡이 앞에서 마력이 튄다.
+      b.fx.sparks(m.x, m.y, tone[1], big ? 10 : 3, fwd, big ? 1.2 : 0.6, big ? 240 : 170, 260, 0);
+      b.fx.twinkle(m.x + p.facing * 6, m.y + (i % 2 ? -9 : 9), 0xffffff, 30);
       if (big) {
-        b.fx.spark(m.x, m.y, 0x7fe8ff, 2);
-        b.fx.burst(m.x, m.y, 0xbff6ff, 12, 140, 320);
+        b.fx.spark(m.x, m.y, tone[1], 2);
+        b.fx.pop(m.x + p.facing * 6, m.y, tone[2], 2, 0.5);
+        flare(b, m.x, m.y, 20, tone, 220);
+        rays(b, m.x, m.y, 7, 44, tone, 260);
       }
       b.spawnPlayerBolt({
         x: m.x,
@@ -656,6 +714,7 @@ function manaCombo(b: BattleScene, n: number, base: number): void {
         vy: 0,
         damage: base * (big ? 2 : each),
         kind: 'orb',
+        orb: look,
         size: big ? 2 : 1,
         basic: true,
         aoe: big ? 50 : 0,
@@ -683,7 +742,10 @@ function gunShot(b: BattleScene, mul: number, spread: number): void {
   const ang = base + (Math.random() - 0.5) * 2 * (spread + (p.ads ? 0 : 0.03));
   const s = p.shotPoint();
   b.hitscan(s.x, s.y, ang, p.ads ? 520 : 420, b.weaponBase() * mul * (p.ads ? 1.25 : 1), { pierce: false, color: shotColor(p.weapon.def), width: 2 });
-  b.fx.muzzle(m.x, m.y, p.facing, 1, ang - (p.facing === 1 ? 0 : Math.PI));
+  b.fx.muzzle(m.x, m.y, p.facing, 1, ang - (p.facing === 1 ? 0 : Math.PI), muzzleTint(p.weapon.def));
+  // 총구 앞에 서는 작은 충격 고리와 튀는 불티
+  b.fx.pop(m.x + p.facing * 5, m.y, 0xfff0c0, 0.75, 0.45, ang - base);
+  b.fx.sparks(m.x, m.y, shotColor(p.weapon.def), 3, ang, 0.5, 210, 180, 80);
   b.fx.casing(p.x + p.facing * 8, p.y - 8, p.facing, p.feet);
 }
 

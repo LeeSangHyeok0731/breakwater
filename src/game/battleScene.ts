@@ -9,15 +9,15 @@ import { MOB_COUNT_MUL, type PhaseDef } from '../data/phases';
 import { DIFFICULTY, LEGIONS, rewardMul, SILENCE_STACKS, SILENCE_TIME, type LegionRun } from '../data/legion';
 import { barProgress, totalReward, WORLD_BOSS_BARS, WORLD_BOSS_TIME } from '../data/worldBoss';
 import { koNum } from '../ui/format';
-import { column, impactBurst, PAL, rays, shockwave, tint } from './vfx';
+import { column, impactBurst, PAL, rays, shockwave, tint, type Palette3 } from './vfx';
 import { chunkSkills, SKILL_BY_ID, SKILL_SLOTS, skillsFor, SKY_FLASH_ID, SKY_MAX_BLADES, SKY_STACKS_PER_BLADE, skyShotMana, type SkillDef } from '../data/skills';
 import { CLASS_NAME, GRADES, WEAPONS, type WeaponType } from '../data/weapons';
 import { Hud, type HudSlot, type HudState } from '../ui/hud';
 import { updatePlayerCombat } from './combat2d';
 import { ctx, type BattleOutcome } from './context';
 import { DEPTH, Fx } from './fx';
-import type { Palette } from './fxArt';
-import { meleeLook, weaponIconUrl } from './weaponArt';
+import { orbKey, type OrbLook, type Palette } from './fxArt';
+import { meleeLook, orbLook, weaponIconUrl } from './weaponArt';
 import { Monster, monsterBodyHeight } from './monster2d';
 import { dev } from './dev';
 import { Player } from './player2d';
@@ -51,6 +51,8 @@ export interface BoltSpec {
   vy: number;
   damage: number;
   kind: 'orb' | 'arrow' | 'wave' | 'grenade';
+  /** 마나 구체의 색 계열 (지팡이마다 다르다). 비우면 청록 */
+  orb?: OrbLook;
   size?: number;
   color?: number;
   basic?: boolean;
@@ -68,7 +70,7 @@ type BoltObject = Phaser.GameObjects.Image | Phaser.GameObjects.Sprite;
 interface Bolt extends BoltSpec {
   obj: BoltObject;
   /** 화살 뒤에 끌리는 빛 */
-  trail?: Phaser.GameObjects.Image;
+  trail?: Phaser.GameObjects.Sprite;
   /** 다음 꼬리·잔상까지 남은 시간 */
   fxTimer: number;
   radius: number;
@@ -159,6 +161,21 @@ interface Wave {
 type State = 'intro' | 'fight' | 'rest' | 'done';
 
 /** 무기별 타격 불빛 */
+/** 마나 구체 색 계열별 [꼬리·타격 색, 밝은 색, 폭발 팔레트] */
+const ORB_FX: Record<OrbLook, { color: number; light: number; boom: Palette }> = {
+  arcane: { color: 0x7fe8ff, light: 0xbff6ff, boom: 'arcane' },
+  rune: { color: 0xb884ff, light: 0xecd0ff, boom: 'dark' },
+  magma: { color: 0xff8a2a, light: 0xffe6a0, boom: 'fire' },
+  abyss: { color: 0xd060ff, light: 0xf0a8ff, boom: 'dark' },
+};
+
+/** 폭발 팔레트별 [고리 색, 파편 색, 벡터 팔레트, 연기 색] */
+const BOOM_FX: Partial<Record<Palette, [number, number, Palette3, number]>> = {
+  arcane: [0x7fe8ff, 0xbff6ff, PAL.arcane, 0x6a7aa8],
+  dark: [0xc080ff, 0xe8c8ff, PAL.violet, 0x6a5a88],
+};
+const BOOM_FIRE: [number, number, Palette3, number] = [0xffa040, 0xffc060, PAL.flame, 0x7a706a];
+
 const HIT_COLOR: Record<WeaponType, number> = {
   sword: 0xbfe4ff,
   dao: 0xffd2a8,
@@ -623,10 +640,18 @@ export class BattleScene extends Phaser.Scene {
     if (!opts.quiet) {
       const hx = m.x + (Math.random() - 0.5) * m.body.width * 0.6;
       const hy = m.y + (Math.random() - 0.5) * m.body.height * 0.4;
-      const tone = p.isMelee ? meleeLook(w).slash : HIT_COLOR[w.type];
-      this.fx.spark(hx, hy, crit ? 0xffd060 : tone, crit ? 2 : 1, Math.random() < 0.5 ? 0 : Math.PI / 4);
-      this.fx.burst(hx, hy, crit ? 0xffc040 : tone, crit ? 10 : 5, 110, 300);
-      if (crit) this.fx.spark(hx, hy, 0xffffff, 1, Math.PI / 4);
+      const tone = crit ? 0xffd060 : p.isMelee ? meleeLook(w).slash : w.type === 'staff' ? ORB_FX[orbLook(w)].color : HIT_COLOR[w.type];
+      // 맞은 쪽 반대편(플레이어에게서 멀어지는 쪽)으로 불티가 튄다.
+      const away = m.x >= p.x ? 0 : Math.PI;
+      this.fx.spark(hx, hy, tone, crit ? 2 : 1, Math.random() * Math.PI);
+      // 근접: 몸을 가로지르는 베인 자국
+      if (p.isMelee) this.fx.cut(hx, hy, (Math.random() - 0.5) * 1.7, (crit ? 62 : 42) + Math.random() * 14, tone);
+      this.fx.sparks(hx, hy, tone, crit ? 9 : 4, away - 0.25, 1.0, crit ? 250 : 180);
+      this.fx.burst(hx, hy, tone, crit ? 5 : 2, 110, 300);
+      if (crit) {
+        this.fx.pop(hx, hy, 0xfff0c0, 1.6);
+        this.fx.twinkle(hx + (Math.random() - 0.5) * 24, hy - 8 - Math.random() * 12, 0xffffff, 60);
+      }
       sfx.play(crit ? 'crit' : 'hit');
       // 근접 타격은 아주 잠깐 멈춰 묵직하게
       if (p.isMelee && (opts.basic || opts.knock)) this.fx.stop(crit ? 0.07 : 0.035);
@@ -681,8 +706,9 @@ export class BattleScene extends Phaser.Scene {
         }
         this.fx.spark(ex, ey, o.color, 2);
       } else {
-        this.fx.tracer(x, y, ex, ey, o.color, o.width, 90);
-        if (targets.length) this.fx.spark(ex, ey, o.color);
+        this.fx.shot(x, y, ex, ey, o.color, o.width, 130);
+        // 맞은 자리에서 뒤로 튀는 불티
+        if (targets.length) this.fx.sparks(ex, ey, o.color, 3, angle + Math.PI, 0.7, 150, 220);
       }
     }
   }
@@ -1213,17 +1239,31 @@ export class BattleScene extends Phaser.Scene {
     const ang = Math.atan2(o.vy, o.vx);
     let obj: BoltObject;
     let radius = 6;
-    let trail: Phaser.GameObjects.Image | undefined;
+    let trail: Phaser.GameObjects.Sprite | undefined;
     switch (o.kind) {
       case 'orb':
         // 마나 구체: 지팡이 끝에 작은 마법진이 열리며 나간다.
-        obj = this.add.sprite(o.x, o.y, 'fx-orb').play('fx-orb').setScale(Math.max(1, Math.round(size))).setBlendMode(Phaser.BlendModes.ADD);
-        this.fx.circle(o.x, o.y, 0x7fe8ff, 16 + 12 * size, 260, true, DEPTH.fx);
+        obj = this.add
+          .sprite(o.x, o.y, orbKey(o.orb))
+          .play(orbKey(o.orb))
+          .setScale(Math.max(1, Math.round(size)) * 0.8)
+          .setBlendMode(Phaser.BlendModes.ADD);
+        this.fx.circle(o.x, o.y, ORB_FX[o.orb ?? 'arcane'].color, 16 + 12 * size, 260, true, DEPTH.fx);
+        this.fx.pop(o.x, o.y, ORB_FX[o.orb ?? 'arcane'].light, 0.5 + 0.35 * size, 0.5);
         radius = 5 * size;
         break;
       case 'arrow':
         obj = this.add.image(o.x, o.y, 'fx-arrow').setRotation(ang).setScale(size >= 1.5 ? 2 : 1);
-        trail = this.fx.streak(o.x, o.y, ang, 16 + 16 * size, o.color ?? 0xe8dcc0, 0, size >= 1.5 ? 2 : 1);
+        // 화살 뒤로 끌리는 혜성 꼬리
+        trail = this.add
+          .sprite(o.x, o.y, 'fx-comet')
+          .play({ key: 'fx-comet', startFrame: Math.floor(Math.random() * 3) })
+          .setOrigin(1, 0.5)
+          .setTint(o.color ?? 0xe8dcc0)
+          .setBlendMode(Phaser.BlendModes.ADD)
+          .setRotation(ang)
+          .setScale((22 + 16 * size) / 40, size >= 1.5 ? 2 : 1)
+          .setDepth(DEPTH.projectile - 1);
         radius = 4 * size;
         break;
       case 'wave':
@@ -1246,13 +1286,28 @@ export class BattleScene extends Phaser.Scene {
     if (b.trail) b.trail.setPosition(b.x, b.y).setRotation(Math.atan2(b.vy, b.vx));
     if (b.fxTimer > 0) return;
     switch (b.kind) {
-      case 'orb':
-        b.fxTimer = 0.025;
-        this.fx.burst(b.x, b.y, 0x7fe8ff, 1, 25, 260, b.size ?? 1);
+      case 'orb': {
+        // 구체가 지나간 자리에 옅은 잔상이 줄지어 남고, 가끔 별빛이 튄다.
+        b.fxTimer = 0.035;
+        const s = b.obj as Phaser.GameObjects.Sprite;
+        const look = ORB_FX[b.orb ?? 'arcane'];
+        const ghost = this.add
+          .image(b.x, b.y, s.texture.key, s.frame.name)
+          .setDepth(DEPTH.projectile - 1)
+          .setBlendMode(Phaser.BlendModes.ADD)
+          .setScale(s.scaleX * 0.85)
+          .setAlpha(0.45);
+        this.tweens.add({ targets: ghost, alpha: 0, scale: s.scaleX * 0.3, duration: 200, onComplete: () => ghost.destroy() });
+        if (Math.random() < 0.35) this.fx.twinkle(b.x + (Math.random() - 0.5) * 10, b.y + (Math.random() - 0.5) * 12, look.light);
+        else this.fx.burst(b.x, b.y, look.color, 1, 25, 260);
         break;
+      }
       case 'arrow':
-        b.fxTimer = 0.04;
-        if ((b.size ?? 1) >= 1.5 || b.pierce) this.fx.burst(b.x, b.y, b.color ?? 0xffe08a, 1, 20, 220);
+        b.fxTimer = 0.05;
+        if ((b.size ?? 1) >= 1.5 || b.pierce) {
+          if (Math.random() < 0.5) this.fx.twinkle(b.x - b.vx * 0.03, b.y + (Math.random() - 0.5) * 8, b.color ?? 0xffe08a);
+          else this.fx.burst(b.x, b.y, b.color ?? 0xffe08a, 1, 20, 220);
+        }
         break;
       case 'wave': {
         b.fxTimer = 0.035;
@@ -1304,17 +1359,26 @@ export class BattleScene extends Phaser.Scene {
             this.hitMonster(m, b.damage, { basic: b.basic, knock: 40 });
             continue;
           }
-          if (b.aoe) this.explode(b.x, b.y, b.aoe, b.damage, b.stun ?? 0, b.kind === 'orb' ? 'arcane' : 'fire');
+          const back = Math.atan2(-b.vy, -b.vx);
+          if (b.aoe) this.explode(b.x, b.y, b.aoe, b.damage, b.stun ?? 0, b.kind === 'orb' ? ORB_FX[b.orb ?? 'arcane'].boom : 'fire');
           else {
             this.hitMonster(m, b.damage, { basic: b.basic, knock: 70 });
-            if (b.kind === 'orb') this.fx.boom(b.x, b.y, 12 * (b.size ?? 1), 'arcane');
+            if (b.kind === 'orb') {
+              const look = ORB_FX[b.orb ?? 'arcane'];
+              this.fx.boom(b.x, b.y, 12 * (b.size ?? 1), look.boom);
+              this.fx.pop(b.x, b.y, look.light, 0.9 + 0.3 * (b.size ?? 1));
+              this.fx.sparks(b.x, b.y, look.color, 5, 0, Math.PI, 150, 320, 120);
+            } else if (b.kind === 'arrow') {
+              // 박히는 순간 뒤로 튀는 파편
+              this.fx.sparks(b.x, b.y, b.color ?? 0xe8dcc0, 4, back, 0.8, 170, 240);
+            }
           }
           alive = false;
           break;
         }
       }
       if (alive && b.y >= FLOOR_Y - 2) {
-        if (b.aoe) this.explode(b.x, FLOOR_Y - 6, b.aoe, b.damage, b.stun ?? 0, b.kind === 'orb' ? 'arcane' : 'fire');
+        if (b.aoe) this.explode(b.x, FLOOR_Y - 6, b.aoe, b.damage, b.stun ?? 0, b.kind === 'orb' ? ORB_FX[b.orb ?? 'arcane'].boom : 'fire');
         else this.fx.spark(b.x, FLOOR_Y - 3, 0xd8c8a0);
         alive = false;
       }
@@ -1326,11 +1390,13 @@ export class BattleScene extends Phaser.Scene {
   private explode(x: number, y: number, radius: number, damage: number, stun: number, palette: Palette = 'fire'): void {
     sfx.play('boom', Math.min(1, radius / 60));
     const ground = Math.min(y + 8, FLOOR_Y);
+    const [ringColor, bitColor, pal3, smokeColor] = BOOM_FX[palette] ?? BOOM_FIRE;
     this.fx.boom(x, y, radius * 0.6, palette);
-    this.fx.ring(x, ground, radius, palette === 'arcane' ? 0x7fe8ff : 0xffa040);
-    impactBurst(this, x, y, radius * 0.9, palette === 'arcane' ? PAL.arcane : PAL.flame, ground);
-    this.fx.burst(x, y, palette === 'arcane' ? 0xbff6ff : 0xffc060, 14, 160, 450, 1, 300);
-    for (let i = 0; i < 3; i++) this.time.delayedCall(120 + i * 60, () => this.fx.smoke(x + (i - 1) * radius * 0.4, y - 4, 2, palette === 'arcane' ? 0x6a7aa8 : 0x7a706a));
+    this.fx.ring(x, ground, radius, ringColor);
+    impactBurst(this, x, y, radius * 0.9, pal3, ground);
+    this.fx.burst(x, y, bitColor, 8, 160, 450, 1, 300);
+    this.fx.sparks(x, y, bitColor, 8, -Math.PI / 2, 1.4, 220, 420, 420);
+    for (let i = 0; i < 3; i++) this.time.delayedCall(120 + i * 60, () => this.fx.smoke(x + (i - 1) * radius * 0.4, y - 4, 2, smokeColor));
     this.fx.shake(0.5);
     this.hitArea(x - radius, y - radius, radius * 2, radius * 2, damage, { stun, knock: 90 });
   }
@@ -1341,7 +1407,7 @@ export class BattleScene extends Phaser.Scene {
       obj = this.add.sprite(x, y, 'fireball').play('fireball');
       obj.setFlipX(vx < 0);
     } else if (opts.kind === 'frost') {
-      obj = this.add.sprite(x, y, 'fx-orb').play('fx-orb').setBlendMode(Phaser.BlendModes.ADD);
+      obj = this.add.sprite(x, y, 'fx-orb').play('fx-orb').setScale(0.75).setBlendMode(Phaser.BlendModes.ADD);
     } else if (opts.kind === 'wisp') {
       obj = this.add.sprite(x, y, 'fx-flame').play('fx-flame').setTint(0x9fffb0).setScale(0.8).setBlendMode(Phaser.BlendModes.ADD);
     } else if (opts.kind === 'feather') {

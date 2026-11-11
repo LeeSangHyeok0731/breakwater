@@ -511,14 +511,15 @@ export class Player {
     this.scene.tweens.add({ targets: ring, scale: 4, alpha: 0, duration: 240, ease: 'Quad.Out', onComplete: () => ring.destroy() });
   }
 
-  private afterimage(): void {
+  /** 몸의 잔상. 구르기·공중 돌진은 하늘빛, 평타의 큰 동작은 무기 색으로 남긴다. */
+  afterimage(tint = 0x9fd8ff): void {
     const s = this.sprite;
     const ghost = this.scene.add
       .image(s.x, s.y, s.texture.key, s.frame.name)
       .setOrigin(s.originX, s.originY)
       .setFlipX(s.flipX)
       .setDepth(DEPTH.player - 1)
-      .setTint(0x9fd8ff)
+      .setTint(tint)
       .setAlpha(0.5)
       .setBlendMode(Phaser.BlendModes.ADD);
     this.scene.tweens.add({ targets: ghost, alpha: 0, duration: 220, onComplete: () => ghost.destroy() });
