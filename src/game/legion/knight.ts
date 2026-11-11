@@ -5,6 +5,7 @@ import type { Behavior, Monster } from '../monster2d';
 import { FLOOR_Y } from '../world';
 import { KNIGHT_IDLE, KNIGHT_RIG, makeKnightArt } from './knightArt';
 import { EASE, lerpPose, Rig, Track, type Key, type Pose } from './rig';
+import { aura, column, crescent, flare, pop, rays, shards, shockwave, tint, twinkles, type Palette3 } from '../vfx';
 
 /**
  * 침묵의 기사단장 (근접 군단장). 파츠 리그로 조립한 몸에 몸만 한 대검을 두 손으로 쥐고 싸운다.
@@ -17,6 +18,23 @@ import { EASE, lerpPose, Rig, Track, type Key, type Pose } from './rig';
 
 export const PURPLE = 0xb04aff;
 const PURPLE_HI = 0xe0a8ff;
+const STEEL = 0xdfe6ff;
+/** 대검의 궤적: 평소에는 차가운 강철빛, 보라 패턴은 보랏빛 */
+const PAL_STEEL: Palette3 = [0x4a6ad8, 0xbfd0ff, 0xffffff];
+const PAL_PURPLE: Palette3 = [0x6a1aa8, PURPLE, 0xf0d8ff];
+/** 땅이 터질 때의 흙빛 불꽃 */
+const PAL_EARTH: Palette3 = [0xc8501a, 0xffb060, 0xfff0d0];
+
+/** 대검을 휘두른 궤적: 도트 잔상(길게 뺀 것) 위에 큰 참격을 겹친다. */
+function swing(m: Monster, x: number, y: number, dir: 1 | -1, radius: number, purple: boolean, o: { up?: boolean; squash?: number } = {}): void {
+  const b = m.scene;
+  const sq = o.squash ?? 1;
+  b.fx.slash(x, y, dir, radius, purple ? PURPLE : STEEL, true, { up: o.up, squash: sq, stretch: 1.3, style: purple ? 'thunder' : 'steel' });
+  b.fx.slash(x - dir * 6, y, dir, radius * 0.8, 0xffffff, false, { up: o.up, squash: sq, stretch: 1.3, speed: 1.3, style: purple ? 'thunder' : 'steel' });
+  crescent(b, x - dir * 10, y, dir, radius * 1.05, purple ? PAL_PURPLE : PAL_STEEL, { from: o.up ? 1.5 : -1.6, to: o.up ? -1.5 : 1.3, ms: 300, squash: sq });
+  const fwd = dir === 1 ? 0 : Math.PI;
+  b.fx.sparks(x + dir * radius * 0.9, y + (o.up ? -radius * 0.3 : radius * 0.3) * sq, purple ? PURPLE_HI : STEEL, 10, fwd + (o.up ? -0.6 : 0.6) * dir, 0.8, 280, 380);
+}
 
 type Pattern = 'slam' | 'sweep' | 'thrust' | 'leap' | 'wave' | 'brand' | 'roar';
 
@@ -168,13 +186,32 @@ function impact(m: Monster, x: number, purple: boolean, power = 1): void {
   b.fx.smoke(x - 20, FLOOR_Y - 6, 1.6, 0x6a6058, -20);
   b.fx.smoke(x + 20, FLOOR_Y - 6, 1.6, 0x6a6058, -20);
   b.fx.ring(x, FLOOR_Y, 70 * power, purple ? PURPLE : 0xffa040, 360);
-  // 바닥 균열 (잠시 남는다)
+  // 땅이 터진다: 납작한 충격파, 위로 솟는 빛과 파편, 튀어 오르는 불티
+  const pal = purple ? PAL_PURPLE : PAL_EARTH;
+  shockwave(b, x, FLOOR_Y, 120 * power, pal, 480, 0.28, 7);
+  flare(b, x, FLOOR_Y - 10, 34 * power, pal, 260);
+  rays(b, x, FLOOR_Y - 6, 9, 90 * power, pal, 340, Math.PI);
+  column(b, x, FLOOR_Y, 16 * power, 150 * power, pal, 420);
+  shards(b, x, FLOOR_Y - 8, pal, 18, 300, 520);
+  pop(b, x, FLOOR_Y - 12, pal[2], 2.6 * power);
+  b.fx.sparks(x, FLOOR_Y - 6, pal[1], 18, -Math.PI / 2, 1.2, 380 * power, 560, 620);
+  twinkles(b, x, FLOOR_Y - 50, 60, pal[2], 4, 360);
+  // 바닥 균열 (잠시 남는다): 꺾이며 뻗고 곁가지가 갈라진다.
   const crack = b.add.graphics().setDepth(DEPTH.fx - 2);
-  crack.lineStyle(2, purple ? 0x8a3ad8 : 0x1a1210, 1);
-  for (let i = 0; i < 5; i++) {
-    const a = Math.PI + (i / 4) * Math.PI;
-    const len = 26 + Math.random() * 30;
-    crack.lineBetween(x, FLOOR_Y + 1, x + Math.cos(a) * len, FLOOR_Y + 1 + Math.abs(Math.sin(a)) * 3);
+  for (let i = 0; i < 6; i++) {
+    const side = i % 2 ? 1 : -1;
+    let cx = x;
+    let cy = FLOOR_Y + 1;
+    const segs = 3 + Math.floor(Math.random() * 3);
+    for (let k = 0; k < segs; k++) {
+      const nx = cx + side * (8 + Math.random() * 14) * power;
+      const ny = FLOOR_Y + 1 + Math.random() * 4;
+      crack.lineStyle(k === 0 ? 3 : 2, purple ? 0x8a3ad8 : 0x1a1210, 1).lineBetween(cx, cy, nx, ny);
+      if (purple || k === 0) crack.lineStyle(1, purple ? PURPLE_HI : 0xffb060, 0.8).lineBetween(cx, cy - 1, nx, ny - 1);
+      if (Math.random() < 0.4) crack.lineStyle(1, purple ? 0x8a3ad8 : 0x1a1210, 1).lineBetween(nx, ny, nx + side * 6, ny + 3);
+      cx = nx;
+      cy = ny;
+    }
   }
   b.tweens.add({ targets: crack, alpha: 0, delay: 900, duration: 600, onComplete: () => crack.destroy() });
   sfx.play('boom', 0.6 + 0.3 * power);
@@ -187,8 +224,19 @@ function groundWave(m: Monster, dir: 1 | -1, x0: number, delay = 0): void {
   b.time.delayedCall(delay * 1000, () => {
     if (!m.alive) return;
     const h = 34;
-    const obj = b.add.rectangle(x0, FLOOR_Y - h / 2, 18, h, PURPLE, 0.8).setDepth(DEPTH.fx).setBlendMode(Phaser.BlendModes.ADD);
-    const core = b.add.rectangle(x0, FLOOR_Y - h / 2, 6, h + 8, PURPLE_HI, 0.95).setDepth(DEPTH.fx + 1).setBlendMode(Phaser.BlendModes.ADD);
+    // 땅을 타는 보랏빛 검기: 앞으로 볼록한 초승달이 결을 날리며 미끄러진다.
+    const make = (color: number, scale: number, depth: number): Phaser.GameObjects.Sprite =>
+      b.add
+        .sprite(x0, FLOOR_Y - h / 2 - 2, 'fx-wave')
+        .play('fx-wave')
+        .setFlipX(dir === -1)
+        .setTint(color)
+        .setScale(scale, scale * 0.95)
+        .setDepth(depth)
+        .setBlendMode(Phaser.BlendModes.ADD);
+    const obj = make(PURPLE, 1.15, DEPTH.fx);
+    const core = make(PURPLE_HI, 0.8, DEPTH.fx + 1);
+    pop(b, x0, FLOOR_Y - h / 2, PURPLE_HI, 1.6);
     const end = dir === 1 ? W + 30 : -30;
     let hit = false;
     let trail = 0;
@@ -198,7 +246,12 @@ function groundWave(m: Monster, dir: 1 | -1, x0: number, delay = 0): void {
       x: end,
       duration: (Math.abs(end - x0) / 340) * 1000,
       onUpdate: () => {
-        if ((trail = (trail + 1) % 2) === 0) b.fx.burst(obj.x, FLOOR_Y - 6, PURPLE, 2, 50, 320);
+        if ((trail = (trail + 1) % 3) === 0) {
+          b.fx.sparks(obj.x - dir * 6, FLOOR_Y - 3, PURPLE_HI, 2, dir === 1 ? Math.PI + 0.5 : -0.5, 0.5, 160, 300, 300);
+          b.fx.burst(obj.x, FLOOR_Y - 6, PURPLE, 1, 50, 320);
+          const ghost = b.add.image(obj.x, obj.y, 'fx-wave', obj.frame.name).setFlipX(dir === -1).setTint(PURPLE).setScale(obj.scaleX, obj.scaleY).setAlpha(0.45).setDepth(DEPTH.fx - 1).setBlendMode(Phaser.BlendModes.ADD);
+          b.tweens.add({ targets: ghost, alpha: 0, scaleY: obj.scaleY * 0.6, duration: 200, onComplete: () => ghost.destroy() });
+        }
         if (!hit) hit = purpleHit(m, obj.x - 9, FLOOR_Y - h, 18, h, m.damage * 0.8);
       },
       onComplete: () => {
@@ -262,6 +315,11 @@ function begin(m: Monster, st: KnightState, pattern: Pattern): void {
             b.fx.pillar(x, FLOOR_Y, PURPLE, 180, 560);
             b.fx.burst(x, FLOOR_Y - 20, PURPLE_HI, 12, 160, 420);
             b.fx.ring(x, FLOOR_Y, 44, PURPLE);
+            column(b, x, FLOOR_Y, 20, 230, PAL_PURPLE, 520);
+            shockwave(b, x, FLOOR_Y, 60, PAL_PURPLE, 380, 0.3, 5);
+            pop(b, x, FLOOR_Y - 16, PURPLE_HI, 2);
+            b.fx.sparks(x, FLOOR_Y - 6, PURPLE_HI, 8, -Math.PI / 2, 0.5, 340, 480, 240);
+            twinkles(b, x, FLOOR_Y - 90, 40, 0xf0d8ff, 3, 360);
             b.fx.shake(0.5, 100);
             sfx.play('magic', 0.7);
             purpleHit(m, x - 22, FLOOR_Y - 170, 44, 170, m.damage * 0.9);
@@ -379,12 +437,21 @@ export const silentKnight: Behavior = (m, dt) => {
           b.fx.shake(1.2, 400);
           b.fx.pillar(tip.x, m.body.bottom, PURPLE, 260, 900);
           b.fx.ring(m.x, FLOOR_Y, 120, PURPLE, 500);
+          // 분노: 발밑에서 보랏빛 기운이 겹겹이 퍼지고 칼끝에서 빛이 터진다.
+          aura(b, m.x, FLOOR_Y, PAL_PURPLE, 90);
+          column(b, tip.x, m.body.bottom, 22, 340, PAL_PURPLE, 900);
+          flare(b, tip.x, tip.y, 46, PAL_PURPLE, 420);
+          rays(b, tip.x, tip.y, 14, 150, PAL_PURPLE, 520);
+          shockwave(b, m.x, m.y, 240, PAL_PURPLE, 620, 1, 6);
+          tint(b, PURPLE, 0.18, 500);
+          twinkles(b, m.x, m.y - 30, 110, 0xf0d8ff, 10, 800);
           sfx.play('magic', 1);
         }
         // 대검에서 보라 기운이 솟구친다.
         if (t > 0.45 && t < 1.3 && Math.random() < 0.8) {
           const at = rig.tip(0.3 + Math.random() * 0.7);
-          b.fx.burst(at.x, at.y, PURPLE, 2, 70, 360);
+          b.fx.burst(at.x, at.y, PURPLE, 1, 70, 360);
+          b.fx.sparks(at.x, at.y, PURPLE_HI, 2, -Math.PI / 2, 0.6, 200, 420, -80);
         }
         if (t > 1.75) done = true;
         break;
@@ -396,13 +463,15 @@ export const silentKnight: Behavior = (m, dt) => {
         if (once(st, 1, 0.75)) {
           const tip = rig.tip();
           b.fx.spark(tip.x, tip.y, 0xffffff, 2, Math.PI / 4);
+          b.fx.pop(tip.x, tip.y, purple ? PURPLE_HI : STEEL, 1.4);
+          b.fx.twinkle(tip.x, tip.y, 0xffffff, 80);
           sfx.play('slash', 0.4);
         }
         if (t > 0.95 && t < 1.07) st.swinging = 0.1;
         if (once(st, 2, 1.07)) {
           const tip = rig.tip(0.85);
           body.setVelocityX(f * 60);
-          b.fx.slash(m.x + f * 50, FLOOR_Y - 60, f, 90, purple ? PURPLE : 0xdfe6ff, true, { up: false });
+          swing(m, m.x + f * 50, FLOOR_Y - 60, f, 96, purple);
           impact(m, tip.x, purple, 1.2);
           frontHit(m, f, 15, 175, 110, m.damage * 1.3, purple);
           if (purple) {
@@ -426,17 +495,22 @@ export const silentKnight: Behavior = (m, dt) => {
         if (once(st, 1, 0.55)) {
           const tip = rig.tip();
           b.fx.spark(tip.x, tip.y, 0xffffff, 2, Math.PI / 4);
+          b.fx.pop(tip.x, tip.y, STEEL, 1.4);
         }
         if (t > 0.75 && t < 0.9) {
           st.swinging = 0.1;
           body.setVelocityX(f * 220);
           // 칼끝이 바닥을 긁는다.
           const tip = rig.tip();
-          if (tip.y > FLOOR_Y - 12) b.fx.burst(tip.x, FLOOR_Y - 2, 0xffe0a0, 2, 90, 200);
+          if (tip.y > FLOOR_Y - 12) {
+            b.fx.burst(tip.x, FLOOR_Y - 2, 0xffe0a0, 1, 90, 200);
+            b.fx.sparks(tip.x, FLOOR_Y - 2, 0xffe0a0, 3, -Math.PI / 2 - f * 0.6, 0.5, 240, 300, 500);
+          }
         }
         if (once(st, 2, 0.9)) {
           body.setVelocityX(0);
-          b.fx.slash(m.x + f * 40, FLOOR_Y - 45, f, 100, 0xdfe6ff, true, { squash: 0.5 });
+          swing(m, m.x + f * 40, FLOOR_Y - 45, f, 106, false, { squash: 0.5 });
+          shockwave(b, m.x + f * 70, FLOOR_Y, 110, PAL_STEEL, 360, 0.25, 5);
           b.fx.stop(0.08);
           b.fx.shake(0.9, 160);
           sfx.play('slash', 0.8);
@@ -463,7 +537,12 @@ export const silentKnight: Behavior = (m, dt) => {
           if (Math.random() < 0.3) b.fx.burst(m.x - f * 14, FLOOR_Y - 6, 0x9a8a70, 1, 50, 300);
           break;
         }
-        if (once(st, 0, 0.85)) sfx.play('slash', 1.2);
+        if (once(st, 0, 0.85)) {
+          sfx.play('slash', 1.2);
+          const tip0 = rig.tip();
+          pop(b, tip0.x, tip0.y, 0xffffff, 2);
+          shockwave(b, m.x, FLOOR_Y, 80, PAL_STEEL, 320, 0.25, 5);
+        }
         const reached = f === 1 ? m.x >= st.to : m.x <= st.to;
         if (!reached && t < 1.9 && !st.fired.has(1)) {
           body.setVelocityX(f * 600);
@@ -474,6 +553,10 @@ export const silentKnight: Behavior = (m, dt) => {
             rig.ghost(PURPLE, 0.45, 240);
           }
           if (Math.random() < 0.5) b.fx.burst(m.x - f * 20, FLOOR_Y - 4, 0x9a8a70, 1, 60, 300);
+          // 칼끝이 공기를 가르며 빛줄기와 불티를 끈다.
+          const tipNow = rig.tip();
+          b.fx.sparks(tipNow.x, tipNow.y, PURPLE_HI, 2, f === 1 ? Math.PI : 0, 0.4, 260, 240, 0);
+          if (Math.random() < 0.5) b.fx.streak(tipNow.x, tipNow.y + (Math.random() - 0.5) * 30, f === 1 ? 0 : Math.PI, 60 + Math.random() * 50, STEEL, 180, 1);
           break;
         }
         if (once(st, 1, 0)) {
@@ -483,7 +566,7 @@ export const silentKnight: Behavior = (m, dt) => {
         if (st.t < 2.05) st.swinging = 0.1;
         if (once(st, 2, 2.05)) {
           body.setVelocityX(0);
-          b.fx.slash(m.x + f * 40, FLOOR_Y - 60, f, 80, 0xdfe6ff, true, { up: true });
+          swing(m, m.x + f * 40, FLOOR_Y - 60, f, 88, false, { up: true });
           b.fx.shake(0.8, 140);
           sfx.play('slash', 0.9);
           frontHit(m, f, -10, 120, 130, m.damage * 1.0);
@@ -505,8 +588,16 @@ export const silentKnight: Behavior = (m, dt) => {
           body.reset(x, y);
           body.setVelocity(0, 0);
           if (k > 0.75) st.swinging = 0.1;
+          // 공중에서 몸의 잔상이 줄지어 남는다.
+          st.ghost -= dt;
+          if (st.ghost <= 0) {
+            st.ghost = 0.05;
+            rig.ghost(STEEL, 0.35, 220);
+          }
           if (once(st, 5, 0.45)) {
             b.fx.smoke(st.from, FLOOR_Y - 6, 1.6, 0x6a6058, -20);
+            shockwave(b, st.from, FLOOR_Y, 70, PAL_EARTH, 320, 0.25, 5);
+            b.fx.sparks(st.from, FLOOR_Y - 4, 0xffb060, 8, -Math.PI / 2, 1.1, 240, 420, 520);
             sfx.play('slash', 0.5);
           }
           break;
@@ -529,13 +620,15 @@ export const silentKnight: Behavior = (m, dt) => {
           // 바닥에 댄 칼끝에 보라 기운이 모인다.
           if (t > 0.5 && Math.random() < 0.6) {
             const tip = rig.tip(0.95);
-            b.fx.burst(tip.x, Math.min(tip.y, FLOOR_Y - 4), PURPLE, 2, 60, 300);
+            b.fx.burst(tip.x, Math.min(tip.y, FLOOR_Y - 4), PURPLE, 1, 60, 300);
+            b.fx.sparks(tip.x, Math.min(tip.y, FLOOR_Y - 4), PURPLE_HI, 2, -Math.PI / 2, 1.0, 180, 380, -60);
           }
           break;
         }
         if (t < 0.98) st.swinging = 0.1;
         if (once(st, 2, 0.98)) {
-          b.fx.slash(m.x + f * 40, FLOOR_Y - 40, f, 90, PURPLE, true, { up: true });
+          swing(m, m.x + f * 40, FLOOR_Y - 40, f, 96, true, { up: true });
+          flare(b, m.x + f * 50, FLOOR_Y - 20, 30, PAL_PURPLE, 240);
           b.fx.shake(0.8, 160);
           groundWave(m, f, m.x + f * 50);
           if (m.phase2) groundWave(m, (-f) as 1 | -1, m.x - f * 50, 0.3);

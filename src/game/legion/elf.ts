@@ -5,6 +5,7 @@ import type { Behavior, Monster } from '../monster2d';
 import { FLOOR_Y } from '../world';
 import { ELF_GROGGY, ELF_IDLE, ELF_RIG, makeElfArt } from './elfArt';
 import { lerpPose, Rig, type Pose } from './rig';
+import { aura, column, flare, impactBurst, pop, rays, shards, shockwave, tint, twinkles, type Palette3 } from '../vfx';
 
 /**
  * 타락한 엘프 (원거리 군단장). 석궁으로 쉴 새 없이 쏜다.
@@ -18,6 +19,22 @@ const BLUE = 0x4ab0ff;
 const BLUE_HI = 0xc8f0ff;
 const CORRUPT = 0x7aff9a;
 const BOLT_KEY = 'elf-bolt';
+/** 독기 어린 초록빛 */
+const PAL_CORRUPT: Palette3 = [0x1a9a4a, CORRUPT, 0xe8fff0];
+const PAL_BLUE: Palette3 = [0x1a6ad8, BLUE, BLUE_HI];
+
+/** 볼트 뒤로 끌리는 혜성 꼬리 (머리가 볼트 위치) */
+function comet(b: Monster['scene'], x: number, y: number, ang: number, tintColor: number, len: number, thick = 1): Phaser.GameObjects.Sprite {
+  return b.add
+    .sprite(x, y, 'fx-comet')
+    .play({ key: 'fx-comet', startFrame: Math.floor(Math.random() * 3) })
+    .setOrigin(1, 0.5)
+    .setTint(tintColor)
+    .setBlendMode(Phaser.BlendModes.ADD)
+    .setRotation(ang)
+    .setScale(len / 40, thick)
+    .setDepth(DEPTH.projectile - 1);
+}
 /** 그로기 시간 (기믹 완화를 고르면 1.5배) */
 const GROGGY = 5;
 
@@ -75,7 +92,10 @@ function shoot(m: Monster, x: number, y: number, ang: number, speed: number, dam
   const b = m.scene;
   const W = b.level.width;
   const img = b.add.image(x, y, BOLT_KEY).setRotation(ang).setScale(scale).setTint(tint).setDepth(DEPTH.projectile);
-  const trail = b.fx.streak(x, y, ang, 26, tint, 0, 1);
+  const trail = comet(b, x, y, ang, tint, 34 + scale * 6, scale >= 3 ? 2 : 1);
+  // 석궁 앞에 서는 충격 고리와 앞으로 튀는 불티
+  b.fx.pop(x, y, tint, 0.5 + scale * 0.2, 0.45, ang);
+  b.fx.sparks(x, y, tint, 3, ang, 0.4, 240, 200, 60);
   const dist = 900;
   let hit = false;
   b.tweens.add({
@@ -89,6 +109,7 @@ function shoot(m: Monster, x: number, y: number, ang: number, speed: number, dam
       if (img.y > FLOOR_Y + 4 || img.x < -40 || img.x > W + 40) {
         hit = true;
         b.fx.spark(img.x, Math.min(img.y, FLOOR_Y - 2), tint, 1);
+        b.fx.sparks(img.x, Math.min(img.y, FLOOR_Y - 2), tint, 4, ang + Math.PI, 0.9, 170, 280, 400);
         img.destroy();
         trail.destroy();
         return;
@@ -98,6 +119,8 @@ function shoot(m: Monster, x: number, y: number, ang: number, speed: number, dam
         hit = true;
         b.damagePlayer(damage, { x: m.x, monster: m, melee: false });
         b.fx.spark(img.x, img.y, tint, 1);
+        b.fx.sparks(img.x, img.y, tint, 5, ang + Math.PI, 0.8, 190, 260);
+        b.fx.cut(img.x, img.y, ang, 34, tint);
         img.destroy();
         trail.destroy();
       }
@@ -115,6 +138,12 @@ function blueBolt(m: Monster, x: number, y: number, ang: number): void {
   const p = b.player;
   const img = b.add.image(x, y, BOLT_KEY).setRotation(ang).setScale(3).setTint(BLUE_HI).setDepth(DEPTH.projectile + 1);
   const halo = b.add.circle(x, y, 10, BLUE, 0.45).setDepth(DEPTH.projectile).setBlendMode(Phaser.BlendModes.ADD);
+  const tail = comet(b, x, y, ang, BLUE, 80, 3);
+  // 쏘는 순간: 파란 섬광과 빛살, 겹겹의 충격 고리
+  flare(b, x, y, 26, PAL_BLUE, 260);
+  rays(b, x, y, 8, 60, PAL_BLUE, 300);
+  for (let i = 0; i < 3; i++) b.fx.pop(x + Math.cos(ang) * (8 + i * 16), y + Math.sin(ang) * (8 + i * 16), BLUE_HI, 1.8 - i * 0.4, 0.45, ang);
+  b.fx.sparks(x, y, BLUE_HI, 10, ang, 0.5, 320, 300, 40);
   let done = false;
   const speed = 360;
   const dist = 900;
@@ -126,25 +155,34 @@ function blueBolt(m: Monster, x: number, y: number, ang: number): void {
     duration: (dist / speed) * 1000,
     onUpdate: () => {
       if (done) return;
+      tail.setPosition(img.x, img.y);
       if (Math.random() < 0.6) b.fx.burst(img.x, img.y, BLUE, 1, 30, 260);
+      if (Math.random() < 0.3) b.fx.twinkle(img.x + (Math.random() - 0.5) * 16, img.y + (Math.random() - 0.5) * 16, BLUE_HI);
       if (img.y > FLOOR_Y + 4) {
         done = true;
-        b.fx.burst(img.x, FLOOR_Y - 4, BLUE, 8, 90, 300);
+        b.fx.burst(img.x, FLOOR_Y - 4, BLUE, 4, 90, 300);
+        impactBurst(b, img.x, FLOOR_Y - 6, 26, PAL_BLUE, FLOOR_Y);
         img.destroy();
         halo.destroy();
+        tail.destroy();
         return;
       }
       const pb = p.body;
       if (img.x < pb.x - 8 || img.x > pb.right + 8 || img.y < pb.y - 6 || img.y > pb.bottom + 6) return;
       done = true;
       tween.stop();
+      tail.destroy();
       const front = (img.x - p.x) * p.facing >= -6;
       if (p.parryTimer > 0 && front) {
         // 패링 성공: 화살이 엘프에게 되돌아간다.
         sfx.play('parry');
         b.fx.stop(0.12);
         b.fx.flashScreen(BLUE, 0.35, 260);
-        b.fx.burst(img.x, img.y, BLUE_HI, 16, 180, 420);
+        b.fx.burst(img.x, img.y, BLUE_HI, 8, 180, 420);
+        // 튕겨 낸 자리에서 파란 빛이 터지고, 되돌아가는 화살이 빛줄기를 긋는다.
+        impactBurst(b, img.x, img.y, 44, PAL_BLUE);
+        b.fx.sparks(img.x, img.y, BLUE_HI, 14, Math.atan2(m.y - img.y, m.x - img.x), 0.9, 340, 360);
+        b.fx.bigSlash(img.x, img.y, m.x, m.y, BLUE, 6, 320);
         b.fx.text(p.x, p.body.top - 14, '패링!', 'heal');
         p.mp = Math.min(p.derived.maxMp, p.mp + 20);
         halo.destroy();
@@ -165,13 +203,17 @@ function blueBolt(m: Monster, x: number, y: number, ang: number): void {
       halo.destroy();
       if (p.invuln > 0) return;
       b.damagePlayer(m.damage * 1.8, { x: m.x, monster: m, melee: false, unblockable: true });
-      b.fx.burst(p.x, p.y, BLUE, 12, 140, 360);
+      b.fx.burst(p.x, p.y, BLUE, 6, 140, 360);
+      impactBurst(b, p.x, p.y, 34, PAL_BLUE);
+      b.fx.cut(p.x, p.y, ang, 70, BLUE_HI);
     },
     onComplete: () => {
       img.destroy();
       halo.destroy();
+      tail.destroy();
     },
   });
+  b.events.once('shutdown', () => tail.destroy());
 }
 
 /** 패링당한 엘프: 무릎 꿇고(멈춤) 받는 피해 200% */
@@ -187,6 +229,9 @@ function groggy(m: Monster): void {
   b.fx.shake(1.2, 240);
   b.fx.boom(m.x, m.y, 30, 'arcane');
   b.fx.ring(m.x, FLOOR_Y, 80, BLUE, 420);
+  impactBurst(b, m.x, m.y, 60, PAL_BLUE, FLOOR_Y);
+  column(b, m.x, FLOOR_Y, 18, 240, PAL_BLUE, 520);
+  tint(b, BLUE, 0.16, 360);
   const st = states.get(m);
   if (st) {
     st.pattern = null;
@@ -361,6 +406,9 @@ export const corruptedElf: Behavior = (m, dt) => {
     m.phase2 = true;
     b.announce('타락한 엘프의 눈이 독기로 번뜩인다!');
     b.fx.flashScreen(CORRUPT, 0.25, 300);
+    aura(b, m.x, FLOOR_Y, PAL_CORRUPT, 80);
+    rays(b, m.x, m.y - 10, 12, 130, PAL_CORRUPT, 480);
+    tint(b, CORRUPT, 0.14, 420);
   }
   const pace = b.legionPace(m) * (m.phase2 ? 0.8 : 1);
   const body = m.body;
@@ -411,12 +459,21 @@ export const corruptedElf: Behavior = (m, dt) => {
       // 부채꼴로 일곱 발 (2단계 아홉 발)
       body.setVelocityX(0);
       aimAt(m, st, dt, 4);
-      if (t < 0.7 && Math.random() < 0.4) b.fx.burst(muzzle(st).x, muzzle(st).y, CORRUPT, 1, 30, 260);
+      if (t < 0.7 && Math.random() < 0.4) {
+        // 석궁 끝으로 독기가 모여든다.
+        const mz = muzzle(st);
+        const a = Math.random() * Math.PI * 2;
+        b.fx.sparks(mz.x + Math.cos(a) * 22, mz.y + Math.sin(a) * 22, CORRUPT, 1, a + Math.PI, 0.1, 110, 200, 0);
+      }
       if (once(st, 0, 0.7)) {
         const n = m.phase2 ? 9 : 7;
         const mz = muzzle(st);
         for (let i = 0; i < n; i++) shoot(m, mz.x, mz.y, st.angle + (i / (n - 1) - 0.5) * 1.0, 420, m.damage * 0.5, CORRUPT);
-        b.fx.burst(mz.x, mz.y, CORRUPT, 10, 120, 300);
+        b.fx.burst(mz.x, mz.y, CORRUPT, 4, 120, 300);
+        flare(b, mz.x, mz.y, 26, PAL_CORRUPT, 240);
+        rays(b, mz.x, mz.y, 9, 70, PAL_CORRUPT, 300, st.angle);
+        b.fx.pop(mz.x + Math.cos(st.angle) * 10, mz.y + Math.sin(st.angle) * 10, 0xe8fff0, 2.2, 0.45, st.angle);
+        shards(b, mz.x, mz.y, PAL_CORRUPT, 10, 200, 360);
         b.fx.shake(0.4, 100);
         sfx.play('arrow', 1.2);
         st.kick = 1.3;
@@ -432,6 +489,9 @@ export const corruptedElf: Behavior = (m, dt) => {
       if (once(st, 0, 0.45)) {
         const mz = muzzle(st);
         for (let i = 0; i < 3; i++) b.time.delayedCall(i * 90, () => b.fx.streak(mz.x, mz.y, up, 60, CORRUPT, 220, 2));
+        column(b, mz.x, mz.y, 8, 260, PAL_CORRUPT, 420);
+        b.fx.pop(mz.x, mz.y - 8, 0xe8fff0, 1.8, 1);
+        b.fx.sparks(mz.x, mz.y, CORRUPT, 10, up, 0.3, 380, 360, 0);
         sfx.play('arrow', 1.3);
         st.kick = 1;
         const W = b.level.width;
@@ -446,9 +506,13 @@ export const corruptedElf: Behavior = (m, dt) => {
               b.time.delayedCall(k * 40, () => {
                 b.fx.streak(sx, FLOOR_Y - 120, Math.PI / 2, 120, CORRUPT, 160, 2);
                 b.fx.spark(sx, FLOOR_Y - 4, CORRUPT, 1);
+                b.fx.cut(sx, FLOOR_Y - 40, Math.PI / 2, 110, 0xe8fff0);
               });
             }
-            b.fx.burst(x, FLOOR_Y - 6, CORRUPT, 10, 90, 360);
+            b.fx.burst(x, FLOOR_Y - 6, CORRUPT, 4, 90, 360);
+            shockwave(b, x, FLOOR_Y, 60, PAL_CORRUPT, 380, 0.28, 5);
+            b.fx.sparks(x, FLOOR_Y - 4, CORRUPT, 10, -Math.PI / 2, 1.1, 260, 420, 520);
+            twinkles(b, x, FLOOR_Y - 60, 34, 0xe8fff0, 3, 300);
             b.areaHit(x - 36, FLOOR_Y - 140, 72, 140, m.damage * 0.8, m, false);
           });
         }
@@ -470,7 +534,11 @@ export const corruptedElf: Behavior = (m, dt) => {
       }
       if (once(st, 0, 1.35)) {
         shoot(m, mz.x, mz.y, st.angle, 1100, m.damage * 1.3, 0xffffff, 3);
-        b.fx.tracer(mz.x, mz.y, mz.x + Math.cos(st.angle) * 900, mz.y + Math.sin(st.angle) * 900, 0xffffff, 2, 120);
+        b.fx.shot(mz.x, mz.y, mz.x + Math.cos(st.angle) * 900, mz.y + Math.sin(st.angle) * 900, 0xffffff, 4, 220);
+        flare(b, mz.x, mz.y, 30, PAL_CORRUPT, 260);
+        rays(b, mz.x, mz.y, 8, 70, PAL_CORRUPT, 300, st.angle);
+        for (let i = 0; i < 4; i++) b.fx.pop(mz.x + Math.cos(st.angle) * (10 + i * 70), mz.y + Math.sin(st.angle) * (10 + i * 70), 0xffffff, 2 - i * 0.35, 0.4, st.angle);
+        b.fx.sparks(mz.x, mz.y, 0xffffff, 10, st.angle, 0.4, 420, 300, 40);
         b.fx.shake(0.6, 120);
         sfx.play('arrow', 0.7);
         st.kick = 1.6;
@@ -485,6 +553,13 @@ export const corruptedElf: Behavior = (m, dt) => {
         body.reset(st.from + (st.to - st.from) * k, FLOOR_Y - body.height / 2 - Math.sin(k * Math.PI) * 110);
         body.setVelocity(0, 0);
         aimAt(m, st, dt, 10);
+        // 공중에서 몸의 잔상이 남는다.
+        if (Math.random() < 0.25) st.rig.ghost(CORRUPT, 0.3, 200);
+      }
+      if (once(st, 8, 0)) {
+        b.fx.smoke(st.from, FLOOR_Y - 4, 1, 0x6a7a6a, -10);
+        shockwave(b, st.from, FLOOR_Y, 50, PAL_CORRUPT, 300, 0.25, 4);
+        b.fx.sparks(st.from, FLOOR_Y - 4, CORRUPT, 6, -Math.PI / 2, 1.1, 220, 360, 500);
       }
       if (once(st, 0, 0.35)) {
         const mz = muzzle(st);
@@ -494,6 +569,7 @@ export const corruptedElf: Behavior = (m, dt) => {
       if (once(st, 1, 0.7)) {
         body.reset(st.to, FLOOR_Y - body.height / 2);
         b.fx.smoke(st.to, FLOOR_Y - 4, 1, 0x6a7a6a, -10);
+        shockwave(b, st.to, FLOOR_Y, 44, PAL_CORRUPT, 280, 0.25, 4);
       }
       if (t > 0.9) done = true;
       break;
@@ -507,9 +583,17 @@ export const corruptedElf: Behavior = (m, dt) => {
       const mz = muzzle(st);
       if (t < 0.85) {
         st.aim.lineStyle(2, BLUE, 0.35 + 0.35 * Math.sin(t * 30)).lineBetween(mz.x, mz.y, mz.x + Math.cos(st.angle) * 700, mz.y + Math.sin(st.angle) * 700);
-        if (Math.random() < 0.5) b.fx.burst(mz.x, mz.y, BLUE, 1, 40, 260);
+        if (Math.random() < 0.5) {
+          // 석궁 끝으로 파란 빛이 모여든다.
+          const a = Math.random() * Math.PI * 2;
+          b.fx.sparks(mz.x + Math.cos(a) * 26, mz.y + Math.sin(a) * 26, BLUE_HI, 1, a + Math.PI, 0.1, 130, 200, 0);
+        }
+        if (Math.random() < 0.15) b.fx.twinkle(mz.x + (Math.random() - 0.5) * 20, mz.y + (Math.random() - 0.5) * 20, BLUE_HI);
       }
-      if (once(st, 9, 0)) b.fx.text(m.x, m.body.top - 16, '!', 'crit');
+      if (once(st, 9, 0)) {
+        b.fx.text(m.x, m.body.top - 16, '!', 'crit');
+        pop(b, mz.x, mz.y, BLUE_HI, 2);
+      }
       if (once(st, 0, 0.85)) {
         st.rig.glowing = false;
         st.kick = 1.4;
