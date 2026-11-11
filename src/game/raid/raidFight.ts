@@ -22,6 +22,7 @@ import type { BattleScene } from '../battleScene';
 import { DEPTH } from '../fx';
 import type { Monster } from '../monster2d';
 import { FLOOR_Y } from '../world';
+import { column, impactBurst, PAL, pop, shards, shockwave, tint, twinkles, type Palette3 } from '../vfx';
 
 /**
  * 마왕 레이드 진행자: 봉인 단계, 페이즈마다 바뀌는 약점 무기, 봉인 해제 기믹(봉인의 결정), 심판, 제한 시간.
@@ -43,6 +44,17 @@ export const WEAPON_COLOR: Record<WeaponType, number> = {
 
 const CRIMSON = 0xd8203a;
 const GOLD = 0xffd060;
+const PAL_BLOOD: Palette3 = [0x8a0a1a, 0xff3a4a, 0xffd8d0];
+
+/** 무기 색 한 가지로 진함 · 무기 색 · 거의 하양의 팔레트 */
+function palOf(c: number): Palette3 {
+  const mixw = (t: number): number => {
+    const ch = (s: number): number => Math.round(((c >> s) & 255) * (1 - t) + 255 * t);
+    return (ch(16) << 16) | (ch(8) << 8) | ch(0);
+  };
+  const dark = (((c >> 16) & 255) * 0.55) << 16 | (((c >> 8) & 255) * 0.55) << 8 | ((c & 255) * 0.55);
+  return [dark, c, mixw(0.8)];
+}
 /** 떠오르는 데 걸리는 시간 */
 const RISE_TIME = 0.8;
 /** 해제 기믹 동안 마왕이 떠 있는 높이 (몸 가운데 y) */
@@ -143,13 +155,21 @@ export class RaidFight {
     c.left--;
     m.onHit(b.player.x, 0, true);
     b.fx.spark(m.x + (Math.random() - 0.5) * 14, m.y + (Math.random() - 0.5) * 24, WEAPON_COLOR[c.type], 1.5, Math.random() < 0.5 ? 0 : Math.PI / 4);
-    b.fx.burst(m.x, m.y, WEAPON_COLOR[c.type], 6, 110, 300);
+    b.fx.burst(m.x, m.y, WEAPON_COLOR[c.type], 3, 110, 300);
+    b.fx.sparks(m.x, m.y, WEAPON_COLOR[c.type], 5, Math.atan2(m.y - b.player.y, m.x - b.player.x), 1.0, 200, 280);
+    // 금이 간다: 남은 칸이 줄수록 크게 번쩍인다.
+    b.fx.pop(m.x, m.y, WEAPON_COLOR[c.type], 0.8 + (1 - c.left / CRYSTAL_HITS) * 1.2);
     sfx.play('block', 0.6);
     if (c.left > 0) return;
-    // 깨졌다
+    // 깨졌다: 조각이 사방으로 튀고 무기 색 빛이 터진다.
+    const pal = palOf(WEAPON_COLOR[c.type]);
     b.fx.boom(m.x, m.y, 30, 'arcane');
-    b.fx.burst(m.x, m.y, 0xff8a94, 18, 200, 500);
+    b.fx.burst(m.x, m.y, 0xff8a94, 8, 200, 500);
     b.fx.ring(m.x, m.y, 40, WEAPON_COLOR[c.type], 360);
+    impactBurst(b, m.x, m.y, 50, pal, FLOOR_Y);
+    shards(b, m.x, m.y, pal, 24, 300, 560);
+    column(b, m.x, FLOOR_Y, 16, 260, pal, 520);
+    for (let i = 0; i < 5; i++) b.fx.cut(m.x, m.y, (i / 5) * Math.PI + Math.random() * 0.4, 70 + Math.random() * 40, pal[2]);
     b.fx.text(m.x, m.body.top - 14, '파괴!', 'crit');
     sfx.play('boom', 0.6);
     m.kill();
@@ -253,7 +273,9 @@ export class RaidFight {
     m.vuln = 0;
     b.legionGroggy = 0;
     b.fx.flashScreen(CRIMSON, 0.3, 300);
-    b.fx.burst(m.x, m.y, CRIMSON, 24, 180, 500);
+    b.fx.burst(m.x, m.y, CRIMSON, 10, 180, 500);
+    shockwave(b, m.x, m.y, 200, PAL_BLOOD, 560, 1, 7);
+    tint(b, CRIMSON, 0.18, 420);
     b.announce('마왕이 봉인을 두른다!', 1.4);
     sfx.play('magic', 0.9);
   }
@@ -281,7 +303,12 @@ export class RaidFight {
         .setDepth(DEPTH.text);
       this.crystals.push({ m: cm, type, left: CRYSTAL_HITS, label, ring });
       b.fx.pillar(x, FLOOR_Y, color, 160, 500);
-      b.fx.burst(x, y, color, 12, 140, 400);
+      b.fx.burst(x, y, color, 6, 140, 400);
+      const pal = palOf(color);
+      column(b, x, FLOOR_Y, 18, 220, pal, 560);
+      shockwave(b, x, FLOOR_Y, 70, pal, 420, 0.28, 5);
+      pop(b, x, y, pal[2], 2.4);
+      twinkles(b, x, y - 20, 30, pal[2], 4, 400);
     }
     b.fx.ring(this.boss!.x, this.boss!.y, 90, CRIMSON, 400);
     b.announce(`봉인의 결정을 ${CRYSTAL_TIME}초 안에 깨라! 결정마다 맞는 무기로`, 2.2);
@@ -320,6 +347,15 @@ export class RaidFight {
     b.fx.pillar(p.x, p.feet, GOLD, 200, 700);
     b.fx.embers(p.x, p.feet, GOLD, 24, 20, 70, 900);
     for (let i = 0; i < 3; i++) b.time.delayedCall(i * 70, () => b.fx.ring(m.x, m.y, 60 + i * 40, i === 1 ? GOLD : CRIMSON, 380));
+    // 봉인이 풀린다: 마왕에게서 핏빛이 터지고, 플레이어에게 금빛이 돌아온다.
+    impactBurst(b, m.x, m.y - 10, 90, PAL_BLOOD, FLOOR_Y);
+    shards(b, m.x, m.y - 10, PAL_BLOOD, 36, 360, 700);
+    b.fx.sparks(m.x, m.y - 10, 0xff8a7a, 20, 0, Math.PI, 380, 600, 420);
+    for (let i = 0; i < 8; i++) b.fx.cut(m.x, m.y - 10, (i / 8) * Math.PI + Math.random() * 0.3, 140 + Math.random() * 60, i % 2 ? GOLD : CRIMSON);
+    column(b, p.x, p.feet, 26, 320, PAL.gold, 800);
+    shockwave(b, p.x, p.feet, 120, PAL.gold, 520, 0.3, 6);
+    twinkles(b, p.x, p.y - 30, 60, 0xfff6c0, 10, 700);
+    tint(b, GOLD, 0.2, 420);
     sfx.play('boom', 0.9);
   }
 
@@ -346,9 +382,15 @@ export class RaidFight {
       const x = x0 + (i + 0.5) * (W / 2 / 7);
       b.time.delayedCall(i * 35, () => {
         b.fx.pillar(x, FLOOR_Y, CRIMSON, 360, 800);
-        b.fx.burst(x, FLOOR_Y - 8, 0xff8a94, 8, 160, 500);
+        b.fx.burst(x, FLOOR_Y - 8, 0xff8a94, 4, 160, 500);
+        column(b, x, FLOOR_Y, 34, 380, PAL_BLOOD, 820);
+        shockwave(b, x, FLOOR_Y, 80, PAL_BLOOD, 480, 0.28, 6);
+        b.fx.sparks(x, FLOOR_Y - 8, 0xff8a7a, 8, -Math.PI / 2, 0.6, 400, 620, 200);
+        b.fx.lightning(x + (Math.random() - 0.5) * 30, 0, x, FLOOR_Y - 4, CRIMSON, 2, 260);
       });
     }
+    tint(b, CRIMSON, 0.12, 500);
+    twinkles(b, x0 + W / 4, FLOOR_Y - 150, W / 4, 0xffd8d0, 14, 700);
     b.fx.flashScreen(CRIMSON, 0.6, 500);
     b.fx.shake(2, 400);
     sfx.play('boom', 1);
