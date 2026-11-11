@@ -5,6 +5,7 @@ import type { Behavior, Monster } from '../monster2d';
 import { FLOOR_Y } from '../world';
 import { DARKLORD_GROGGY, DARKLORD_IDLE, DARKLORD_RIG, makeDarkLordArt } from './darklordArt';
 import { lerpPose, Rig, type Pose } from './rig';
+import { aura, column, crescent as arcSlash, flare, impactBurst, pop, rays, shards, shockwave, tint, twinkles, type Palette3 } from '../vfx';
 
 /**
  * 암흑의 군주 (마법 군단장). 초승달 지팡이로 다크문 마법을 쓴다.
@@ -19,6 +20,8 @@ const DARK = 0x6a1aa8;
 const PURPLE = 0xb04aff;
 const MOON = 0xe0d0ff;
 const ORB_KEY = 'darklord-orb';
+/** 다크문 마법: 검보라 → 보라 → 달빛 */
+const PAL_LORD: Palette3 = [DARK, PURPLE, MOON];
 
 /** 보호막을 두르는 체력 비율 */
 const SHIELD_AT = [0.75, 0.5, 0.25];
@@ -51,6 +54,8 @@ interface LordState {
   glow: Phaser.GameObjects.Image;
   shield: Phaser.GameObjects.Arc;
   shieldRing: Phaser.GameObjects.Arc;
+  /** 보호막 겉을 도는 끊어진 고리와 룬 (매 프레임 다시 그린다) */
+  shieldArt: Phaser.GameObjects.Graphics;
   /** 다음 보호막 (SHIELD_AT 인덱스) */
   next: number;
   /** 순간이동·중앙 이동의 출발점과 도착점 */
@@ -127,12 +132,17 @@ export function moonOrb(m: Monster, x: number, y: number, tx: number, ty: number
   const orb = b.add.image(x, y, ORB_KEY).setScale(0).setDepth(DEPTH.projectile);
   const halo = b.add.circle(x, y, 12, PURPLE, 0.35).setDepth(DEPTH.projectile - 1).setBlendMode(Phaser.BlendModes.ADD).setScale(0);
   b.tweens.add({ targets: [orb, halo], scale: { from: 0, to: 2 }, duration: 260 });
+  pop(b, x, y, MOON, 1.4);
+  b.fx.twinkle(x, y, MOON, 120);
   let hit = false;
+  let launched = false;
   const boom = (): void => {
     if (hit) return;
     hit = true;
-    b.fx.boom(orb.x, orb.y, 26, 'arcane');
-    b.fx.burst(orb.x, orb.y, PURPLE, 10, 120, 360);
+    b.fx.boom(orb.x, orb.y, 26, 'dark');
+    b.fx.burst(orb.x, orb.y, PURPLE, 4, 120, 360);
+    impactBurst(b, orb.x, orb.y, 30, PAL_LORD);
+    b.fx.sparks(orb.x, orb.y, MOON, 8, 0, Math.PI, 220, 360, 200);
     sfx.play('magic', 0.5);
     b.areaHit(orb.x - 28, orb.y - 28, 56, 56, m.damage * 0.7, m, false);
     orb.destroy();
@@ -147,7 +157,17 @@ export function moonOrb(m: Monster, x: number, y: number, tx: number, ty: number
     ease: 'Quad.easeIn',
     onUpdate: () => {
       if (hit) return;
+      if (!launched) {
+        launched = true;
+        b.fx.pop(orb.x, orb.y, PURPLE, 1.6, 0.5, Math.atan2(ty - orb.y, tx - orb.x));
+      }
       if (Math.random() < 0.5) b.fx.burst(orb.x, orb.y, DARK, 1, 20, 280);
+      // 지나간 자리에 달의 잔상과 별빛이 남는다.
+      if (Math.random() < 0.5) {
+        const ghost = b.add.image(orb.x, orb.y, ORB_KEY).setScale(1.7).setTint(PURPLE).setAlpha(0.5).setDepth(DEPTH.projectile - 1).setBlendMode(Phaser.BlendModes.ADD);
+        b.tweens.add({ targets: ghost, alpha: 0, scale: 0.5, duration: 220, onComplete: () => ghost.destroy() });
+      }
+      if (Math.random() < 0.2) b.fx.twinkle(orb.x + (Math.random() - 0.5) * 14, orb.y + (Math.random() - 0.5) * 14, MOON);
       const pb = b.player.body;
       if (orb.x > pb.x - 8 && orb.x < pb.right + 8 && orb.y > pb.y - 8 && orb.y < pb.bottom + 8) boom();
     },
@@ -166,14 +186,37 @@ export function crescent(m: Monster, x: number, dir: 1 | -1): void {
   const img = b.add.image(x, FLOOR_Y - 22, ORB_KEY).setVisible(false);
   // 나아가는 쪽으로 볼록한 초승달 호 세 겹 (검보라 바깥 → 보라 → 밝은 안쪽)
   const arc = b.add.graphics().setDepth(DEPTH.projectile).setBlendMode(Phaser.BlendModes.ADD);
-  const mid = dir === 1 ? 0 : Math.PI;
+  // 뒤로 끌리는 결 [세로 위치(-1~1), 길이, 일렁임 위상]
+  const wisps = Array.from({ length: 7 }, () => ({ v: (Math.random() - 0.5) * 1.7, len: 14 + Math.random() * 26, ph: Math.random() * 6.28 }));
   const draw = (): void => {
     arc.clear();
+    const now = b.time.now / 1000;
     const cx = img.x - dir * 14;
     const cy = FLOOR_Y - 22;
-    arc.lineStyle(10, DARK, 0.7).beginPath().arc(cx, cy, 26, mid - 1.15, mid + 1.15, false).strokePath();
-    arc.lineStyle(5, PURPLE, 0.95).beginPath().arc(cx, cy, 26, mid - 1.0, mid + 1.0, false).strokePath();
-    arc.lineStyle(2, MOON, 1).beginPath().arc(cx, cy, 26, mid - 0.8, mid + 0.8, false).strokePath();
+    // 가운데가 두껍고 양 끝이 뾰족한 초승달. 아래쪽이 땅을 긁으며 조금 더 길게 끌린다.
+    const blade = (w: number, color: number, alpha: number, span: number, rOff: number): void => {
+      const outer: Phaser.Math.Vector2[] = [];
+      const inner: Phaser.Math.Vector2[] = [];
+      for (let i = 0; i <= 18; i++) {
+        const s0 = i / 18;
+        const ang = -span + (span * 2 + 0.25) * s0;
+        const r = 26 + rOff + Math.sin(now * 14 + s0 * 5) * 0.8;
+        const t = (w * Math.pow(Math.sin(Math.PI * s0), 0.8)) / 2;
+        outer.push(new Phaser.Math.Vector2(cx + dir * Math.cos(ang) * (r + t), cy + Math.sin(ang) * (r + t)));
+        inner.push(new Phaser.Math.Vector2(cx + dir * Math.cos(ang) * (r - t * 1.6), cy + Math.sin(ang) * (r - t * 1.6)));
+      }
+      arc.fillStyle(color, alpha).fillPoints([...outer, ...inner.reverse()], true);
+    };
+    blade(13, DARK, 0.7, 1.2, -1);
+    blade(7, PURPLE, 0.95, 1.05, 0);
+    blade(2.5, MOON, 1, 0.85, 2);
+    for (const w of wisps) {
+      const ang = w.v * 1.0;
+      const sx = cx + dir * Math.cos(ang) * 22;
+      const sy = cy + Math.sin(ang) * 24;
+      const len = w.len * (0.7 + 0.3 * Math.sin(now * 18 + w.ph));
+      arc.lineStyle(1.5, PURPLE, 0.6).lineBetween(sx, sy, sx - dir * len, sy + Math.sin(now * 9 + w.ph) * 2);
+    }
   };
   let hit = false;
   b.tweens.add({
@@ -182,13 +225,17 @@ export function crescent(m: Monster, x: number, dir: 1 | -1): void {
     duration: (Math.abs((dir === 1 ? W + 60 : -60) - x) / 340) * 1000,
     onUpdate: () => {
       draw();
-      if (Math.random() < 0.6) b.fx.burst(img.x, FLOOR_Y - 4, PURPLE, 1, 40, 260);
+      if (Math.random() < 0.4) b.fx.burst(img.x, FLOOR_Y - 4, PURPLE, 1, 40, 260);
+      if (Math.random() < 0.5) b.fx.sparks(img.x, FLOOR_Y - 3, MOON, 1, dir === 1 ? Math.PI + 0.6 : -0.6, 0.4, 170, 300, 320);
+      if (Math.random() < 0.12) b.fx.twinkle(img.x - dir * (10 + Math.random() * 20), FLOOR_Y - 10 - Math.random() * 34, MOON);
       if (hit) return;
       const pb = b.player.body;
       if (Math.abs(img.x - b.player.x) < 22 && pb.bottom > FLOOR_Y - 44) {
         hit = true;
         b.damagePlayer(m.damage * 0.9, { x: img.x - dir * 40, monster: m, melee: false });
-        b.fx.burst(b.player.x, b.player.y, PURPLE, 10, 120, 300);
+        b.fx.burst(b.player.x, b.player.y, PURPLE, 4, 120, 300);
+        b.fx.cut(b.player.x, b.player.y, -0.9 * dir, 70, MOON);
+        b.fx.sparks(b.player.x, b.player.y, MOON, 8, dir === 1 ? 0 : Math.PI, 0.9, 240, 320);
       }
     },
     onComplete: () => {
@@ -207,6 +254,11 @@ export function eclipseColumn(m: Monster, x: number, delay: number): void {
     b.fx.pillar(x, FLOOR_Y, MOON, 200, 380);
     b.fx.burst(x, FLOOR_Y - 6, PURPLE, 12, 140, 420);
     b.fx.ring(x, FLOOR_Y, 40, DARK, 300);
+    column(b, x, FLOOR_Y, 26, 300, PAL_LORD, 620);
+    shockwave(b, x, FLOOR_Y, 70, PAL_LORD, 400, 0.28, 5);
+    pop(b, x, FLOOR_Y - 14, MOON, 2.2);
+    b.fx.sparks(x, FLOOR_Y - 6, MOON, 8, -Math.PI / 2, 0.5, 360, 520, 200);
+    twinkles(b, x, FLOOR_Y - 120, 40, MOON, 4, 420);
     b.fx.shake(0.4, 80);
     b.areaHit(x - 30, FLOOR_Y - 260, 60, 260, m.damage * 0.85, m, false);
   }, PURPLE);
@@ -249,7 +301,10 @@ function startShield(m: Monster, st: LordState): void {
   // 순간이동 도중이었으면 다시 보이게 한다.
   m.sprite.setAlpha(1);
   b.fx.smoke(m.x, m.y, 1.4, 0x2a1a3a);
-  b.fx.burst(m.x, m.y, PURPLE, 18, 160, 500);
+  b.fx.burst(m.x, m.y, PURPLE, 8, 160, 500);
+  shards(b, m.x, m.y, PAL_LORD, 20, 220, 520);
+  shockwave(b, m.x, FLOOR_Y, 110, PAL_LORD, 460, 0.28, 6);
+  pop(b, m.x, m.y, MOON, 3);
   b.announce('암흑의 군주가 보호막을 두른다!', 1.4);
   sfx.play('magic', 0.8);
 }
@@ -260,6 +315,7 @@ function breakShield(m: Monster, st: LordState): void {
   st.mode = 'fight';
   st.shield.setVisible(false);
   st.shieldRing.setVisible(false);
+  st.shieldArt.clear();
   b.legionNote = '';
   m.hitShield = 0;
   const time = GROGGY * (b.legion?.mods.includes('gimmick') ? 1.5 : 1);
@@ -277,8 +333,15 @@ function breakShield(m: Monster, st: LordState): void {
   b.fx.flashScreen(MOON, 0.45, 300);
   b.fx.shake(1.4, 260);
   for (let i = 0; i < 3; i++) b.time.delayedCall(i * 70, () => b.fx.ring(m.x, m.y - 6, 60 + i * 40, i === 1 ? MOON : PURPLE, 380));
-  b.fx.burst(m.x, m.y - 6, MOON, 30, 260, 600);
+  b.fx.burst(m.x, m.y - 6, MOON, 12, 260, 600);
   b.fx.burst(m.x, FLOOR_Y - 4, 0x6a5a7a, 14, 120, 500);
+  // 보호막이 산산이 부서진다: 깨진 조각이 사방으로 날고 달빛이 터진다.
+  impactBurst(b, m.x, m.y - 6, 90, PAL_LORD);
+  shards(b, m.x, m.y - 6, PAL_LORD, 40, 360, 700);
+  b.fx.sparks(m.x, m.y - 6, MOON, 24, 0, Math.PI, 380, 620, 420);
+  for (let i = 0; i < 8; i++) b.fx.cut(m.x, m.y - 6, (i / 8) * Math.PI + Math.random() * 0.3, 120 + Math.random() * 60, i % 2 ? MOON : PURPLE);
+  twinkles(b, m.x, m.y - 6, 100, 0xffffff, 12, 600);
+  tint(b, MOON, 0.2, 420);
 }
 
 /** 시간 안에 못 깼다: 한쪽 절반에 심판을 예고한다. */
@@ -309,9 +372,15 @@ function judge(m: Monster, st: LordState): void {
     const x = x0 + (i + 0.5) * (W / 2 / 7);
     b.time.delayedCall(i * 35, () => {
       b.fx.pillar(x, FLOOR_Y, PURPLE, 360, 800);
-      b.fx.burst(x, FLOOR_Y - 8, MOON, 8, 160, 500);
+      b.fx.burst(x, FLOOR_Y - 8, MOON, 4, 160, 500);
+      column(b, x, FLOOR_Y, 34, 380, PAL_LORD, 820);
+      shockwave(b, x, FLOOR_Y, 80, PAL_LORD, 480, 0.28, 6);
+      b.fx.sparks(x, FLOOR_Y - 8, MOON, 8, -Math.PI / 2, 0.6, 400, 620, 200);
+      b.fx.lightning(x + (Math.random() - 0.5) * 30, 0, x, FLOOR_Y - 4, PURPLE, 2, 260);
     });
   }
+  tint(b, PURPLE, 0.3, 600);
+  twinkles(b, x0 + W / 4, FLOOR_Y - 150, W / 4, MOON, 14, 700);
   b.fx.flashScreen(DARK, 0.6, 500);
   b.fx.shake(2, 400);
   sfx.play('boom', 1);
@@ -321,11 +390,47 @@ function judge(m: Monster, st: LordState): void {
   st.mode = 'fight';
   st.shield.setVisible(false);
   st.shieldRing.setVisible(false);
+  st.shieldArt.clear();
   b.legionNote = '';
   m.hitShield = 0;
   m.body.reset(m.x, FLOOR_Y - m.body.height / 2);
   m.body.setVelocity(0, 0);
   m.attackTimer = 1.2;
+}
+
+/**
+ * 보호막 겉의 무늬: 서로 반대로 도는 끊어진 고리 두 겹과 그 사이의 룬 눈금.
+ * 남은 횟수가 줄수록 고리 조각이 빠져 금이 간 듯 보이고, 5회 이하면 달빛으로 변한다.
+ */
+function drawShield(m: Monster, st: LordState): void {
+  const g = st.shieldArt;
+  g.clear();
+  if (!st.shield.visible) return;
+  const left = st.mode === 'shield' ? Math.max(0, m.hitShield) / SHIELD_HITS : 1;
+  const color = st.mode === 'shield' && m.hitShield <= 5 ? MOON : PURPLE;
+  const cx = m.x;
+  const cy = m.y - 6;
+  const t = st.t;
+  const ring = (r: number, n: number, spin: number, width: number, fill: number, alpha: number): void => {
+    for (let i = 0; i < n; i++) {
+      // 깎인 만큼 조각이 빠진다 (빠지는 순서는 고정).
+      if (((i * 7) % n) / n >= left && n > 6) continue;
+      const a0 = spin + (i / n) * Math.PI * 2;
+      const len = ((Math.PI * 2) / n) * fill;
+      const wob = r + Math.sin(t * 5 + i * 1.7) * 1.5;
+      g.lineStyle(width, color, alpha).beginPath().arc(cx, cy, wob, a0, a0 + len, false).strokePath();
+    }
+  };
+  ring(68, 12, t * 1.4, 3, 0.7, 0.95);
+  ring(74, 20, -t * 0.9, 1.5, 0.45, 0.7);
+  ring(58, 5, -t * 2.2, 2, 0.5, 0.5);
+  // 룬 눈금
+  for (let i = 0; i < 12; i++) {
+    const a = t * 1.4 + (i / 12) * Math.PI * 2 + 0.2;
+    const r0 = 70;
+    const r1 = i % 3 === 0 ? 80 : 76;
+    g.lineStyle(i % 3 === 0 ? 2 : 1, MOON, 0.8).lineBetween(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0, cx + Math.cos(a) * r1, cy + Math.sin(a) * r1);
+  }
 }
 
 /** 중앙에 떠서 보호막을 두르고 있는 동안 (rise · shield · judge) */
@@ -351,6 +456,11 @@ function updateShield(m: Monster, st: LordState, dt: number): void {
       b.tweens.add({ targets: [st.shield, st.shieldRing], scale: 1, duration: 300, ease: 'Back.easeOut' });
       b.fx.ring(m.x, m.y - 6, 90, PURPLE, 400);
       b.fx.flashScreen(PURPLE, 0.25, 220);
+      flare(b, m.x, m.y - 6, 50, PAL_LORD, 360);
+      rays(b, m.x, m.y - 6, 14, 150, PAL_LORD, 480);
+      shockwave(b, m.x, m.y - 6, 150, PAL_LORD, 520, 1, 6);
+      aura(b, m.x, FLOOR_Y, PAL_LORD, 80);
+      twinkles(b, m.x, m.y - 6, 80, MOON, 8, 500);
       b.announce(`보호막을 ${SHIELD_HITS}번 때려 깨라!`, 1.6);
       sfx.play('magic', 1);
     }
@@ -362,6 +472,8 @@ function updateShield(m: Monster, st: LordState, dt: number): void {
   m.face(b.player.x - m.x || 1);
   pose(st, { ...FLOAT_POSE, aFy: -4 - Math.sin(st.t * 4) * 1.5, aBy: -3 - Math.sin(st.t * 4 + 1) * 1.5 }, dt, 8);
   st.shieldRing.rotation += dt * 1.5;
+  drawShield(m, st);
+  if (Math.random() < 0.08) b.fx.twinkle(m.x + (Math.random() - 0.5) * 130, m.y - 6 + (Math.random() - 0.5) * 130, MOON);
   if (Math.random() < 0.5) b.fx.burst(m.x + (Math.random() - 0.5) * 120, m.y + (Math.random() - 0.5) * 120, PURPLE, 1, 20, 400);
 
   if (st.mode === 'shield') {
@@ -369,7 +481,7 @@ function updateShield(m: Monster, st: LordState, dt: number): void {
     const left = Math.max(0, m.hitShield);
     // 깎인 만큼 보호막이 옅어지고 금이 간다.
     st.shield.setAlpha(0.18 + 0.22 * (left / SHIELD_HITS));
-    st.shieldRing.setStrokeStyle(3, left <= 5 ? MOON : PURPLE, 0.9);
+    st.shieldRing.setStrokeStyle(1, left <= 5 ? MOON : PURPLE, 0.5);
     b.legionNote = `보호막 ${left}/${SHIELD_HITS} · ${Math.max(0, time).toFixed(1)}초`;
     if (m.hitShield === 0) {
       breakShield(m, st);
@@ -396,7 +508,8 @@ export const darkLord: Behavior = (m, dt) => {
     m.sprite.setVisible(false);
     const glow = b.add.image(m.x, m.y, ORB_KEY).setScale(1.6).setDepth(DEPTH.monster + 2).setTint(PURPLE).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0);
     const shield = b.add.circle(m.x, m.y, 62, PURPLE, 0.35).setDepth(DEPTH.monster + 3).setBlendMode(Phaser.BlendModes.ADD).setVisible(false);
-    const shieldRing = b.add.circle(m.x, m.y, 66).setStrokeStyle(3, PURPLE, 0.9).setDepth(DEPTH.monster + 3).setVisible(false);
+    const shieldRing = b.add.circle(m.x, m.y, 66).setStrokeStyle(1, PURPLE, 0.5).setDepth(DEPTH.monster + 3).setVisible(false);
+    const shieldArt = b.add.graphics().setDepth(DEPTH.monster + 4).setBlendMode(Phaser.BlendModes.ADD);
     const s: LordState = {
       mode: 'fight',
       pattern: null,
@@ -410,6 +523,7 @@ export const darkLord: Behavior = (m, dt) => {
       glow,
       shield,
       shieldRing,
+      shieldArt,
       next: 0,
       from: 0,
       to: 0,
@@ -435,6 +549,7 @@ export const darkLord: Behavior = (m, dt) => {
         glow.setAlpha(0);
         shield.setVisible(false);
         shieldRing.setVisible(false);
+        shieldArt.clear();
         b.legionNote = '';
       }
     };
@@ -445,6 +560,7 @@ export const darkLord: Behavior = (m, dt) => {
       glow.destroy();
       shield.destroy();
       shieldRing.destroy();
+      shieldArt.destroy();
     });
     m.attackTimer = 1.4;
     // 개발용: 콘솔에서 패턴을 바로 시켜 본다
@@ -513,6 +629,9 @@ export const darkLord: Behavior = (m, dt) => {
           moonOrb(m, ox, oy, p.x + (i - (n - 1) / 2) * 30, p.y - 6, 350 + i * 180 * pace);
         }
         b.fx.ring(h.x, h.y, 30, PURPLE, 300);
+        flare(b, h.x, h.y, 26, PAL_LORD, 300);
+        rays(b, h.x, h.y, 8, 60, PAL_LORD, 340);
+        twinkles(b, h.x, h.y - 26, 50, MOON, 5, 400);
         sfx.play('magic', 0.7);
       }
       if (t > 0.55 + 0.35 + n * 0.18 + 0.4) done = true;
@@ -525,11 +644,23 @@ export const darkLord: Behavior = (m, dt) => {
         m.face(p.x - m.x || 1);
         pose(st, CRESCENT_UP, dt, 7);
         if (Math.random() < 0.5) b.fx.burst(head(st).x, head(st).y, PURPLE, 1, 30, 260);
+        if (Math.random() < 0.4) {
+          // 지팡이 머리로 달빛이 모여든다.
+          const h = head(st);
+          const a = Math.random() * Math.PI * 2;
+          b.fx.sparks(h.x + Math.cos(a) * 24, h.y + Math.sin(a) * 24, MOON, 1, a + Math.PI, 0.1, 120, 200, 0);
+        }
       } else pose(st, CRESCENT_SWING, dt, 30);
       if (once(st, 0, 0.6)) {
         b.fx.bigSlash(m.x - m.facing * 20, m.y - 60, m.x + m.facing * 50, FLOOR_Y - 4, PURPLE, 10, 300);
+        arcSlash(b, m.x, m.y - 14, m.facing, 78, PAL_LORD, { from: -1.9, to: 1.2, ms: 320 });
+        b.fx.slash(m.x + m.facing * 20, m.y - 14, m.facing, 70, PURPLE, true, { style: 'moon', stretch: 1.3 });
+        b.fx.sparks(m.x + m.facing * 60, FLOOR_Y - 8, MOON, 10, m.facing === 1 ? -0.4 : Math.PI + 0.4, 0.8, 300, 380, 400);
         crescent(m, m.x + m.facing * 40, m.facing);
-        if (m.phase2) crescent(m, m.x - m.facing * 40, (-m.facing) as 1 | -1);
+        if (m.phase2) {
+          crescent(m, m.x - m.facing * 40, (-m.facing) as 1 | -1);
+          arcSlash(b, m.x, m.y - 14, (-m.facing) as 1 | -1, 78, PAL_LORD, { from: -1.9, to: 1.2, ms: 320 });
+        }
         b.fx.shake(0.6, 120);
         sfx.play('slash', 0.8);
       }
@@ -550,6 +681,10 @@ export const darkLord: Behavior = (m, dt) => {
         xs.forEach((x, i) => eclipseColumn(m, x, delay + i * 0.12));
         b.fx.dim(VOID, 0.25, (delay + 0.8) * 1000);
         b.fx.pillar(head(st).x, head(st).y + 10, PURPLE, 160, 500);
+        column(b, head(st).x, head(st).y + 10, 12, 300, PAL_LORD, 600);
+        flare(b, head(st).x, head(st).y, 30, PAL_LORD, 340);
+        shockwave(b, m.x, FLOOR_Y, 120, PAL_LORD, 520, 0.28, 5);
+        tint(b, DARK, 0.2, 500);
         sfx.play('magic', 0.9);
       }
       if (t > 1.4) done = true;
@@ -560,7 +695,11 @@ export const darkLord: Behavior = (m, dt) => {
       body.setVelocityX(0);
       if (once(st, 0, 0)) {
         b.fx.smoke(m.x, m.y, 1.4, 0x2a1a3a);
-        b.fx.burst(m.x, m.y, PURPLE, 14, 140, 400);
+        b.fx.burst(m.x, m.y, PURPLE, 6, 140, 400);
+        shards(b, m.x, m.y, PAL_LORD, 16, 200, 420);
+        pop(b, m.x, m.y, MOON, 2.6);
+        st.rig.ghost(PURPLE, 0.6, 320);
+        b.fx.cut(m.x, m.y, Math.PI / 2, 110, MOON);
         m.sprite.setAlpha(0);
         sfx.play('magic', 0.5);
       }
@@ -570,10 +709,15 @@ export const darkLord: Behavior = (m, dt) => {
         m.sprite.setAlpha(1);
         b.fx.smoke(st.to, m.y, 1.4, 0x2a1a3a);
         b.fx.ring(st.to, m.y, 40, PURPLE, 300);
+        flare(b, st.to, m.y, 28, PAL_LORD, 280);
+        b.fx.cut(st.to, m.y, Math.PI / 2, 110, MOON);
+        twinkles(b, st.to, m.y, 40, MOON, 4, 300);
         b.addTelegraph(st.to - 95, FLOOR_Y - 130, 190, 130, 0.65 * pace + b.legionWarnBonus() * 0.5, m, () => {
           b.fx.boom(m.x, m.y, 60, 'arcane');
           b.fx.ring(m.x, m.y, 95, PURPLE, 400);
-          b.fx.burst(m.x, m.y, MOON, 20, 220, 500);
+          b.fx.burst(m.x, m.y, MOON, 8, 220, 500);
+          impactBurst(b, m.x, m.y, 80, PAL_LORD, FLOOR_Y);
+          b.fx.sparks(m.x, m.y, MOON, 16, 0, Math.PI, 320, 480, 300);
           b.fx.shake(0.9, 160);
           sfx.play('boom', 0.7);
           b.areaHit(m.x - 95, FLOOR_Y - 130, 190, 130, m.damage * 1.1, m, false);
@@ -593,13 +737,29 @@ export const darkLord: Behavior = (m, dt) => {
         const delay = 1.4 * pace + b.legionWarnBonus();
         const moon = b.add.image(x, -60, ORB_KEY).setScale(7).setDepth(DEPTH.projectile);
         const halo = b.add.circle(x, -60, 64, PURPLE, 0.3).setDepth(DEPTH.projectile - 1).setBlendMode(Phaser.BlendModes.ADD);
-        b.tweens.add({ targets: [moon, halo], y: FLOOR_Y - 50, duration: delay * 1000, ease: 'Quad.easeIn' });
+        b.tweens.add({
+          targets: [moon, halo],
+          y: FLOOR_Y - 50,
+          duration: delay * 1000,
+          ease: 'Quad.easeIn',
+          onUpdate: () => {
+            // 떨어지는 달 뒤로 보랏빛 꼬리와 별빛이 남는다.
+            if (Math.random() < 0.6) b.fx.sparks(moon.x + (Math.random() - 0.5) * 90, moon.y - 30, Math.random() < 0.5 ? MOON : PURPLE, 1, -Math.PI / 2, 0.3, 200, 420, -100);
+            if (Math.random() < 0.2) b.fx.twinkle(moon.x + (Math.random() - 0.5) * 120, moon.y - 40 - Math.random() * 60, MOON);
+            if (Math.random() < 0.3) b.fx.streak(moon.x + (Math.random() - 0.5) * 100, moon.y - 50, Math.PI / 2, 50 + Math.random() * 50, PURPLE, 260, 2);
+          },
+        });
         b.addTelegraph(Phaser.Math.Clamp(x - 110, 0, W - 220), 0, 220, FLOOR_Y, delay, m, () => {
           b.fx.boom(x, FLOOR_Y - 30, 90, 'arcane');
           b.fx.flashScreen(MOON, 0.4, 260);
           b.fx.shake(1.6, 300);
           b.fx.burst(x, FLOOR_Y - 10, 0x6a5a7a, 24, 220, 600);
           for (const d of [-1, 1]) b.fx.ring(x + d * 40, FLOOR_Y, 120, PURPLE, 420);
+          impactBurst(b, x, FLOOR_Y - 30, 120, PAL_LORD, FLOOR_Y);
+          column(b, x, FLOOR_Y, 50, 340, PAL_LORD, 700);
+          shards(b, x, FLOOR_Y - 20, PAL_LORD, 36, 380, 700);
+          b.fx.sparks(x, FLOOR_Y - 10, MOON, 24, -Math.PI / 2, 1.3, 440, 700, 620);
+          tint(b, PURPLE, 0.25, 500);
           sfx.play('boom', 1);
           b.areaHit(Phaser.Math.Clamp(x - 110, 0, W - 220), FLOOR_Y - 200, 220, 200, m.damage * 2, m, false);
         }, PURPLE);
