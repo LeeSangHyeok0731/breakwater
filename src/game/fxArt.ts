@@ -108,7 +108,10 @@ function drawSlash(px: Px, f: number, spanDeg: number, core: boolean, style: Sla
   const T = (style === 'moon' || style === 'steel' ? 11 : style === 'blood' ? 16 : 14) * grow;
 
   /** 바깥 날의 굴곡: 불꽃은 혀처럼 솟고, 번개는 톱니, 피는 울퉁불퉁하다. */
-  const edge = (u: number): number => {
+  const edge = (u: number): number => reach(u) + wobble(u);
+  /** 정확한 원호가 되지 않게: 휘두르기 시작은 몸 가까이, 칼끝으로 갈수록 바깥으로 뻗는다. */
+  const reach = (u: number): number => (u - 0.62) * 11;
+  const wobble = (u: number): number => {
     if (style === 'flame') return 4.5 * Math.pow(Math.max(0, Math.sin(u * 26 - f * 1.4)), 2) * (0.5 + hash(Math.round(u * 13), f, 5));
     if (style === 'thunder') {
       const z = u * 11 + f * 0.37;
@@ -135,7 +138,7 @@ function drawSlash(px: Px, f: number, spanDeg: number, core: boolean, style: Sla
       const dx = x - cx;
       const dy = y - cy;
       const r = Math.hypot(dx, dy);
-      if (r < R - 20 || r > R + 12) continue;
+      if (r < R - 30 || r > R + 18) continue;
       const u = (Math.atan2(dy, dx) + A) / (2 * A);
       if (!inSeg(u)) continue;
       const v = (u - tail) / (head - tail);

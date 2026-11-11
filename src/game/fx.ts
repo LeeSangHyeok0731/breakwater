@@ -30,6 +30,8 @@ export interface SlashOpts {
   rot?: number;
   /** 세로 배율 (1보다 작으면 납작) */
   squash?: number;
+  /** 앞쪽으로 늘이는 가로 배율 (1보다 크면 길게 뻗는다) */
+  stretch?: number;
   /** 재생 속도 배율 */
   speed?: number;
   /** 무기 기운에 따른 생김새 (불꽃 혀·번개 톱니·핏방울 등) */
@@ -155,7 +157,7 @@ export class Fx {
         .setOrigin(facing === 1 ? SLASH_ORIGIN.x : 1 - SLASH_ORIGIN.x, SLASH_ORIGIN.y)
         .setFlipX(facing === -1)
         .setFlipY(!!o.up)
-        .setScale(scale, scale * (o.squash ?? 1))
+        .setScale(scale * (o.stretch ?? 1), scale * (o.squash ?? 1))
         .setRotation((o.rot ?? 0) * facing);
       s.setTint(tint);
       s.play(k);

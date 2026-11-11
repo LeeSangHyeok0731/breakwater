@@ -195,13 +195,13 @@ function performHit(b: BattleScene, kind: ActionKind, index: number): void {
       comboSlash(b, p.combo || 1, index, base * mul, color);
       break;
     case 'airSlash':
-      b.fx.slash(p.x + f * 14, p.y - 4, f, 44, color, true, { style: slashStyle(b) });
+      b.fx.slash(p.x + f * 14, p.y - 4, f, swordReach(p, 40), color, true, { style: slashStyle(b), stretch: LONG[0], squash: LONG[1] });
       b.fx.sparks(p.x + f * 40, p.y + 14, color, 4, Math.PI / 2 - f * 0.6, 0.5, 170, 260);
       swingFx(b, p.x + f * 36, p.y - 4);
       box(b, -8, swordReach(p, 76), 76, 6, base * 1.0 * mul, { basic: true, knock: 70 });
       break;
     case 'crouchSlash':
-      b.fx.slash(p.x + f * 18, p.y + 10, f, 36, color, false, { style: slashStyle(b), squash: 0.7 });
+      b.fx.slash(p.x + f * 18, p.y + 10, f, swordReach(p, 34), color, false, { style: slashStyle(b), stretch: LONG[0], squash: 0.6 });
       b.fx.sparks(p.x + f * 44, p.feet - 2, color, 4, f === 1 ? -0.5 : Math.PI + 0.5, 0.5, 150, 260);
       b.fx.smoke(p.x + f * 30, p.feet - 4, 1, 0x9a8a70, -6);
       swingFx(b, p.x + f * 36, p.y + 10);
@@ -501,11 +501,14 @@ function fireArrow(b: BattleScene, c: number): void {
 // 평타를 이어 치면 1 → 5단으로 강해지고, 5단 다음은 다시 1단이다.
 // 검·도는 더 많이·넓게 베고, 활은 한 번에 여러 발, 총은 연발·산탄, 스태프는 여러 번 쏜다.
 
-/** 검사 평타의 사거리 배율 [초안] */
-const SWORD_REACH = 1.25;
+/** 평타의 사거리 배율 [초안]: 검사는 더 멀리 닿는다. */
+const SWORD_REACH = 1.5;
+const DAO_REACH = 1.2;
+/** 평타 잔상을 앞으로 길게 빼는 비율 [가로, 세로]. 반달이 아니라 길쭉한 궤적이 된다. */
+const LONG: [number, number] = [1.35, 0.8];
 
 function swordReach(p: BattleScene['player'], v: number): number {
-  return p.weapon.def.type === 'sword' ? v * SWORD_REACH : v;
+  return v * (p.weapon.def.type === 'sword' ? SWORD_REACH : DAO_REACH);
 }
 
 /** 검·도 평타 단계별 [동작 시간, 타격 시점들] */
@@ -536,26 +539,28 @@ function comboSlash(b: BattleScene, n: number, index: number, dmg: number, color
   // 검사는 더 멀리 닿는다. 그림도 판정에 맞춰 함께 커진다.
   const r = (v: number): number => swordReach(p, v);
   const style = slashStyle(b);
+  const stretch = LONG[0];
+  const squash = LONG[1];
   /** 앞쪽 기준 각도 (라디안, 아래가 +)를 실제 방향으로 */
   const dir = (a: number): number => (f === 1 ? a : Math.PI - a);
   switch (n) {
     case 1:
       // 내려 베기: 칼끝이 지나간 아래쪽으로 불티가 쏟아진다.
-      b.fx.slash(p.x + f * r(18), p.y - 2, f, r(42), color, true, { style });
+      b.fx.slash(p.x + f * r(18), p.y - 2, f, r(42), color, true, { style, stretch, squash });
       b.fx.sparks(p.x + f * r(46), p.y + 12, color, 4, dir(0.9), 0.5, 170, 260);
       swingFx(b, p.x + f * r(40), p.y - 2);
       box(b, 0, r(72), 48, 2, dmg, { basic: true, knock: 90 });
       break;
     case 2:
       // 역베기: 아래에서 위로, 조금 더 넓게. 불티는 위로 솟는다.
-      b.fx.slash(p.x + f * r(18), p.y - 2, f, r(46), color, false, { up: true, style, rot: -0.15 });
+      b.fx.slash(p.x + f * r(18), p.y - 2, f, r(46), color, false, { up: true, style, stretch, squash, rot: -0.15 });
       b.fx.sparks(p.x + f * r(46), p.y - 16, color, 5, dir(-1.0), 0.5, 190, 300);
       swingFx(b, p.x + f * r(44), p.y - 4);
       box(b, 0, r(80), 54, 4, dmg, { basic: true, knock: 90 });
       break;
     case 3:
       // 두 번 연달아: 엇갈린 X자
-      b.fx.slash(p.x + f * r(18), p.y - 2, f, r(44), color, index === 0, { up: index === 1, speed: 1.3, style, rot: index === 0 ? 0.3 : -0.3 });
+      b.fx.slash(p.x + f * r(18), p.y - 2, f, r(44), color, index === 0, { up: index === 1, speed: 1.3, style, stretch, squash, rot: index === 0 ? 0.3 : -0.3 });
       b.fx.sparks(p.x + f * r(48), p.y - 2, color, 4, dir(index === 0 ? 0.8 : -0.8), 0.6, 190, 260);
       if (index === 1) b.fx.twinkle(p.x + f * r(46), p.y - 2, 0xffffff);
       swingFx(b, p.x + f * r(44), p.y - 2);
@@ -567,8 +572,8 @@ function comboSlash(b: BattleScene, n: number, index: number, dmg: number, color
       p.body.setVelocityX(f * 140);
       p.afterimage(color);
       b.time.delayedCall(50, () => p.afterimage(color));
-      b.fx.slash(p.x + f * r(20), p.y - 4, f, r(60), color, true, { style });
-      b.fx.slash(p.x + f * r(16), p.y - 2, f, r(46), 0xffffff, false, { speed: 1.3, style });
+      b.fx.slash(p.x + f * r(20), p.y - 4, f, r(60), color, true, { style, stretch, squash });
+      b.fx.slash(p.x + f * r(16), p.y - 2, f, r(46), 0xffffff, false, { speed: 1.3, style, stretch, squash });
       b.fx.sparks(p.x + f * r(58), p.y + 6, color, 8, dir(0.5), 0.9, 220, 320);
       b.fx.smoke(p.x + f * 10, p.feet - 4, 1, 0x9a8a70, -6);
       swingFx(b, p.x + f * r(56), p.y - 4);
@@ -580,13 +585,13 @@ function comboSlash(b: BattleScene, n: number, index: number, dmg: number, color
       const last = index === 2;
       p.body.setVelocityX(f * (last ? 180 : 70));
       p.afterimage(last ? 0xffe08a : color);
-      b.fx.slash(p.x + f * r(16), p.y - 4, f, r(52 + index * 8), last ? 0xffe08a : color, index !== 1, { up: index === 1, speed: 1.4, style });
-      if (index === 1) b.fx.slash(p.x - f * r(10), p.y - 4, (-f) as 1 | -1, r(42), color, true, { speed: 1.4, style });
+      b.fx.slash(p.x + f * r(16), p.y - 4, f, r(52 + index * 8), last ? 0xffe08a : color, index !== 1, { up: index === 1, speed: 1.4, style, stretch, squash });
+      if (index === 1) b.fx.slash(p.x - f * r(10), p.y - 4, (-f) as 1 | -1, r(42), color, true, { speed: 1.4, style, stretch, squash });
       b.fx.sparks(p.x + f * r(50), p.y, color, 5, dir(index === 1 ? -0.7 : 0.7), 0.8, 210, 280);
       swingFx(b, p.x + f * r(60), p.y - 4);
       box(b, r(index === 1 ? -40 : 0), r(index === 1 ? 160 : 120), 76, 6, dmg * 0.8, { basic: true, knock: last ? 220 : 40 });
       if (last) {
-        b.fx.slash(p.x + f * r(30), p.y - 4, f, r(72), 0xffffff, true, { squash: 0.6, style });
+        b.fx.slash(p.x + f * r(30), p.y - 4, f, r(72), 0xffffff, true, { stretch, squash: 0.5, style });
         b.fx.ring(p.x + f * r(50), p.feet, r(80), 0xffe08a, 320);
         b.fx.pop(p.x + f * r(56), p.y - 4, 0xfff0c0, 2.2);
         b.fx.sparks(p.x + f * r(56), p.y - 4, 0xffe08a, 14, dir(0), 1.3, 280, 420);
