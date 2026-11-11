@@ -103,7 +103,7 @@ const LOOKS: Record<MonsterKind, Look> = {
   shadow_wyvern: { walk: 'shadow-wyvern-pose', facesLeft: false, body: [70, 56] },
   demon_king: { walk: 'dking-idle', attack: 'dking-attack', facesLeft: true, body: [70, 96], scale: 1.5 },
   scarecrow: { walk: SCARECROW_ANIM, facesLeft: false, body: [24, 50] },
-  demon_lord_raid: { walk: RAID_DEMON_IDLE, attack: RAID_DEMON_ATTACK, facesLeft: true, body: [70, 96], scale: 1.6 },
+  demon_lord_raid: { walk: RAID_DEMON_IDLE, attack: RAID_DEMON_ATTACK, facesLeft: true, body: [22, 66], scale: 2.3 },
   seal_crystal: { walk: CRYSTAL_ANIM, facesLeft: false, body: [22, 40], scale: 1.3 },
 };
 

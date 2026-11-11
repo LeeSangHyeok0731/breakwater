@@ -499,6 +499,15 @@ export class Rig {
 
   /** 잔상: 지금 모습을 복사해 색을 입히고 서서히 지운다. only를 주면 그 파츠만. */
   ghost(color: number, alpha = 0.5, ms = 200, only?: PartName[]): void {
+    const g = this.snapshot(color, alpha, only);
+    this.scene.tweens.add({ targets: g, alpha: 0, duration: ms, onComplete: () => g.destroy() });
+  }
+
+  /**
+   * 지금 모습을 한 색으로 칠한 복사본 (지우는 건 쓰는 쪽이 한다). 그림자 분신 등에 쓴다.
+   * add가 거짓이면 빛(ADD)이 아니라 그 색 그대로 덮어 칠한다 (어두운 그림자).
+   */
+  snapshot(color: number, alpha = 0.5, only?: PartName[], add = true): Phaser.GameObjects.Container {
     const r = this.root;
     const g = this.scene.add.container(r.x, r.y).setScale(r.scaleX, r.scaleY).setDepth(r.depth - 1);
     const copy = (img: Phaser.GameObjects.Image | undefined): void => {
@@ -509,13 +518,13 @@ export class Rig {
           .setOrigin(img.originX, img.originY)
           .setRotation(img.rotation)
           .setTintFill(color)
-          .setBlendMode(Phaser.BlendModes.ADD),
+          .setBlendMode(add ? Phaser.BlendModes.ADD : Phaser.BlendModes.NORMAL),
       );
     };
     if (only) for (const n of only) copy(this.imgs.get(n));
     else for (const img of this.imgs.values()) copy(img);
     g.setAlpha(alpha).setMask(this.mask);
-    this.scene.tweens.add({ targets: g, alpha: 0, duration: ms, onComplete: () => g.destroy() });
+    return g;
   }
 }
 
