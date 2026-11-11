@@ -339,15 +339,35 @@ export class Fx {
   bigSlash(x1: number, y1: number, x2: number, y2: number, color: number, width = 10, ms = 380): void {
     const g = this.scene.add.graphics().setDepth(DEPTH.fx + 1).setBlendMode(Phaser.BlendModes.ADD);
     let t = 0;
+    const len = Math.hypot(x2 - x1, y2 - y1) || 1;
+    const ux = (x2 - x1) / len;
+    const uy = (y2 - y1) / len;
+    // 섬광 옆으로 갈라져 나가는 가는 곁가지 [시작 위치, 길이, 옆으로 벗어난 거리]
+    const twigs = Array.from({ length: 5 }, () => ({ at: 0.1 + Math.random() * 0.6, len: 0.12 + Math.random() * 0.22, off: (Math.random() - 0.5) * width * 2.4 }));
     const draw = (): void => {
       // 처음 80ms 동안 한쪽 끝에서 반대쪽으로 그어 나간다.
       const k = Math.min(1, t / 80);
       const ex = x1 + (x2 - x1) * k;
       const ey = y1 + (y2 - y1) * k;
+      // 가장 굵은 곳은 머리에서 조금 뒤. 양 끝은 뾰족하다.
+      const mx = x1 + (ex - x1) * 0.7;
+      const my = y1 + (ey - y1) * 0.7;
       g.clear();
-      g.lineStyle(width * 2.6, color, 0.25).lineBetween(x1, y1, ex, ey);
-      g.lineStyle(width, color, 0.9).lineBetween(x1, y1, ex, ey);
-      g.lineStyle(Math.max(2, width / 3), 0xffffff, 1).lineBetween(x1, y1, ex, ey);
+      const blade = (w: number, c: number, a: number): void => {
+        g.fillStyle(c, a);
+        g.fillTriangle(x1, y1, mx - uy * w, my + ux * w, mx + uy * w, my - ux * w);
+        g.fillTriangle(ex, ey, mx - uy * w, my + ux * w, mx + uy * w, my - ux * w);
+      };
+      blade(width * 1.5, color, 0.25);
+      blade(width * 0.6, color, 0.9);
+      blade(Math.max(1, width / 5), 0xffffff, 1);
+      for (const tw of twigs) {
+        if (tw.at > k) continue;
+        const sx = x1 + ux * len * tw.at - uy * tw.off;
+        const sy = y1 + uy * len * tw.at + ux * tw.off;
+        const l = Math.min(len * tw.len, len * (k - tw.at));
+        g.lineStyle(1, 0xffffff, 0.8).lineBetween(sx, sy, sx + ux * l, sy + uy * l);
+      }
     };
     draw();
     const ev = this.scene.time.addEvent({
