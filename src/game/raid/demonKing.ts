@@ -574,7 +574,7 @@ function init(m: Monster): KingState {
   states.set(m, st);
   // 리그는 본체 발밑을 따라가고, 맞으면 번쩍이고, 쓰러지면 함께 사라진다. 그로기 동안에는 무릎을 꿇는다.
   const follow = (): void => {
-    const step = b.fx.hitstop > 0 ? 0 : Math.min(0.05, b.game.loop.delta / 1000);
+    const step = b.rigStep();
     // 봉인이 풀리면 곧바로 그로기에 빠져 행동(behavior)이 멈추므로, 내려앉는 처리는 여기서 한다.
     if (st.floating && (!b.raid || b.raid.mode === 'fight')) land(m, st);
     if (m.alive && m.stun > 0 && !st.floating) {

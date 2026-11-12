@@ -9,15 +9,13 @@ import { MOB_COUNT_MUL, type PhaseDef } from '../data/phases';
 import { DIFFICULTY, LEGIONS, rewardMul, SILENCE_STACKS, SILENCE_TIME, type LegionRun } from '../data/legion';
 import { barProgress, totalReward, WORLD_BOSS_BARS, WORLD_BOSS_TIME } from '../data/worldBoss';
 import { koNum } from '../ui/format';
-import { afterglow, column, flutter, glow, hues, impactBurst, PAL, rays, resetVfx, shockwave, wash, wisps, type Palette3 } from './vfx';
-import { toneOf } from './tone';
+import { resetVfx } from './vfx';
 import { chunkSkills, SKILL_BY_ID, SKILL_SLOTS, skillsFor, SKY_FLASH_ID, SKY_MAX_BLADES, SKY_STACKS_PER_BLADE, skyShotMana, type SkillDef } from '../data/skills';
 import { CLASS_NAME, GRADES, WEAPONS, type WeaponType } from '../data/weapons';
 import { Hud, type HudSlot, type HudState } from '../ui/hud';
-import { updatePlayerCombat } from './combat2d';
+import { updatePlayerCombat } from './combat';
 import { ctx, type BattleOutcome } from './context';
-import { DEPTH, Fx } from './fx';
-import { orbKey, type OrbLook, type Palette } from './fxArt';
+import { Fx } from './fx';
 import { meleeLook, orbLook, weaponIconUrl } from './weaponArt';
 import { Monster, monsterBodyHeight } from './monster2d';
 import { dev } from './dev';
@@ -29,6 +27,11 @@ import { CRIT_DAMAGE, basicDamage, derive, enhanceMultiplier, expToNext, totalSt
 import { raidGearBonus, raidReward, type RaidRun } from '../data/raid';
 import { RaidFight } from './raid/raidFight';
 import { buildLevel, FLOOR_Y, VIEW_H, type Level } from './world';
+import { ORB_FX, Projectiles } from './battle/projectiles';
+import { Hazards } from './battle/hazards';
+
+export type { BoltSpec, EnemyBoltOpts } from './battle/projectiles';
+export type { FieldSpec } from './battle/hazards';
 
 export interface HitOpts {
   basic?: boolean;
@@ -45,152 +48,10 @@ export interface HitOpts {
   silent?: boolean;
 }
 
-export interface BoltSpec {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  damage: number;
-  kind: 'orb' | 'arrow' | 'wave' | 'grenade';
-  /** 마나 구체의 색 계열 (지팡이마다 다르다). 비우면 청록 */
-  orb?: OrbLook;
-  size?: number;
-  color?: number;
-  basic?: boolean;
-  pierce?: boolean;
-  aoe?: number;
-  stun?: number;
-  gravity?: number;
-  life?: number;
-  /** 피해 출처 (스킬 id·'basic'·'special'). 비우면 쏜 순간의 출처를 쓴다. */
-  src?: string;
-  /**
-   * 눈에 보이는 출발점 (무기 끝). 판정은 (x, y)의 몸 높이 선을 그대로 따라가고,
-   * 그림만 여기서 출발해 잠깐 사이에 판정 선으로 내려앉는다.
-   */
-  from?: { x: number; y: number };
-}
-
-/** 무기 끝에서 나간 투사체 그림이 판정 선에 내려앉기까지의 시간 (초) */
-const BOLT_SETTLE = 0.28;
-
-type BoltObject = Phaser.GameObjects.Image | Phaser.GameObjects.Sprite;
-
-interface Bolt extends BoltSpec {
-  obj: BoltObject;
-  /** 화살 뒤에 끌리는 빛 */
-  trail?: Phaser.GameObjects.Sprite;
-  /** 다음 꼬리·잔상까지 남은 시간 */
-  fxTimer: number;
-  radius: number;
-  hit: Set<Monster>;
-  life: number;
-  /** 쏜 뒤 지난 시간 */
-  age: number;
-  /** 출발할 때 그림이 판정 선보다 얼마나 위(-)·아래(+)에 있었는지 */
-  offY: number;
-  /** 지금 그림의 세로 어긋남 */
-  lift: number;
-}
-
-/** 적 탄의 생김새·성질 */
-export interface EnemyBoltOpts {
-  /** 생김새: 마력탄(기본), 서리, 도깨비불, 깃털 */
-  kind?: 'orb' | 'frost' | 'wisp' | 'feather' | 'void';
-  /** 깃털·기본 구슬 탄의 색 (밤의 여왕·공허 천사·뇌운 새끼용) */
-  tint?: number;
-  /** 맞으면 플레이어가 잠깐 느려진다 */
-  slow?: boolean;
-  /** 플레이어 쪽으로 꺾는 정도 (rad/s) */
-  homing?: number;
-  life?: number;
-}
-
-interface EnemyBolt {
-  obj: Phaser.GameObjects.Sprite | Phaser.GameObjects.Image;
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  damage: number;
-  aoe: number;
-  owner: Monster;
-  life: number;
-  opts: EnemyBoltOpts;
-}
-
-/** 적 탄 생김새별 꼬리 색 */
-const ENEMY_BOLT_COLOR: Record<NonNullable<EnemyBoltOpts['kind']>, number> = {
-  orb: 0xff4fd0,
-  frost: 0x8fe0ff,
-  wisp: 0x9fffb0,
-  feather: 0xfff4e0,
-  void: 0x7ff0ff,
-};
-
-export interface FieldSpec {
-  x: number;
-  w: number;
-  life: number;
-  tickEvery: number;
-  damage: number;
-  slow?: number;
-  color: number;
-  hitsAir?: boolean;
-  rain?: boolean;
-  /** 겉모습: 서리(얼음 가시), 불길, 화살비, 독, 기본 */
-  style?: 'frost' | 'fire' | 'rain' | 'poison' | 'plain';
-  /** 적이 남긴 장판: 그 위 땅에 선 플레이어가 틱마다 받는 피해 (가드 불가) */
-  hurt?: number;
-  /** 피해 출처 (플레이어 장판). 비우면 깐 순간의 출처를 쓴다. */
-  src?: string;
-}
-
-interface Field extends FieldSpec {
-  rect: Phaser.GameObjects.Rectangle;
-  /** 장판이 사라질 때 함께 지울 장식 (불꽃 등) */
-  deco: Phaser.GameObjects.GameObject[];
-  tickTimer: number;
-  age: number;
-}
-
-interface Telegraph {
-  rect: Phaser.GameObjects.Rectangle;
-  fill: Phaser.GameObjects.Rectangle;
-  time: number;
-  dur: number;
-  owner: Monster | null;
-  onFire: (() => void) | null;
-}
-
-interface Wave {
-  obj: Phaser.GameObjects.Rectangle;
-  x: number;
-  dir: 1 | -1;
-  dist: number;
-  damage: number;
-  owner: Monster;
-  hit: boolean;
-}
 
 type State = 'intro' | 'fight' | 'rest' | 'done';
 
 /** 무기별 타격 불빛 */
-/** 마나 구체 색 계열별 [꼬리·타격 색, 밝은 색, 폭발 팔레트] */
-const ORB_FX: Record<OrbLook, { color: number; light: number; boom: Palette }> = {
-  arcane: { color: 0x7fe8ff, light: 0xbff6ff, boom: 'arcane' },
-  rune: { color: 0xb884ff, light: 0xecd0ff, boom: 'dark' },
-  magma: { color: 0xff8a2a, light: 0xffe6a0, boom: 'fire' },
-  abyss: { color: 0xd060ff, light: 0xf0a8ff, boom: 'dark' },
-};
-
-/** 폭발 팔레트별 [고리 색, 파편 색, 벡터 팔레트, 연기 색] */
-const BOOM_FX: Partial<Record<Palette, [number, number, Palette3, number]>> = {
-  arcane: [0x7fe8ff, 0xbff6ff, PAL.arcane, 0x6a7aa8],
-  dark: [0xc080ff, 0xe8c8ff, PAL.violet, 0x6a5a88],
-};
-const BOOM_FIRE: [number, number, Palette3, number] = [0xffa040, 0xffc060, PAL.flame, 0x7a706a];
-
 const HIT_COLOR: Record<WeaponType, number> = {
   sword: 0xbfe4ff,
   dao: 0xffd2a8,
@@ -244,15 +105,8 @@ export class BattleScene extends Phaser.Scene {
   monsters: Monster[] = [];
 
   private monsterGroup!: Phaser.Physics.Arcade.Group;
-  private bolts: Bolt[] = [];
-  private enemyBolts: EnemyBolt[] = [];
-  private fields: Field[] = [];
-  private telegraphs: Telegraph[] = [];
-  private waves: Wave[] = [];
-  private beam!: Phaser.GameObjects.Rectangle;
-  private beamGlow!: Phaser.GameObjects.Rectangle;
-  /** 레이저를 쏘는 동안 지팡이 끝에 서는 마법진 */
-  private beamCircle: Phaser.GameObjects.Sprite | null = null;
+  private projectiles!: Projectiles;
+  private hazards!: Hazards;
   /** 버프 기운이 피어오르는 간격 */
   private auraTimer = 0;
 
@@ -265,7 +119,8 @@ export class BattleScene extends Phaser.Scene {
   private pending = { gold: 0, exp: 0, materials: {} as Record<string, number>, kills: 0 };
   private endTimer = -1;
   private cleared = false;
-  private ended = false;
+  /** 전투가 끝났다 (결과 창으로 넘어가는 중) */
+  ended = false;
   private paused = false;
   private missionTime = 0;
   private spawnAcc = 0;
@@ -335,11 +190,6 @@ export class BattleScene extends Phaser.Scene {
     this.legionNote = '';
     this.reviveLeft = this.legion?.mods.includes('revive') ? 1 : 0;
     this.monsters = [];
-    this.bolts = [];
-    this.enemyBolts = [];
-    this.fields = [];
-    this.telegraphs = [];
-    this.waves = [];
     this.state = 'intro';
     this.stateTimer = 1.6;
     this.waveIndex = -1;
@@ -353,7 +203,6 @@ export class BattleScene extends Phaser.Scene {
     this.missionTime = 0;
     this.spawnAcc = 0;
     this.potionUsed = { hp: 0, mp: 0 };
-    this.beamCircle = null;
   }
 
   create(): void {
@@ -415,10 +264,8 @@ export class BattleScene extends Phaser.Scene {
     cam.setDeadzone(60, 40);
     cam.fadeIn(300);
 
-    this.beamGlow = this.add.rectangle(0, 0, 10, 14, 0x3fc8ff, 0.35).setOrigin(0, 0.5).setDepth(DEPTH.projectile).setVisible(false);
-    this.beam = this.add.rectangle(0, 0, 10, 5, 0xe6fbff, 0.95).setOrigin(0, 0.5).setDepth(DEPTH.projectile).setVisible(false);
-    this.beam.setBlendMode(Phaser.BlendModes.ADD);
-    this.beamGlow.setBlendMode(Phaser.BlendModes.ADD);
+    this.hazards = new Hazards(this);
+    this.projectiles = new Projectiles(this);
 
     this.hud = new Hud(ctx.uiRoot);
     ctx.townHud.hide();
@@ -505,12 +352,8 @@ export class BattleScene extends Phaser.Scene {
       return true;
     });
 
-    this.updateBolts(dt);
-    this.updateEnemyBolts(dt);
-    this.updateFields(dt);
-    this.updateTelegraphs(dt);
-    this.updateWavesFx(dt);
-    this.updateBeam();
+    this.projectiles.update(dt);
+    this.hazards.update(dt);
     this.level.update();
     this.legionGroggy = Math.max(0, this.legionGroggy - dt);
     this.hud.update(this.hudState());
@@ -564,6 +407,11 @@ export class BattleScene extends Phaser.Scene {
     } finally {
       this.src = prev;
     }
+  }
+
+  /** 보스 리그가 이번 프레임에 진행할 시간 (초). 히트스톱으로 멈춘 동안은 0이다. */
+  rigStep(): number {
+    return this.fx.hitstop > 0 ? 0 : Math.min(0.05, this.game.loop.delta / 1000);
   }
 
   /** 스킬을 썼다 (수련장 발동 횟수) */
@@ -785,7 +633,7 @@ export class BattleScene extends Phaser.Scene {
       if (Math.random() < (m.elite ? Math.min(1, d.chance * 2) : d.chance) * share) this.addMaterial(d.id, m.elite ? 2 : 1, m.x, m.body.top);
     }
     if (m.elite) this.addMaterial('elite_sigil', 1, m.x, m.body.top);
-    if (m.def.kind === 'poison_zombie' || m.def.kind === 'plague_wolf') this.addField({ x: m.x - 34, w: 68, life: 4, tickEvery: 0.5, damage: 0, color: 0x8acc2a, poison: true } as FieldSpec & { poison: boolean });
+    if (m.def.kind === 'poison_zombie' || m.def.kind === 'plague_wolf') this.addField({ x: m.x - 34, w: 68, life: 4, tickEvery: 0.5, damage: 0, color: 0x8acc2a, poison: true });
     if (m.showsBossBar) this.fx.shake(2, 300);
     if (m === this.boss) {
       for (const other of this.monsters) if (other.alive && other !== m) other.kill();
@@ -1282,599 +1130,58 @@ export class BattleScene extends Phaser.Scene {
     }
   }
 
-  // ───────────────────────── 투사체 ─────────────────────────
+  // ───────────────────────── 투사체·장판 ─────────────────────────
+  // 본체는 battle/projectiles.ts와 battle/hazards.ts에 있다. 스킬·몬스터 코드는 씬의 이 창구로 부른다.
 
-  spawnPlayerBolt(o: BoltSpec): void {
-    const size = o.size ?? 1;
-    const ang = Math.atan2(o.vy, o.vx);
-    const offY = o.from ? o.from.y - o.y : 0;
-    // 그림과 발사 연출은 무기 끝에서 시작한다.
-    const logical = o;
-    if (o.from) o = { ...o, y: o.from.y };
-    let obj: BoltObject;
-    let radius = 6;
-    let trail: Phaser.GameObjects.Sprite | undefined;
-    switch (o.kind) {
-      case 'orb':
-        // 마나 구체: 지팡이 끝에 작은 마법진이 열리며 나간다.
-        obj = this.add
-          .sprite(o.x, o.y, orbKey(o.orb))
-          .play(orbKey(o.orb))
-          .setScale(Math.max(1, Math.round(size)) * 0.8)
-          .setBlendMode(Phaser.BlendModes.ADD);
-        this.fx.circle(o.x, o.y, ORB_FX[o.orb ?? 'arcane'].color, 16 + 12 * size, 260, true, DEPTH.fx);
-        this.fx.pop(o.x, o.y, ORB_FX[o.orb ?? 'arcane'].light, 0.5 + 0.35 * size, 0.5);
-        radius = 5 * size;
-        break;
-      case 'arrow':
-        obj = this.add.image(o.x, o.y, 'fx-arrow').setRotation(ang).setScale(size >= 1.5 ? 2 : 1);
-        // 화살 뒤로 끌리는 혜성 꼬리
-        trail = this.add
-          .sprite(o.x, o.y, 'fx-comet')
-          .play({ key: 'fx-comet', startFrame: Math.floor(Math.random() * 3) })
-          .setOrigin(1, 0.5)
-          .setTint(toneOf(o.color ?? 0xe8dcc0).rim, o.color ?? 0xe8dcc0, toneOf(o.color ?? 0xe8dcc0).rim, o.color ?? 0xe8dcc0)
-          .setBlendMode(Phaser.BlendModes.ADD)
-          .setRotation(ang)
-          .setScale((22 + 16 * size) / 40, size >= 1.5 ? 2 : 1)
-          .setDepth(DEPTH.projectile - 1);
-        radius = 4 * size;
-        break;
-      case 'wave':
-        obj = this.add
-          .sprite(o.x, o.y, o.color !== undefined ? 'fx-wave-g' : 'fx-wave')
-          .play(o.color !== undefined ? 'fx-wave-g' : 'fx-wave')
-          .setFlipX(o.vx < 0)
-          .setBlendMode(Phaser.BlendModes.ADD)
-          .setScale(size);
-        // 검기는 위아래 색이 다르다: 칼끝 쪽은 밝고 꼬리 쪽은 테두리 색으로 흐른다.
-        if (o.color !== undefined) {
-          const t = toneOf(o.color);
-          obj.setTint(t.alt, o.color, o.color, t.rim);
-        }
-        radius = 14 * size;
-        break;
-      case 'grenade':
-        obj = this.add.image(o.x, o.y, 'fx-grenade');
-        radius = 4;
-        break;
-    }
-    obj.setDepth(DEPTH.projectile);
-    this.bolts.push({ ...logical, src: o.src ?? this.src, obj, trail, fxTimer: 0, radius, hit: new Set(), life: o.life ?? 1.6, age: 0, offY, lift: offY });
+  spawnPlayerBolt(...a: Parameters<Projectiles['spawnPlayer']>): void {
+    this.projectiles.spawnPlayer(...a);
   }
 
-  /** 날아가는 동안의 꼬리·잔상 */
-  private boltTrail(b: Bolt, dt: number): void {
-    b.fxTimer -= dt;
-    if (b.trail) b.trail.setPosition(b.obj.x, b.obj.y).setRotation(b.obj.rotation);
-    if (b.fxTimer > 0) return;
-    switch (b.kind) {
-      case 'orb': {
-        // 구체가 지나간 자리에 옅은 잔상이 줄지어 남고, 가끔 별빛이 튄다.
-        b.fxTimer = 0.035;
-        const s = b.obj as Phaser.GameObjects.Sprite;
-        const look = ORB_FX[b.orb ?? 'arcane'];
-        const ghost = this.add
-          .image(b.x, b.y, s.texture.key, s.frame.name)
-          .setDepth(DEPTH.projectile - 1)
-          .setBlendMode(Phaser.BlendModes.ADD)
-          .setScale(s.scaleX * 0.85)
-          .setAlpha(0.45);
-        this.tweens.add({ targets: ghost, alpha: 0, scale: s.scaleX * 0.3, duration: 200, onComplete: () => ghost.destroy() });
-        if (Math.random() < 0.35) this.fx.twinkle(b.x + (Math.random() - 0.5) * 10, b.y + (Math.random() - 0.5) * 12, look.light);
-        else this.fx.burst(b.x, b.y, look.color, 1, 25, 260);
-        break;
-      }
-      case 'arrow':
-        b.fxTimer = 0.05;
-        if ((b.size ?? 1) >= 1.5 || b.pierce) {
-          if (Math.random() < 0.5) this.fx.twinkle(b.x - b.vx * 0.03, b.obj.y + (Math.random() - 0.5) * 8, b.color ?? 0xffe08a);
-          else this.fx.burst(b.x, b.obj.y, b.color ?? 0xffe08a, 1, 20, 220);
-        }
-        break;
-      case 'wave': {
-        b.fxTimer = 0.035;
-        const s = b.obj as Phaser.GameObjects.Sprite;
-        const ghost = this.add
-          .image(b.x, b.y, s.texture.key, s.frame.name)
-          .setFlipX(s.flipX)
-          .setDepth(DEPTH.projectile - 1)
-          .setBlendMode(Phaser.BlendModes.ADD)
-          .setScale(s.scaleX, s.scaleY)
-          .setTint(s.tintTopLeft, s.tintTopRight, s.tintBottomLeft, s.tintBottomRight)
-          .setAlpha(0.5);
-        this.tweens.add({ targets: ghost, alpha: 0, scaleY: s.scaleY * 0.7, duration: 180, onComplete: () => ghost.destroy() });
-        break;
-      }
-      case 'grenade':
-        b.fxTimer = 0.05;
-        this.fx.smoke(b.x, b.y, 1, 0x9a948a, -6);
-        break;
-    }
+  spawnEnemyBolt(...a: Parameters<Projectiles['spawnEnemy']>): void {
+    this.projectiles.spawnEnemy(...a);
   }
 
-  private removeBolt(b: Bolt): void {
-    b.obj.destroy();
-    b.trail?.destroy();
+  /** 바닥에서 솟는 불기둥 */
+  firePillar(...a: Parameters<Hazards['firePillar']>): void {
+    this.hazards.firePillar(...a);
   }
 
-  private updateBolts(dt: number): void {
-    const W = this.level.width;
-    this.bolts = this.bolts.filter((b) => {
-      // 맞은 피해는 이 탄을 쏜 출처로 친다.
-      this.src = b.src ?? 'basic';
-      b.life -= dt;
-      b.vy += (b.gravity ?? 0) * dt;
-      b.x += b.vx * dt;
-      b.y += b.vy * dt;
-      // 무기 끝에서 나간 그림은 부드럽게 판정 선으로 내려앉는다 (판정은 처음부터 몸 높이 선).
-      b.age += dt;
-      const k = Math.max(0, 1 - b.age / BOLT_SETTLE);
-      const lift = b.offY * k * k * (3 - 2 * k);
-      const sink = dt > 0 ? (lift - b.lift) / dt : 0;
-      b.lift = lift;
-      b.obj.setPosition(b.x, b.y + lift);
-      if (b.kind === 'arrow') b.obj.setRotation(Math.atan2(b.vy + sink, b.vx));
-      if (b.kind === 'grenade') b.obj.setRotation(b.obj.rotation + dt * 14 * Math.sign(b.vx || 1));
-      this.boltTrail(b, dt);
-      let alive = b.life > 0 && b.x > -40 && b.x < W + 40;
-      if (alive) {
-        for (const m of this.monsters) {
-          if (!m.alive || b.hit.has(m)) continue;
-          const mb = m.body;
-          if (b.x + b.radius < mb.x || b.x - b.radius > mb.right || b.y + b.radius < mb.y || b.y - b.radius > mb.bottom) continue;
-          if (b.pierce) {
-            b.hit.add(m);
-            this.hitMonster(m, b.damage, { basic: b.basic, knock: 40 });
-            continue;
-          }
-          const back = Math.atan2(-b.vy, -b.vx);
-          if (b.aoe) this.explode(b.x, b.y, b.aoe, b.damage, b.stun ?? 0, b.kind === 'orb' ? ORB_FX[b.orb ?? 'arcane'].boom : 'fire');
-          else {
-            this.hitMonster(m, b.damage, { basic: b.basic, knock: 70 });
-            if (b.kind === 'orb') {
-              const look = ORB_FX[b.orb ?? 'arcane'];
-              this.fx.boom(b.x, b.y, 12 * (b.size ?? 1), look.boom);
-              this.fx.pop(b.x, b.y, look.light, 0.9 + 0.3 * (b.size ?? 1));
-              this.fx.sparks(b.x, b.y, look.color, 5, 0, Math.PI, 150, 320, 120);
-            } else if (b.kind === 'arrow') {
-              // 박히는 순간 뒤로 튀는 파편
-              this.fx.sparks(b.x, b.obj.y, b.color ?? 0xe8dcc0, 4, back, 0.8, 170, 240);
-            }
-          }
-          alive = false;
-          break;
-        }
-      }
-      if (alive && b.y >= FLOOR_Y - 2) {
-        if (b.aoe) this.explode(b.x, FLOOR_Y - 6, b.aoe, b.damage, b.stun ?? 0, b.kind === 'orb' ? ORB_FX[b.orb ?? 'arcane'].boom : 'fire');
-        else this.fx.spark(b.x, FLOOR_Y - 3, 0xd8c8a0);
-        alive = false;
-      }
-      if (!alive) this.removeBolt(b);
-      return alive;
-    });
+  /** 하늘에서 내리꽂히는 빛기둥 */
+  lightBeam(...a: Parameters<Hazards['lightBeam']>): void {
+    this.hazards.lightBeam(...a);
   }
 
-  private explode(x: number, y: number, radius: number, damage: number, stun: number, palette: Palette = 'fire'): void {
-    sfx.play('boom', Math.min(1, radius / 60));
-    const ground = Math.min(y + 8, FLOOR_Y);
-    const [ringColor, bitColor, pal3, smokeColor] = BOOM_FX[palette] ?? BOOM_FIRE;
-    this.fx.boom(x, y, radius * 0.6, palette);
-    this.fx.ring(x, ground, radius, ringColor);
-    impactBurst(this, x, y, radius * 0.9, pal3, ground);
-    this.fx.burst(x, y, bitColor, 8, 160, 450, 1, 300);
-    this.fx.sparks(x, y, bitColor, 8, -Math.PI / 2, 1.4, 220, 420, 420);
-    // 큰 폭발은 결이 말려 오르고 잔불이 남는다.
-    if (radius >= 40) {
-      wisps(this, x, y, pal3, 6, radius * 1.3, 480, { angle: -Math.PI / 2, cone: 1.5, curl: 2.6, width: 6 });
-      flutter(this, x, y, palette === 'frost' ? 'snow' : palette === 'fire' ? 'flame' : 'star', hues(pal3), 12, { spread: radius * 0.3, speed: radius * 2.6, cone: 1.3, gravity: 140, life: 800 });
-      afterglow(this, x, ground, radius * 2, pal3, palette === 'frost' ? 'snow' : palette === 'fire' ? 'flame' : 'star', 900);
-    }
-    for (let i = 0; i < 3; i++) this.time.delayedCall(120 + i * 60, () => this.fx.smoke(x + (i - 1) * radius * 0.4, y - 4, 2, smokeColor));
-    this.fx.shake(0.5);
-    this.hitArea(x - radius, y - radius, radius * 2, radius * 2, damage, { stun, knock: 90 });
+  /** 적이 부르는 운석 */
+  enemyMeteor(...a: Parameters<Hazards['enemyMeteor']>): void {
+    this.hazards.enemyMeteor(...a);
   }
 
-  spawnEnemyBolt(x: number, y: number, vx: number, vy: number, damage: number, owner: Monster, aoe = 0, opts: EnemyBoltOpts = {}): void {
-    let obj: EnemyBolt['obj'];
-    if (aoe > 0) {
-      obj = this.add.sprite(x, y, 'fireball').play('fireball');
-      obj.setFlipX(vx < 0);
-    } else if (opts.kind === 'frost') {
-      obj = this.add.sprite(x, y, 'fx-orb').play('fx-orb').setScale(0.75).setBlendMode(Phaser.BlendModes.ADD);
-    } else if (opts.kind === 'wisp') {
-      obj = this.add.sprite(x, y, 'fx-flame').play('fx-flame').setTint(0x9fffb0).setScale(0.8).setBlendMode(Phaser.BlendModes.ADD);
-    } else if (opts.kind === 'feather') {
-      obj = this.add.image(x, y, 'fx-feather').setRotation(Math.atan2(vy, vx));
-      if (opts.tint !== undefined) obj.setTint(opts.tint);
-    } else if (opts.kind === 'void') {
-      obj = this.add.sprite(x, y, 'fx-orb-enemy').play('fx-orb-enemy').setTint(0x80d0ff).setBlendMode(Phaser.BlendModes.ADD);
-    } else {
-      obj = this.add.sprite(x, y, 'fx-orb-enemy').play('fx-orb-enemy').setBlendMode(Phaser.BlendModes.ADD);
-      if (opts.tint !== undefined) obj.setTint(opts.tint);
-    }
-    obj.setDepth(DEPTH.projectile);
-    this.enemyBolts.push({ obj, x, y, vx, vy, damage, aoe, owner, life: opts.life ?? 4, opts });
+  /** 자폭 (처치로 치지 않는다) */
+  selfDestruct(...a: Parameters<Hazards['selfDestruct']>): void {
+    this.hazards.selfDestruct(...a);
   }
 
-  private updateEnemyBolts(dt: number): void {
-    const p = this.player;
-    const pb = p.body;
-    this.enemyBolts = this.enemyBolts.filter((b) => {
-      b.life -= dt;
-      if (b.opts.homing) {
-        // 플레이어 쪽으로 조금씩 꺾는다 (속도는 그대로).
-        const speed = Math.hypot(b.vx, b.vy);
-        const cur = Math.atan2(b.vy, b.vx);
-        const want = Math.atan2(p.y - b.y, p.x - b.x);
-        const diff = Phaser.Math.Angle.Wrap(want - cur);
-        const ang = cur + Phaser.Math.Clamp(diff, -b.opts.homing * dt, b.opts.homing * dt);
-        b.vx = Math.cos(ang) * speed;
-        b.vy = Math.sin(ang) * speed;
-      }
-      b.x += b.vx * dt;
-      b.y += b.vy * dt;
-      b.obj.setPosition(b.x, b.y);
-      if (b.opts.kind === 'feather') b.obj.setRotation(Math.atan2(b.vy, b.vx));
-      if (Math.random() < 0.4) this.fx.burst(b.x, b.y, b.aoe > 0 ? 0xff8a3a : ENEMY_BOLT_COLOR[b.opts.kind ?? 'orb'], 1, 15, 220);
-      let alive = b.life > 0;
-      const hit = b.x > pb.x - 4 && b.x < pb.right + 4 && b.y > pb.y - 4 && b.y < pb.bottom + 4;
-      if (alive && hit && p.invuln <= 0) {
-        this.damagePlayer(b.damage, { x: b.x, monster: b.owner, melee: false });
-        if (b.opts.slow && !p.dead) {
-          p.slowTime = 2;
-          this.fx.text(p.x, p.body.top - 4, '둔화', 'info');
-        }
-        this.enemyBurst(b);
-        alive = false;
-      }
-      if (alive && b.y >= FLOOR_Y) {
-        if (b.aoe > 0) {
-          this.enemyBurst(b);
-          if (Math.abs(p.x - b.x) < b.aoe && p.grounded && !p.onPlatform) this.damagePlayer(b.damage, { x: b.x, monster: b.owner, melee: false });
-        }
-        alive = false;
-      }
-      if (!alive) b.obj.destroy();
-      return alive;
-    });
+  addField(...a: Parameters<Hazards['addField']>): void {
+    this.hazards.addField(...a);
   }
 
-  private enemyBurst(b: EnemyBolt): void {
-    if (b.aoe > 0) {
-      sfx.play('boom', 0.5);
-      this.fx.boom(b.x, Math.min(b.y, FLOOR_Y - 8), b.aoe * 0.5, 'fire');
-      this.fx.ring(b.x, Math.min(b.y + 6, FLOOR_Y), b.aoe, 0xff6a1a, 250);
-    } else {
-      const c = ENEMY_BOLT_COLOR[b.opts.kind ?? 'orb'];
-      this.fx.spark(b.x, b.y, c);
-      this.fx.burst(b.x, b.y, c, 5, 70, 250);
-    }
+  addTelegraph(...a: Parameters<Hazards['addTelegraph']>): void {
+    this.hazards.addTelegraph(...a);
   }
 
-  // ───────────────────────── 적의 큰 공격 (챕터 2·3) ─────────────────────────
-
-  /** 바닥에서 솟는 불기둥: 경고 뒤 폭 w, 높이 150의 기둥이 선다. */
-  firePillar(x: number, damage: number, owner: Monster, delay = 0.9, w = 40): void {
-    const top = FLOOR_Y - 150;
-    this.addTelegraph(x - w / 2, top, w, 150, delay, owner, () => {
-      const s = this.add.sprite(x, FLOOR_Y + 4, 'beast-burn').setOrigin(0.5, 1).setDepth(DEPTH.fx).setScale(w / 40, 1);
-      s.play('fire-pillar');
-      this.tweens.add({ targets: s, alpha: 0, delay: 420, duration: 200, onComplete: () => s.destroy() });
-      this.fx.burst(x, FLOOR_Y - 10, 0xffa040, 10, 120, 400);
-      this.fx.shake(0.4, 100);
-      this.areaHit(x - w / 2, top, w, 150, damage, owner, false);
-    });
+  /** 바닥을 타고 양옆으로 퍼지는 충격파 */
+  addShockwave(...a: Parameters<Hazards['addShockwave']>): void {
+    this.hazards.addShockwave(...a);
   }
 
-  /** 하늘에서 내리꽂히는 빛기둥 (타락천사) */
-  lightBeam(x: number, damage: number, owner: Monster, delay = 0.9, w = 36, color = 0xfff0c0): void {
-    const top = 0;
-    this.addTelegraph(x - w / 2, top, w, FLOOR_Y, delay, owner, () => {
-      this.fx.pillar(x, FLOOR_Y, color, FLOOR_Y + 20, 420);
-      this.fx.tracer(x, 0, x, FLOOR_Y, color, 6, 260);
-      this.fx.spark(x, FLOOR_Y - 6, 0xffffff, 2);
-      this.fx.ring(x, FLOOR_Y, 40, color);
-      this.areaHit(x - w / 2, top, w, FLOOR_Y, damage, owner, false);
-    });
+  /** 플레이어의 메테오 */
+  castMeteor(...a: Parameters<Hazards['castMeteor']>): void {
+    this.hazards.castMeteor(...a);
   }
 
-  /** 적이 부르는 운석: 경고 원 → 낙하 → 폭발 (플레이어만 맞는다) */
-  enemyMeteor(x: number, damage: number, owner: Monster, delay = 0): void {
-    this.time.delayedCall(delay * 1000, () => {
-      if (this.ended) return;
-      this.fx.circle(x, FLOOR_Y - 1, 0xff3a2a, 110, 1000, false, DEPTH.fx - 2);
-      const sx = x - 90;
-      const rock = this.add.sprite(sx, -20, 'fx-meteor').play('fx-meteor').setScale(1.5).setDepth(DEPTH.projectile).setTint(0xd8a0ff);
-      rock.setOrigin(26 / 40, 26 / 40);
-      this.tweens.add({
-        targets: rock,
-        x,
-        y: FLOOR_Y - 14,
-        delay: 200,
-        duration: 750,
-        ease: 'Quad.In',
-        onUpdate: () => this.fx.burst(rock.x - 4, rock.y - 4, 0xc080ff, 1, 30, 260),
-        onComplete: () => {
-          rock.destroy();
-          sfx.play('boom', 0.8);
-          this.fx.boom(x, FLOOR_Y - 20, 40, 'dark');
-          this.fx.ring(x, FLOOR_Y, 70, 0xc060ff, 380);
-          this.fx.shake(0.9, 180);
-          this.areaHit(x - 50, FLOOR_Y - 110, 100, 110, damage, owner, false);
-        },
-      });
-    });
-  }
-
-  /** 불타는 해골의 자폭: 주변을 태우고 스스로 사라진다 (처치로 치지 않는다). */
-  selfDestruct(m: Monster, radius: number): void {
-    if (!m.alive) return;
-    sfx.play('boom', 0.6);
-    this.fx.boom(m.x, m.y, radius * 0.6, 'fire');
-    this.fx.ring(m.x, Math.min(m.y + 10, FLOOR_Y), radius, 0xff7a1a);
-    this.areaHit(m.x - radius, m.y - radius, radius * 2, radius * 2, m.damage, m, false);
-    m.kill();
-  }
-
-  // ───────────────────────── 장판·경고·충격파·메테오 ─────────────────────────
-
-  addField(spec: FieldSpec): void {
-    const poison = (spec as FieldSpec & { poison?: boolean }).poison;
-    const style = spec.style ?? (poison ? 'poison' : spec.rain ? 'rain' : 'plain');
-    const rect = this.add
-      .rectangle(spec.x, FLOOR_Y - 2, spec.w, style === 'plain' || style === 'poison' ? 8 : 4, spec.color, 0.5)
-      .setOrigin(0, 0.5)
-      .setDepth(DEPTH.fx)
-      .setBlendMode(Phaser.BlendModes.ADD);
-    const deco: Phaser.GameObjects.GameObject[] = [];
-    const ms = spec.life * 1000;
-    const cx = spec.x + spec.w / 2;
-    if (style === 'frost') {
-      // 얼음 가시가 안쪽부터 바깥으로 차례로 솟는다.
-      this.fx.circle(cx, FLOOR_Y - 1, 0x8fe0ff, spec.w + 20, ms, false, DEPTH.fx - 2);
-      const n = Math.max(3, Math.floor(spec.w / 13));
-      for (let i = 0; i < n; i++) {
-        const x = spec.x + ((i + 0.5) * spec.w) / n + (Math.random() - 0.5) * 4;
-        const delay = Math.abs(x - cx) * 2.2;
-        this.fx.iceSpike(x, FLOOR_Y, 0.7 + Math.random() * 0.5, Math.max(200, ms - delay - 150), delay);
-      }
-      this.fx.burst(cx, FLOOR_Y - 8, 0xdff8ff, 16, 120, 450);
-      glow(this, cx, FLOOR_Y, spec.w * 0.8, 0x6a4aff, ms, 0.5, 0.3);
-    } else if (style === 'fire') {
-      glow(this, cx, FLOOR_Y, spec.w * 0.8, 0xd0186a, ms, 0.5, 0.3);
-      const n = Math.max(3, Math.floor(spec.w / 12));
-      for (let i = 0; i < n; i++) deco.push(this.fx.flame(spec.x + ((i + 0.5) * spec.w) / n, FLOOR_Y, 0.8 + Math.random() * 0.7, 0));
-    } else if (style === 'rain') {
-      // 하늘에 금빛 마법진이 열리고 그 아래로 화살이 쏟아진다.
-      deco.push(this.fx.circle(cx, FLOOR_Y - 150, 0xffe08a, spec.w + 30, ms + 200, false, DEPTH.fx));
-    }
-    const f: Field & { poison?: boolean } = { ...spec, src: spec.src ?? this.src, style, rect, deco, tickTimer: 0, age: 0 };
-    f.poison = poison;
-    this.fields.push(f);
-  }
-
-  /** 장판이 살아 있는 동안의 연출 */
-  private fieldFx(f: Field, dt: number): void {
-    const x = f.x + Math.random() * f.w;
-    switch (f.style) {
-      case 'rain':
-        if (Math.random() < dt * 34) {
-          const top = FLOOR_Y - 146;
-          const arrow = this.add.image(x, top, 'fx-arrow').setRotation(Math.PI / 2).setDepth(DEPTH.projectile);
-          // 빗줄기마다 금빛·분홍·민트로 꼬리 색이 다르다.
-          const hue = [0xffe08a, 0xffa0c8, 0x9affc0, 0xfff0c0][Math.floor(Math.random() * 4)];
-          const tail = this.fx.streak(x, top, Math.PI / 2, 30, hue, 0);
-          this.tweens.add({
-            targets: [arrow, tail],
-            y: FLOOR_Y - 4,
-            duration: 200,
-            ease: 'Quad.In',
-            onComplete: () => {
-              arrow.destroy();
-              tail.destroy();
-              this.fx.spark(x, FLOOR_Y - 3, hue);
-              this.fx.burst(x, FLOOR_Y - 2, hue, 2, 40, 220, 1, 300);
-            },
-          });
-        }
-        break;
-      case 'frost':
-        if (Math.random() < dt * 8) this.fx.smoke(x, FLOOR_Y - 6, 2, 0x8fc8e8, -10);
-        if (Math.random() < dt * 14) this.fx.embers(x, FLOOR_Y - 4, 0xdff8ff, 1, 4, 24, 700);
-        if (Math.random() < dt * 9) flutter(this, x, FLOOR_Y - 60 - Math.random() * 30, 'snow', [0xb8ffe8, 0x9ff0ff, 0xc8b0ff, 0xffffff], 1, { spread: 4, speed: 10, gravity: 60, sway: 10, life: 1100 });
-        break;
-      case 'fire':
-        if (Math.random() < dt * 18) this.fx.embers(x, FLOOR_Y - 8, Math.random() < 0.5 ? 0xffc040 : 0xff7a1a, 1, 4, 40, 700);
-        if (Math.random() < dt * 4) this.fx.smoke(x, FLOOR_Y - 16, 1, 0x5a4a44, -14);
-        if (Math.random() < dt * 8) flutter(this, x, FLOOR_Y - 10, 'flame', hues(PAL.flame), 1, { spread: 3, speed: 30, cone: 0.4, gravity: -90, life: 800 });
-        break;
-      default:
-        if (Math.random() < dt * 10) this.fx.burst(x, FLOOR_Y - 6, f.color, 1, 30, 600);
-    }
-  }
-
-  private updateFields(dt: number): void {
-    const p = this.player;
-    this.fields = this.fields.filter((f) => {
-      const poison = (f as Field & { poison?: boolean }).poison;
-      f.life -= dt;
-      f.age += dt;
-      f.tickTimer -= dt;
-      const glow = f.style === 'plain' || f.style === 'poison' ? 0.35 : 0.22;
-      f.rect.setAlpha((glow + Math.sin(f.age * 6) * 0.12) * Math.min(1, f.life * 2));
-      this.fieldFx(f, dt);
-      if (f.tickTimer <= 0) {
-        f.tickTimer = f.tickEvery;
-        if (poison || f.hurt) {
-          // 독 웅덩이·용암 불길: 플레이어를 해친다 (가드 불가).
-          if (p.x > f.x && p.x < f.x + f.w && p.grounded && !p.onPlatform) {
-            this.damagePlayer(f.hurt ?? 6, { x: p.x, melee: false, unblockable: true });
-          }
-        } else {
-          for (const m of this.monsters) {
-            if (!m.alive) continue;
-            if (m.x < f.x - 6 || m.x > f.x + f.w + 6) continue;
-            this.src = f.src ?? 'basic';
-            if (!f.hitsAir && m.body.bottom < FLOOR_Y - 60) continue;
-            this.hitMonster(m, f.damage, { quiet: true, slow: f.slow ? [f.slow, 0.6] : undefined });
-          }
-        }
-      }
-      if (f.life <= 0) {
-        f.rect.destroy();
-        for (const d of f.deco) {
-          // 불꽃은 사그라들며 사라진다.
-          if (d instanceof Phaser.GameObjects.Sprite && d.texture.key === 'fx-flame') {
-            this.tweens.add({ targets: d, alpha: 0, scaleY: 0.2, duration: 300, onComplete: () => d.destroy() });
-          } else if (d.active && !(d instanceof Phaser.GameObjects.Sprite && d.texture.key === 'fx-circle')) d.destroy();
-        }
-        return false;
-      }
-      return true;
-    });
-  }
-
-  addTelegraph(x: number, y: number, w: number, h: number, dur: number, owner: Monster | null, onFire: (() => void) | null, color = 0xff3a2a): void {
-    const rect = this.add.rectangle(x, y, w, h, color, 0).setOrigin(0, 0).setStrokeStyle(1, color, 0.9).setDepth(DEPTH.fx);
-    const fill = this.add.rectangle(x, y + h, w, 0, color, 0.3).setOrigin(0, 1).setDepth(DEPTH.fx);
-    this.telegraphs.push({ rect, fill, time: 0, dur, owner, onFire });
-  }
-
-  private updateTelegraphs(dt: number): void {
-    this.telegraphs = this.telegraphs.filter((t) => {
-      t.time += dt;
-      t.fill.height = t.rect.height * Math.min(1, t.time / t.dur);
-      const cancelled = t.owner !== null && (!t.owner.alive || t.owner.stun > 0);
-      if (t.time >= t.dur || cancelled) {
-        if (!cancelled) t.onFire?.();
-        t.rect.destroy();
-        t.fill.destroy();
-        return false;
-      }
-      return true;
-    });
-  }
-
-  /** 바닥을 타고 양옆으로 퍼지는 충격파. 점프하거나 발판 위에 있으면 피한다. */
-  addShockwave(x: number, damage: number, owner: Monster): void {
-    for (const dir of [-1, 1] as const) {
-      const obj = this.add.rectangle(x, FLOOR_Y - 6, 10, 12, 0xffa040, 0.8).setDepth(DEPTH.fx).setBlendMode(Phaser.BlendModes.ADD);
-      this.waves.push({ obj, x, dir, dist: 0, damage, owner, hit: false });
-    }
-  }
-
-  private updateWavesFx(dt: number): void {
-    const p = this.player;
-    this.waves = this.waves.filter((w) => {
-      const step = 260 * dt;
-      w.x += w.dir * step;
-      w.dist += step;
-      w.obj.setPosition(w.x, FLOOR_Y - 6).setAlpha(0.9 * (1 - w.dist / 360));
-      if (Math.random() < 0.6) this.fx.burst(w.x, FLOOR_Y - 4, 0xffa040, 1, 30, 300);
-      if (!w.hit && Math.abs(p.x - w.x) < 10 && p.grounded && !p.onPlatform) {
-        w.hit = true;
-        this.damagePlayer(w.damage, { x: w.x, monster: w.owner, melee: false });
-      }
-      if (w.dist >= 360) {
-        w.obj.destroy();
-        return false;
-      }
-      return true;
-    });
-  }
-
-  /** 메테오: 하늘에 마법진이 열리고, 불타는 운석이 떨어져 터진 뒤 불길이 남는다. */
-  castMeteor(x: number, damage: number, burn: number): void {
-    const sx = x - 120;
-    const sy = 26;
-    this.fx.circle(sx, sy, 0xff8a3a, 90, 900, false, DEPTH.fx);
-    this.fx.circle(x, FLOOR_Y - 1, 0xff5a2a, 140, 1000, false, DEPTH.fx - 2);
-    const rock = this.add.sprite(sx, sy, 'fx-meteor').play('fx-meteor').setScale(2).setDepth(DEPTH.projectile);
-    rock.setOrigin(26 / 40, 26 / 40);
-    let trailAcc = 0;
-    this.tweens.add({
-      targets: rock,
-      x,
-      y: FLOOR_Y - 18,
-      delay: 120,
-      duration: 780,
-      ease: 'Quad.In',
-      onUpdate: () => {
-        trailAcc++;
-        this.fx.burst(rock.x - 6, rock.y - 6, trailAcc % 2 ? 0xffc040 : 0xff7a1a, 2, 40, 300);
-        if (trailAcc % 3 === 0) this.fx.smoke(rock.x - 14, rock.y - 14, 2, 0x6a3a5a, -6);
-        // 운석 꼬리: 노랑 → 주황 → 자홍으로 식어 가는 불꽃 혀
-        if (trailAcc % 2 === 0) flutter(this, rock.x - 8, rock.y - 8, 'flame', hues(PAL.flame), 2, { spread: 6, speed: 50, angle: -2.4, cone: 0.6, gravity: -30, life: 520 });
-        if (trailAcc % 4 === 0) glow(this, rock.x, rock.y, 46, 0xd0186a, 260, 0.5);
-      },
-      onComplete: () => {
-        rock.destroy();
-        sfx.play('boom');
-        this.fx.flashScreen(0xffa040, 0.45, 260);
-        this.fx.boom(x, FLOOR_Y - 26, 62, 'fire');
-        this.time.delayedCall(90, () => {
-          this.fx.boom(x - 34, FLOOR_Y - 16, 30, 'fire');
-          this.fx.boom(x + 36, FLOOR_Y - 14, 28, 'fire');
-        });
-        this.fx.ring(x, FLOOR_Y, 110, 0xff6a1a, 450);
-        this.fx.ring(x, FLOOR_Y, 70, 0xffd060, 300);
-        // 거대한 불기둥과 땅을 타는 충격파
-        impactBurst(this, x, FLOOR_Y - 30, 90, PAL.flame, FLOOR_Y);
-        column(this, x, FLOOR_Y, 44, 360, PAL.flame, 650);
-        shockwave(this, x, FLOOR_Y, 260, PAL.gold, 600);
-        rays(this, x, FLOOR_Y - 30, 16, 200, PAL.flame, 460);
-        // 화면이 위는 자홍, 아래는 주황으로 물들고, 불꽃 결이 터져 오른 뒤 잔불이 남는다.
-        wash(this, 0xd0186a, 0xff7a1a, 0.2, 460);
-        shockwave(this, x, FLOOR_Y, 180, PAL.crimson, 520, 0.3, 6);
-        wisps(this, x, FLOOR_Y - 10, PAL.flame, 9, 150, 620, { angle: -Math.PI / 2, cone: 1.3, curl: 2.4, width: 9 });
-        flutter(this, x, FLOOR_Y - 20, 'flame', hues(PAL.flame), 26, { spread: 40, spreadY: 16, speed: 230, cone: 1.1, gravity: 120, life: 1000 });
-        afterglow(this, x, FLOOR_Y, 220, PAL.flame, 'flame', 1300);
-        this.fx.burst(x, FLOOR_Y - 16, 0xffb050, 26, 240, 650, 1, 500);
-        this.fx.burst(x, FLOOR_Y - 10, 0x8a6a50, 14, 200, 700, 1.5, 700);
-        for (let i = 0; i < 6; i++) this.time.delayedCall(150 + i * 50, () => this.fx.smoke(x + (i - 2.5) * 22, FLOOR_Y - 18, 3, 0x6a5a54, -24));
-        this.fx.shake(1.6, 280);
-        this.hitArea(x - 60, FLOOR_Y - 140, 120, 150, damage, { knock: 120 });
-        this.addField({ x: x - 55, w: 110, life: 3, tickEvery: 0.5, damage: burn, color: 0xff6a2a, style: 'fire' });
-      },
-    });
-  }
-
+  /** 레이저 줄기를 켜고 끈다 */
   setBeam(on: boolean): void {
-    this.beam.setVisible(on);
-    this.beamGlow.setVisible(on);
-    if (on && !this.beamCircle) {
-      this.beamCircle = this.add.sprite(0, 0, 'fx-circle').play('fx-circle').setTint(0x7fe8ff).setRotation(Math.PI / 2).setScale(0.6, 0.9);
-      this.beamCircle.setBlendMode(Phaser.BlendModes.ADD).setDepth(DEPTH.fx);
-    } else if (!on && this.beamCircle) {
-      const c = this.beamCircle;
-      this.beamCircle = null;
-      this.tweens.add({ targets: c, alpha: 0, scaleY: 0, duration: 160, onComplete: () => c.destroy() });
-    }
-  }
-
-  /** 레이저: 굵은 빛 줄기와 하얀 심, 지팡이 끝 마법진, 줄기를 타고 튀는 전류와 끝의 불꽃 */
-  private updateBeam(): void {
-    if (!this.beam.visible) return;
-    const p = this.player;
-    const m = p.muzzle();
-    const len = 380;
-    const f = p.facing;
-    const x = f === 1 ? m.x : m.x - len;
-    const t = this.time.now;
-    this.beam.setPosition(x, m.y).setSize(len, 3 + Math.sin(t * 0.05) * 1.2);
-    this.beamGlow.setPosition(x, m.y).setSize(len, 12 + Math.sin(t * 0.031) * 3);
-    this.beamCircle?.setPosition(m.x + f * 3, m.y);
-    // 프리즘처럼 색이 흐른다: 바깥 빛이 하늘색 → 보라 → 분홍으로 돌고, 전류와 별빛도 색이 섞인다.
-    const prism = [0x3fc8ff, 0x8a6aff, 0xff7ad8, 0x7fffd8];
-    this.beamGlow.setFillStyle(prism[Math.floor(t / 90) % prism.length], 0.4);
-    if (Math.random() < 0.35) this.fx.lightning(m.x, m.y, m.x + f * (60 + Math.random() * 300), m.y + (Math.random() - 0.5) * 6, prism[Math.floor(Math.random() * 4)], 1, 90);
-    if (Math.random() < 0.5) this.fx.spark(m.x + f * len, m.y, prism[Math.floor(Math.random() * 4)], 1 + Math.round(Math.random()));
-    if (Math.random() < 0.6) this.fx.burst(m.x + f * Math.random() * len, m.y, 0xd8fbff, 1, 40, 250);
-    if (Math.random() < 0.3) flutter(this, m.x + f * Math.random() * len, m.y, 'star', prism, 1, { spread: 2, speed: 40, life: 500 });
-    if (Math.random() < 0.12) glow(this, m.x + f * (20 + Math.random() * (len - 20)), m.y, 34, prism[Math.floor(Math.random() * 4)], 220, 0.5);
-    if (Math.random() < 0.1) wisps(this, m.x + f * 4, m.y, PAL.arcane, 2, 50, 300, { angle: f === 1 ? 0 : Math.PI, cone: 1.0, curl: 2.6, width: 4 });
+    this.hazards.setBeam(on);
   }
 
   // ───────────────────────── HUD ─────────────────────────
