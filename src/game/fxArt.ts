@@ -56,7 +56,7 @@ function line(px: Px, x0: number, y0: number, x1: number, y1: number, color: num
 }
 
 /** 거리 d(0~1)에 따라 팔레트에서 색을 고른다. */
-function band(pal: number[], d: number): number {
+function band(pal: readonly number[], d: number): number {
   return pal[Math.min(pal.length - 1, Math.max(0, Math.floor(d * pal.length)))];
 }
 
@@ -645,8 +645,12 @@ export function createFxArt(scene: Phaser.Scene): void {
   });
 
   // 검기: 앞으로 볼록한 초승달 (청백). 뒤쪽 날은 결이 갈라져 바람에 날린다.
-  sheet(scene, 'fx-wave', 28, 48, 4, (px, f) => {
-    const pal = [0xffffff, 0xd8f6ff, 0x8fdcff, 0x4aa0f0, 0x2a5ad0];
+  // 'fx-wave-g'는 같은 모양의 회색조: 스킬이 색을 입혀 쓴다 (청백 그림에 색을 곱하면 전부 파랗게 죽는다).
+  for (const [key, pal] of [
+    ['fx-wave', [0xffffff, 0xd8f6ff, 0x8fdcff, 0x4aa0f0, 0x2a5ad0]],
+    ['fx-wave-g', [0xffffff, 0xf0f0f0, 0xd2d2d2, 0xa8a8a8, 0x808080]],
+  ] as const)
+  sheet(scene, key, 28, 48, 4, (px, f) => {
     const cx = 8;
     const cy = 23.5;
     for (let y = 0; y < 48; y++) {
@@ -671,6 +675,7 @@ export function createFxArt(scene: Phaser.Scene): void {
     }
   });
   anim(scene, 'fx-wave', 4, 18, -1);
+  anim(scene, 'fx-wave-g', 4, 18, -1);
 
   // 운석: 용암 금이 간 돌덩이와 불꼬리 (오른쪽 아래로 떨어진다)
   sheet(scene, 'fx-meteor', 40, 40, 4, (px, f) => {

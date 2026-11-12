@@ -7,7 +7,7 @@ import type { BattleScene } from './battleScene';
 import { DEPTH } from './fx';
 import type { Monster } from './monster2d';
 import { FLOOR_Y } from './world';
-import { aura, column, crescent, flare, impactBurst, PAL, rays, shards, shockwave, tint, type Palette3 } from './vfx';
+import { afterglow, aura, column, crescent, flare, flutter, glow, hues, impactBurst, PAL, rays, shards, shockwave, tint, wash, wisps, type MoteKind, type Palette3 } from './vfx';
 
 // 상급·궁극 스킬: 화면 전체를 휩쓰는 광역기. 무기마다 3개씩 (상급 2, 궁극 1).
 // "화면 안"은 지금 카메라에 보이는 범위다. 연출은 시간차(delayedCall)로 이어 붙인다.
@@ -81,8 +81,19 @@ const heavenCleave: Cast = (b) => {
     b.fx.shake(1.4, 220);
     // 가른 자리를 따라 하늘색 빛살이 터진다.
     b.fx.bigSlash(v.x, y, v.right, y, 0x2a7aff, 30, 520);
-    tint(b, 0x2a7aff, 0.22, 420);
-    for (let i = 0; i < 6; i++) later(b, i * 40, () => rays(b, v.x + (v.width * (i + 0.5)) / 6, y, 6, 90, PAL.sky, 360));
+    // 갈라진 하늘: 위로는 보라, 아래로는 청록 빛이 번지고, 벤 자리를 따라 별빛과 결이 흩어진다.
+    b.fx.bigSlash(v.x, y - 30, v.right, y - 26, 0x8a5aff, 5, 380);
+    b.fx.bigSlash(v.x, y + 28, v.right, y + 32, 0x7fffd8, 5, 380);
+    wash(b, 0x5a3aff, 0x1ac8d8, 0.2, 480);
+    for (let i = 0; i < 6; i++) {
+      const x = v.x + (v.width * (i + 0.5)) / 6;
+      later(b, i * 40, () => {
+        rays(b, x, y, 6, 90, i % 2 ? PAL.aurora : PAL.sky, 360);
+        wisps(b, x, y, i % 2 ? PAL.aurora : PAL.sky, 3, 90, 460, { curl: 2.6, width: 6 });
+        glow(b, x, y, 90, i % 2 ? 0x5a3aff : 0x1ac8d8, 520, 0.5, 0.5);
+      });
+    }
+    flutter(b, v.centerX, y, 'star', hues(PAL.sky), 30, { spread: v.width / 2, spreadY: 14, speed: 70, life: 1200, within: 260 });
     for (const m of onScreen(b)) {
       if (Math.abs(m.y - y) > 56) continue;
       b.hitMonster(m, b.skillBase({ str: 8 }), { knock: 160 });
@@ -105,8 +116,18 @@ const crossJudgment: Cast = (b) => {
     else b.fx.bigSlash(v.right - 20, top, v.x + 20, bottom, 0xffe08a, 14, 500);
     sfx.play('slash', 0.5);
     b.fx.shake(1.2, 180);
+    // 첫 획은 주황, 둘째 획은 다홍: 두 색이 엇갈려 십자를 이룬다.
     if (k === 0) b.fx.bigSlash(v.x + 20, top, v.right - 20, bottom, 0xff8a1a, 34, 560);
-    else b.fx.bigSlash(v.right - 20, top, v.x + 20, bottom, 0xff8a1a, 34, 560);
+    else b.fx.bigSlash(v.right - 20, top, v.x + 20, bottom, 0xff3a6a, 34, 560);
+    for (let i = 0; i < 5; i++) {
+      const u = (i + 0.5) / 5;
+      const x = k === 0 ? v.x + 20 + (v.width - 40) * u : v.right - 20 - (v.width - 40) * u;
+      const y = top + (bottom - top) * u;
+      later(b, i * 30, () => {
+        wisps(b, x, y, k ? PAL.rose : PAL.sun, 2, 80, 420, { curl: 2.6, width: 6 });
+        flutter(b, x, y, 'star', k ? [0xff8ad0, 0xffe0f0, 0xffc08a] : [0xffd040, 0xfffbe0, 0xff9ad0], 4, { spread: 16, speed: 90, life: 800 });
+      });
+    }
     for (const m of onScreen(b)) {
       b.hitMonster(m, b.skillBase({ str: 5 }), { stun: 2, knock: 40 });
       flare(b, m.x, m.y, 30, PAL.gold, 260);
@@ -123,7 +144,12 @@ const crossJudgment: Cast = (b) => {
     const cy = (v.y + FLOOR_Y) / 2;
     impactBurst(b, v.centerX, cy, 120, PAL.gold);
     rays(b, v.centerX, cy, 20, 320, PAL.gold, 560);
-    tint(b, 0xff9a1a, 0.25, 460);
+    rays(b, v.centerX, cy, 12, 220, PAL.rose, 480);
+    shockwave(b, v.centerX, cy, 260, PAL.sun, 620, 1, 10);
+    wisps(b, v.centerX, cy, PAL.sun, 10, 200, 700, { curl: 2.8, width: 9 });
+    flutter(b, v.centerX, cy, 'flame', hues(PAL.sun), 30, { spread: 30, speed: 260, cone: Math.PI, gravity: 60, life: 1100 });
+    wash(b, 0xff2a6a, 0xffd040, 0.22, 520);
+    afterglow(b, v.centerX, FLOOR_Y, v.width * 0.7, PAL.sun, 'flame', 1300);
   });
 };
 
@@ -158,7 +184,7 @@ const skyFlash: Cast = (b) => {
     const x = p.x + Math.cos(ang) * (46 + row * 20);
     const y = hoverY - 4 + Math.sin(ang) * (40 + row * 18);
     const appear = 120 + (i * 480) / count;
-    later(b, appear, () => swords.push(skySword(b, x, y, lastShot + 400 - appear)));
+    later(b, appear, () => swords.push(skySword(b, x, y, lastShot + 400 - appear, i)));
   }
   for (let n = 0; n < shots; n++) {
     later(b, SKY_SUMMON_MS + n * gapMs, () => {
@@ -172,11 +198,21 @@ const skyFlash: Cast = (b) => {
     b.fx.shake(1.4, 240);
     const v = view(b);
     shockwave(b, v.centerX, v.centerY, v.width * 0.7, PAL.sky, 600);
-    tint(b, 0x2a7aff, 0.2, 420);
+    shockwave(b, v.centerX, v.centerY, v.width * 0.45, PAL.aurora, 520, 0.32, 6);
+    wash(b, 0x5a3aff, 0x1ac8d8, 0.2, 460);
+    wisps(b, p.x, p.y, PAL.sky, 10, 160, 640, { curl: 3, width: 8 });
+    flutter(b, p.x, p.y, 'star', SKY_HUES, 30, { spread: 60, spreadY: 40, speed: 200, gravity: 60, life: 1200 });
   });
 };
 
+/** 마나검이 돌려 쓰는 빛깔: 하늘 · 보라 · 민트 · 장미 */
+const SKY_HUES = [0x9fd8ff, 0xb89aff, 0x7fffd8, 0xff9ad8];
+const SKY_GLOWS = [0x4f9dff, 0x7a3aff, 0x1ac8a0, 0xe03a9a];
+const SKY_PALS = [PAL.sky, PAL.violet, PAL.aurora, PAL.rose];
+
 interface SkySword {
+  /** 빛깔 번호 */
+  hue: number;
   sword: Phaser.GameObjects.Image;
   glow: Phaser.GameObjects.Image;
   x: number;
@@ -185,15 +221,17 @@ interface SkySword {
 }
 
 /** 마나검 한 자루: 나타나 검강을 두르고, 시전이 끝나면 사라진다. */
-function skySword(b: BattleScene, x: number, y: number, lifeMs: number): SkySword {
-  const sword = b.add.image(x, y - 14, 'fx-sword').setDepth(DEPTH.projectile).setTint(0x9fd8ff).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0);
+function skySword(b: BattleScene, x: number, y: number, lifeMs: number, index = 0): SkySword {
+  const hue = index % SKY_HUES.length;
+  const sword = b.add.image(x, y - 14, 'fx-sword').setDepth(DEPTH.projectile).setTint(SKY_HUES[hue]).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0);
   // 검강: 칼날을 감싸는 더 큰 빛
-  const glow = b.add.image(x, y, 'fx-sword').setDepth(DEPTH.projectile - 1).setTint(0x4f9dff).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0).setScale(1.5);
+  const glow = b.add.image(x, y, 'fx-sword').setDepth(DEPTH.projectile - 1).setTint(SKY_GLOWS[hue]).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0).setScale(1.5);
   const parts = [sword, glow];
   b.tweens.add({ targets: sword, y, alpha: 1, duration: 200, ease: 'Quad.Out' });
   later(b, 300, () => {
     b.tweens.add({ targets: glow, alpha: 0.75, duration: 160 });
-    b.fx.spark(x, y, 0xbfe8ff, 1);
+    b.fx.spark(x, y, SKY_HUES[hue], 1);
+    flutter(b, x, y, 'star', [SKY_HUES[hue], 0xffffff], 2, { spread: 6, speed: 40, life: 500 });
   });
   const cleanup = (): void => {
     for (const part of parts) if (part.active) part.destroy();
@@ -201,20 +239,21 @@ function skySword(b: BattleScene, x: number, y: number, lifeMs: number): SkySwor
   // later는 쓰러지면 건너뛰므로, 검이 남지 않게 따로 지운다.
   b.time.delayedCall(lifeMs, cleanup);
   return {
+    hue,
     sword,
     glow,
     x,
     y,
     vanish: () => {
       if (!sword.active) return;
-      b.fx.burst(x, y, 0xbfe8ff, 6, 70, 260);
+      b.fx.burst(x, y, SKY_HUES[hue], 6, 70, 260);
       b.tweens.add({ targets: parts, alpha: 0, duration: 140, onComplete: cleanup });
     },
   };
 }
 
 /** 탄검강 한 발: 몬스터를 조준해 칼끝에서 쏜다. 몬스터가 없으면 앞쪽 땅을 때린다. */
-function skyShot(b: BattleScene, { sword, glow, x, y }: SkySword, damage: number, last: boolean): void {
+function skyShot(b: BattleScene, { sword, glow, x, y, hue }: SkySword, damage: number, last: boolean): void {
   const targets = onScreen(b);
   const m = targets.length ? targets[Math.floor(Math.random() * targets.length)] : null;
   const v = view(b);
@@ -226,9 +265,10 @@ function skyShot(b: BattleScene, { sword, glow, x, y }: SkySword, damage: number
   glow.setRotation(ang - Math.PI / 2);
   b.tweens.add({ targets: [sword, glow], x: x - Math.cos(ang) * 6, y: y - Math.sin(ang) * 6, duration: 50, yoyo: true });
   const far = Math.hypot(tx - x, ty - y) + 90;
-  b.fx.tracer(x, y, x + Math.cos(ang) * far, y + Math.sin(ang) * far, last ? 0xdff4ff : 0x7fc4ff, 3, 130);
-  flare(b, tx, ty, 16, PAL.sky, 140);
-  b.fx.spark(tx, ty, 0xbfe8ff, 1);
+  b.fx.tracer(x, y, x + Math.cos(ang) * far, y + Math.sin(ang) * far, last ? 0xdff4ff : SKY_HUES[hue], 3, 130);
+  flare(b, tx, ty, 16, SKY_PALS[hue], 140);
+  b.fx.spark(tx, ty, SKY_HUES[hue], 1);
+  if (Math.random() < 0.35) flutter(b, tx, ty, 'star', [SKY_HUES[hue], 0xffffff], 2, { spread: 8, speed: 80, life: 500 });
   b.hitscan(x, y, ang, far, damage, { pierce: true, color: 0x9fd8ff, width: 0, quiet: true });
   sfx.play('magic', 0.45);
 }
@@ -244,7 +284,12 @@ const moonStorm: Cast = (b) => {
       const dir = (i % 2 === 0 ? p.facing : -p.facing) as 1 | -1;
       b.fx.slash(p.x + dir * 8, p.y - 2, dir, 46, 0xffc08a, true, { up: i % 4 >= 2 });
       crescent(b, p.x, p.y - 4, dir, 130, i % 2 ? PAL.rose : PAL.moon, { from: i % 4 >= 2 ? 1.6 : -1.6, to: i % 4 >= 2 ? -1.5 : 1.5, ms: 360 });
-      b.spawnPlayerBolt({ x: p.x + dir * 20, y: p.y - 4, vx: dir * 430, vy: 0, damage: b.skillBase({ str: 3.5 }), kind: 'wave', pierce: true, life: 1.6, size: 2, color: 0xffb070 });
+      b.spawnPlayerBolt({ x: p.x + dir * 20, y: p.y - 4, vx: dir * 430, vy: 0, damage: b.skillBase({ str: 3.5 }), kind: 'wave', pierce: true, life: 1.6, size: 2, color: [0xffb070, 0xff7ab0, 0xffe070][i % 3] });
+      // 달빛 폭풍: 주황·장미·노랑 달이 번갈아 뜨고, 별 부스러기가 검기를 따라 쓸려 간다.
+      wisps(b, p.x + dir * 30, p.y - 4, i % 2 ? PAL.rose : PAL.moon, 4, 120, 460, { angle: dir === 1 ? 0 : Math.PI, cone: 0.8, curl: 2.4, width: 7 });
+      flutter(b, p.x + dir * 50, p.y - 4, 'star', [0xffe070, 0xff8ad0, 0xfff0d0, 0xffa040], 8, { spread: 30, spreadY: 40, speed: 240, angle: dir === 1 ? 0 : Math.PI, cone: 0.5, gravity: 30, life: 800 });
+      glow(b, p.x + dir * 40, p.y - 4, 130, i % 2 ? 0x9a2aff : 0xe01a6a, 420, 0.5);
+      if (i === 5) afterglow(b, p.x, FLOOR_Y, 260, PAL.moon, 'star', 1200);
       sfx.play('slash', 0.6);
     });
   }
@@ -271,14 +316,23 @@ const heavenFall: Cast = (b) => {
     impactBurst(b, p.x, FLOOR_Y - 30, 130, PAL.violet, FLOOR_Y);
     column(b, p.x, FLOOR_Y, 70, 400, PAL.violet, 700);
     shockwave(b, p.x, FLOOR_Y, v.width, PAL.violet, 800, 0.25, 12);
-    tint(b, 0x7a2aff, 0.3, 500);
+    // 하늘이 남색에서 분홍으로 물들고, 갈라진 틈마다 보라·장미·남색 빛이 번갈아 솟는다.
+    wash(b, 0x3a2ae0, 0xff5ac8, 0.26, 560);
+    shockwave(b, p.x, FLOOR_Y, v.width * 0.6, PAL.rose, 700, 0.25, 8);
+    wisps(b, p.x, FLOOR_Y - 10, PAL.violet, 10, 190, 700, { angle: -Math.PI / 2, cone: 1.4, curl: 2.6, width: 9 });
+    flutter(b, p.x, FLOOR_Y - 20, 'star', hues(PAL.violet), 30, { spread: 50, spreadY: 10, speed: 320, cone: 1.2, gravity: 240, life: 1200 });
+    afterglow(b, p.x, FLOOR_Y, 300, PAL.violet, 'star', 1400);
     // 땅이 플레이어에게서 양옆으로 차례로 갈라진다.
+    let crack = 0;
     for (let x = v.x + 10; x < v.right; x += 34) {
       const d = Math.abs(x - p.x);
+      const pal = [PAL.violet, PAL.rose, PAL.storm][crack++ % 3];
       later(b, d * 0.9, () => {
         b.fx.smoke(x, FLOOR_Y - 6, 2, 0x8a7a9a, -14);
-        b.fx.burst(x, FLOOR_Y - 4, 0xc8b0ff, 4, 90, 360, 1, 300);
-        column(b, x, FLOOR_Y, 10, 120 + Math.random() * 80, PAL.violet, 420);
+        b.fx.burst(x, FLOOR_Y - 4, pal[1], 4, 90, 360, 1, 300);
+        column(b, x, FLOOR_Y, 10, 120 + Math.random() * 80, pal, 420);
+        flutter(b, x, FLOOR_Y - 8, 'star', hues(pal), 2, { spread: 6, speed: 150, cone: 0.5, gravity: 200, life: 700 });
+        glow(b, x, FLOOR_Y, 40, pal[0], 520, 0.5, 0.4);
       });
     }
     for (const m of onScreen(b)) {
@@ -378,10 +432,14 @@ const bloodMoon: Cast = (b) => {
         veil.setAlpha(k * 0.45);
         drawIaiGauge(gauge, Math.round(p.x + (p.facing === 1 ? -20 : 15)), p.feet, t, b.time.now / 1000);
         if (Math.random() < 0.3 + k * 0.6) b.fx.embers(p.x, p.feet - 4, Math.random() < 0.5 ? 0xff3a4a : 0xffa0a8, 1, 12 + k * 20, 30 + k * 40, 500);
+        // 혈월이 차오를수록 붉은 꽃잎과 자줏빛 기운이 짙게 피어오른다.
+        if (Math.random() < 0.06 + k * 0.2) flutter(b, p.x, p.feet - 10, 'petal', [0xff3a5a, 0xc03ae0, 0xff8a96, 0xff9a3a], 1, { spread: 20 + k * 30, spreadY: 6, speed: 30, cone: 0.5, gravity: -60 - k * 60, sway: 14, life: 1100 });
         const now = Math.min(IAI_CELLS, Math.floor(t / IAI_STEP));
         if (now > steps) {
           steps = now;
           b.fx.ring(p.x, p.feet, 24 + k * 50, 0xff3a4a, 260);
+          glow(b, p.x, p.feet, 40 + k * 70, steps % 2 ? 0x8a1ad0 : 0xd01a3a, 420, 0.5, 0.4);
+          if (steps % 4 === 0) wisps(b, p.x, p.feet - 6, steps % 8 ? PAL.crimson : PAL.rose, 4, 60 + k * 60, 480, { angle: -Math.PI / 2, cone: 1.0, curl: 3, width: 6 });
           sfx.play('parry', 0.3 + k * 0.4);
           if (steps === IAI_CELLS) b.fx.flashScreen(0xff3a4a, 0.25, 200);
         }
@@ -395,6 +453,9 @@ const bloodMoon: Cast = (b) => {
         b.fx.text(p.x, p.body.top - 30, `혈월 ${total}타 · 한 타 ${Math.round(IAI_STR * (1 + IAI_DMG_PER_STEP * Math.max(1, steps)) * 100)}%`, 'crit');
         p.startAction('iai', 99, []);
         b.fx.flashScreen(0xff2a3a, 0.4, 240);
+        wash(b, 0x8a1ad0, 0xff2a3a, 0.24, 520);
+        wisps(b, p.x, p.y, PAL.crimson, 10, 170, 620, { curl: 3, width: 9 });
+        flutter(b, p.x, p.y, 'petal', [0xff3a5a, 0xc03ae0, 0xff8a96, 0xffd0d0], 30, { spread: 30, speed: 280, gravity: 60, sway: 18, life: 1400 });
         sfx.play('slash', 1.4);
         return false;
       }
@@ -413,7 +474,8 @@ const bloodMoon: Cast = (b) => {
             b.fx.slash(m.x, m.y, dir, 20 + Math.random() * 12, 0xff3a4a, false, { rot: (Math.random() - 0.5) * 2.4, up: Math.random() < 0.5, speed: 1.8 });
             if (hits % 4 === 0) {
               const a = Math.random() * Math.PI;
-              crescent(b, m.x, m.y, dir, 36 + Math.random() * 24, PAL.crimson, { from: a - 1.4, to: a + 1.4, ms: 200 });
+              crescent(b, m.x, m.y, dir, 36 + Math.random() * 24, [PAL.crimson, PAL.rose, PAL.hex][(hits / 4) % 3], { from: a - 1.4, to: a + 1.4, ms: 200 });
+              if (hits % 8 === 0) flutter(b, m.x, m.y, 'petal', [0xff3a5a, 0xc03ae0, 0xff8a96], 3, { spread: 10, speed: 140, gravity: 160, life: 700 });
             }
           }
           b.hitMonster(m, hitDamage, { knock: 6, quiet: hits !== total });
@@ -423,8 +485,9 @@ const bloodMoon: Cast = (b) => {
       if (hits < total) return false;
       b.fx.flashScreen(0xff3a4a, 0.45, 360);
       b.fx.shake(1.8, 300);
-      for (const m of onScreen(b)) impactBurst(b, m.x, m.y, 50, PAL.crimson);
-      tint(b, 0xd01a3a, 0.3, 500);
+      onScreen(b).forEach((m, i) => impactBurst(b, m.x, m.y, 50, i % 2 ? PAL.rose : PAL.crimson));
+      wash(b, 0x8a1ad0, 0xff2a3a, 0.3, 600);
+      flutter(b, view(b).centerX, view(b).y + 20, 'petal', [0xff3a5a, 0xc03ae0, 0xff8a96, 0xffd0d0], 40, { spread: view(b).width / 2, spreadY: 20, speed: 40, cone: 0.5, angle: Math.PI / 2, gravity: 90, sway: 20, life: 2000, within: 500 });
       cleanup();
       return true;
     },
@@ -442,6 +505,9 @@ function arrowRain(b: BattleScene, x0: number, y0: number, x1: number, y1: numbe
   }, undefined, color);
 }
 
+/** 천궁 산개의 화살 빛깔 */
+const BURST_HUES = [0xffe08a, 0xff9ab8, 0x9affc0, 0xfff6c0, 0x7fd8ff];
+
 /** 천궁 산개: 하늘로 쏘아 올린 화살이 정점에서 30발로 갈라져 쏟아진다. */
 const skyBurst: Cast = (b) => {
   const p = b.player;
@@ -453,9 +519,14 @@ const skyBurst: Cast = (b) => {
   arrowRain(b, m0.x, m0.y, apex.x, apex.y, 320, 0xffe08a, () => {
     b.fx.boom(apex.x, apex.y, 18, 'gold');
     b.fx.ring(apex.x, apex.y, 50, 0xffe08a, 300);
-    flare(b, apex.x, apex.y, 60, PAL.gold, 420);
+    flare(b, apex.x, apex.y, 60, PAL.sun, 420);
     rays(b, apex.x, apex.y, 18, 200, PAL.gold, 520);
     shockwave(b, apex.x, apex.y, 160, PAL.gold, 500, 1, 8);
+    // 정점에서 터지는 빛: 금빛 사이로 분홍·민트 결이 꽃처럼 펼쳐진다.
+    shockwave(b, apex.x, apex.y, 110, PAL.aurora, 440, 1, 5);
+    wisps(b, apex.x, apex.y, PAL.sun, 9, 130, 620, { curl: 2.8, width: 7 });
+    flutter(b, apex.x, apex.y, 'star', BURST_HUES, 24, { spread: 20, speed: 200, gravity: 110, life: 1200 });
+    wash(b, 0xffd040, 0x1ad8a0, 0.14, 420);
     b.fx.circle(apex.x, apex.y, 0xffe08a, 70, 900, false, DEPTH.fx);
     const targets = onScreen(b);
     for (let i = 0; i < 30; i++) {
@@ -464,8 +535,9 @@ const skyBurst: Cast = (b) => {
         const m = targets.length && i < targets.length * 2 ? targets[i % targets.length] : null;
         const x = m && m.alive ? m.x + (Math.random() - 0.5) * 8 : v.x + 10 + Math.random() * (v.width - 20);
         const y = m && m.alive ? m.y : FLOOR_Y - 3;
-        arrowRain(b, apex.x, apex.y, x, y, 260 + Math.random() * 120, 0xffe08a, () => {
-          if (i % 2 === 0) flare(b, x, y, 18, PAL.gold, 200);
+        arrowRain(b, apex.x, apex.y, x, y, 260 + Math.random() * 120, BURST_HUES[i % BURST_HUES.length], () => {
+          if (i % 2 === 0) flare(b, x, y, 18, [PAL.gold, PAL.rose, PAL.aurora][(i / 2) % 3], 200);
+          if (i % 5 === 0) glow(b, x, FLOOR_Y, 60, [0xff3a5a, 0x1a8ad8, 0xffa020][(i / 5) % 3], 600, 0.5, 0.35);
           b.hitArea(x - 12, y - 16, 24, 32, b.skillBase({ dex: 2.2, str: 0.8 }), { knock: 20, quiet: i % 3 !== 0 });
         });
       });
@@ -491,7 +563,10 @@ const meteorArrow: Cast = (b) => {
       // 위로 크게 휘었다가 내리꽂힌다 (2차 베지어).
       const cx = (m0.x + tx) / 2;
       const cy = Math.min(m0.y, ty) - 120;
+      // 세 화살은 금빛·장밋빛·청록빛 유성이다.
+      const pal = [PAL.sun, PAL.rose, PAL.aurora][i];
       const arrow = b.add.image(m0.x, m0.y, 'fx-arrow').setScale(2).setDepth(DEPTH.projectile);
+      let trail = 0;
       const curve = new Phaser.Curves.QuadraticBezier(new Phaser.Math.Vector2(m0.x, m0.y), new Phaser.Math.Vector2(cx, cy), new Phaser.Math.Vector2(tx, ty));
       const state = { t: 0 };
       b.tweens.add({
@@ -503,15 +578,20 @@ const meteorArrow: Cast = (b) => {
           const pt = curve.getPoint(state.t);
           const tan = curve.getTangent(state.t);
           arrow.setPosition(pt.x, pt.y).setRotation(Math.atan2(tan.y, tan.x));
-          b.fx.burst(pt.x, pt.y, 0xffe08a, 1, 20, 300);
+          b.fx.burst(pt.x, pt.y, pal[1], 1, 20, 300);
+          if (trail++ % 2 === 0) flutter(b, pt.x, pt.y, 'star', hues(pal), 1, { spread: 3, speed: 20, gravity: 30, life: 600 });
+          if (trail % 5 === 0) glow(b, pt.x, pt.y, 30, pal[0], 240, 0.5);
         },
         onComplete: () => {
           arrow.destroy();
           sfx.play('boom', 0.7);
           b.fx.boom(tx, ty, 34, 'gold');
           b.fx.ring(tx, Math.min(ty + 10, FLOOR_Y), 60, 0xffe08a);
-          impactBurst(b, tx, ty, 80, PAL.gold, Math.min(ty + 10, FLOOR_Y));
-          column(b, tx, Math.min(ty + 10, FLOOR_Y), 30, 300, PAL.gold, 520);
+          impactBurst(b, tx, ty, 80, pal, Math.min(ty + 10, FLOOR_Y));
+          column(b, tx, Math.min(ty + 10, FLOOR_Y), 30, 300, pal, 520);
+          wisps(b, tx, ty, pal, 7, 110, 560, { curl: 2.8, width: 7 });
+          flutter(b, tx, ty, 'star', hues(pal), 16, { spread: 16, speed: 240, gravity: 200, life: 1000 });
+          afterglow(b, tx, FLOOR_Y, 150, pal, 'star', 1100);
           b.fx.shake(1.1, 160);
           b.hitArea(tx - 50, ty - 50, 100, 100, b.skillBase({ dex: 7, str: 3 }), { knock: 120 });
         },
@@ -560,6 +640,11 @@ function bigStarArrow(b: BattleScene, m: Monster, stars: number, last: boolean):
       impactBurst(b, m.x, m.y, 40 + size * 10, PAL.gold, FLOOR_Y);
       rays(b, m.x, m.y, 10 + Math.round(size), 60 + size * 16, PAL.gold, 420);
       shockwave(b, m.x, FLOOR_Y, 60 + size * 20, PAL.gold, 500);
+      // 별이 많을수록 오로라 빛 물결과 별 부스러기가 크게 번진다.
+      shockwave(b, m.x, FLOOR_Y, 40 + size * 14, PAL.aurora, 440, 0.3, 5);
+      wisps(b, m.x, m.y, last ? PAL.aurora : PAL.sun, 4 + Math.round(size), 50 + size * 14, 560, { curl: 2.8, width: 4 + size * 0.6 });
+      flutter(b, m.x, m.y, 'star', AURORA_HUES, 8 + Math.round(size * 3), { spread: 12, speed: 140 + size * 26, gravity: 160, life: 1000 });
+      if (last) wash(b, 0x1ad8a0, 0xffd040, 0.2, 520);
       b.fx.flashScreen(0xfff0c0, 0.2 + power * 0.35, 220);
       b.fx.shake(0.8 + power * 2, 260);
       sfx.play('boom', 0.6 + power * 0.4);
@@ -570,6 +655,9 @@ function bigStarArrow(b: BattleScene, m: Monster, stars: number, last: boolean):
     },
   });
 }
+
+/** 별사냥의 별빛: 금 · 민트 · 하늘 · 연보라 · 분홍 */
+const AURORA_HUES = [0xffe08a, 0x7fffd0, 0x9fd8ff, 0xc8a0ff, 0xff9ad0];
 
 const aurora: Cast = (b) => {
   const p = b.player;
@@ -586,6 +674,10 @@ const aurora: Cast = (b) => {
     },
   });
   b.announce('별사냥! 6초 동안 활로 맞힌 적에게 별 표식이 새겨진다', 1.6);
+  // 밤하늘에 오로라가 걸린다: 청록에서 보라로 흐르는 빛과, 천천히 내리는 별.
+  wash(b, 0x1ad8a0, 0x8a3aff, 0.2, 900);
+  wisps(b, p.x, p.y - 20, PAL.aurora, 8, 150, 800, { angle: -Math.PI / 2, cone: 1.2, curl: 2.4, width: 8 });
+  let starfall = 0;
   const marks = new Map<Monster, { n: number; hits: number; label: Phaser.GameObjects.Text }>();
   const timer = ultText(b, 16, '#ffe08a').setScrollFactor(0);
   b.hitHook = (m) => {
@@ -597,7 +689,8 @@ const aurora: Cast = (b) => {
     }
     e.hits++;
     e.n += e.hits;
-    b.fx.spark(m.x, m.body.top - 6, 0xffe08a, 1, Math.PI / 4);
+    b.fx.spark(m.x, m.body.top - 6, AURORA_HUES[e.hits % AURORA_HUES.length], 1, Math.PI / 4);
+    flutter(b, m.x, m.body.top - 6, 'star', AURORA_HUES, 2 + Math.min(4, e.hits), { spread: 8, speed: 90, gravity: 80, life: 700 });
   };
   let t = 0;
   let falling = false;
@@ -622,6 +715,12 @@ const aurora: Cast = (b) => {
       t += dt;
       for (const [m, e] of marks) e.label.setPosition(m.x, m.body.top - 14).setText(`★${e.n}`).setVisible(m.alive && e.n > 0);
       if (!falling) {
+        starfall -= dt;
+        if (starfall <= 0) {
+          starfall = 0.12;
+          const v = view(b);
+          flutter(b, v.x + Math.random() * v.width, v.y + 10 + Math.random() * 60, 'star', AURORA_HUES, 1, { spread: 2, speed: 8, gravity: 22, sway: 6, life: 1800 });
+        }
         const stars = [...marks.values()].reduce((a, e) => a + e.n, 0);
         timer.setPosition(b.cameras.main.width / 2, 74).setText(`별사냥 ${Math.max(0, STAR_TIME - t).toFixed(1)}초 · 별 ${stars}개`);
         if (t < STAR_TIME) return false;
@@ -631,8 +730,7 @@ const aurora: Cast = (b) => {
         const live = [...marks.entries()].filter(([m, e]) => m.alive && e.n > 0).sort((a, c) => a[1].n - c[1].n);
         timer.setText(stars ? `별 ${stars}개` : '');
         const lines = b.add.graphics().setDepth(DEPTH.fx);
-        lines.lineStyle(1, 0xffe08a, 0.9);
-        for (let i = 1; i < live.length; i++) lines.lineBetween(live[i - 1][0].x, live[i - 1][0].y, live[i][0].x, live[i][0].y);
+        for (let i = 1; i < live.length; i++) lines.lineStyle(1, AURORA_HUES[i % AURORA_HUES.length], 0.9).lineBetween(live[i - 1][0].x, live[i - 1][0].y, live[i][0].x, live[i][0].y);
         b.tweens.add({ targets: lines, alpha: 0, delay: 600, duration: 500, onComplete: () => lines.destroy() });
         if (live.length) {
           b.fx.flashScreen(0xffe08a, 0.25, 260);
@@ -647,7 +745,7 @@ const aurora: Cast = (b) => {
                 for (let i = 0; i < STAR_VOLLEY_ARROWS; i++) {
                   const [m] = live[Math.floor(Math.random() * live.length)];
                   const ex = m.x + (Math.random() - 0.5) * 60;
-                  arrowRain(b, ex + 20 + Math.random() * 90, v.y + 4 + Math.random() * 30, ex, FLOOR_Y - 3 - Math.random() * 30, 200 + Math.random() * 60, 0xffe08a, () => undefined);
+                  arrowRain(b, ex + 20 + Math.random() * 90, v.y + 4 + Math.random() * 30, ex, FLOOR_Y - 3 - Math.random() * 30, 200 + Math.random() * 60, AURORA_HUES[(i + k) % AURORA_HUES.length], () => undefined);
                 }
               },
             ]);
@@ -677,6 +775,9 @@ const aurora: Cast = (b) => {
 };
 // ───────────────────────── 총잡이 ─────────────────────────
 
+const RICO_HUES = [0xffd060, 0xff7ac0, 0x7fe0ff, 0xc8ff7a];
+const RICO_PALS = [PAL.gold, PAL.rose, PAL.arcane, PAL.jade];
+
 /** 도탄 난사: 탄환 4발이 적에서 적으로 튕기며 최대 8마리씩 맞힌다. */
 const ricochet: Cast = (b) => {
   const p = b.player;
@@ -699,10 +800,13 @@ const ricochet: Cast = (b) => {
         const a = from;
         const to = { x: next.x, y: next.y };
         later(b, hop * 45, () => {
-          b.fx.tracer(a.x, a.y, to.x, to.y, 0xffd890, 2, 120);
-          b.fx.bigSlash(a.x, a.y, to.x, to.y, 0xff8a1a, 4, 200);
-          b.fx.spark(to.x, to.y, 0xffd890);
-          flare(b, to.x, to.y, 18, PAL.flame, 180);
+          // 네 발의 탄환은 금·분홍·하늘·연두, 저마다 다른 빛줄기로 튄다.
+          b.fx.tracer(a.x, a.y, to.x, to.y, RICO_HUES[shot], 2, 120);
+          b.fx.bigSlash(a.x, a.y, to.x, to.y, RICO_HUES[shot], 4, 200);
+          b.fx.spark(to.x, to.y, RICO_HUES[shot]);
+          b.fx.pop(to.x, to.y, RICO_HUES[(shot + 1) % 4], 1.1);
+          flare(b, to.x, to.y, 18, RICO_PALS[shot], 180);
+          if (hop % 2 === 0) flutter(b, to.x, to.y, 'star', [RICO_HUES[shot], 0xffffff], 3, { spread: 6, speed: 110, gravity: 120, life: 600 });
           if (next.alive) b.hitMonster(next, b.weaponBase() * 1.5, { knock: 30, quiet: hop > 0 });
         });
         from = to;
@@ -733,8 +837,14 @@ const airstrike: Cast = (b) => {
         b.fx.boom(x, FLOOR_Y - 22, 40, 'fire');
         b.fx.ring(x, FLOOR_Y, 70, 0xffa040);
         b.fx.burst(x, FLOOR_Y - 10, 0x8a6a50, 8, 160, 500, 1.4, 600);
-        impactBurst(b, x, FLOOR_Y - 30, 90, PAL.flame, FLOOR_Y);
+        impactBurst(b, x, FLOOR_Y - 30, 90, i % 2 ? PAL.sun : PAL.flame, FLOOR_Y);
         column(b, x, FLOOR_Y, 36, 280, PAL.flame, 520);
+        // 포탄마다 자홍빛 화염이 말려 오르고 불티가 쏟아진 뒤 잔불이 남는다.
+        shockwave(b, x, FLOOR_Y, 110, PAL.crimson, 480, 0.3, 5);
+        wisps(b, x, FLOOR_Y - 10, PAL.flame, 6, 120, 560, { angle: -Math.PI / 2, cone: 1.3, curl: 2.6, width: 8 });
+        flutter(b, x, FLOOR_Y - 20, 'flame', hues(PAL.flame), 12, { spread: 20, spreadY: 10, speed: 220, cone: 1.0, gravity: 160, life: 900 });
+        afterglow(b, x, FLOOR_Y, 140, PAL.flame, 'flame', 1000);
+        if (i === 0) wash(b, 0xd0186a, 0xff7a1a, 0.16, 420);
         b.fx.shake(0.9, 140);
         b.hitArea(x - 50, FLOOR_Y - 120, 100, 120, b.weaponBase() * 5, { knock: 120, stun: 0.6 });
       });
@@ -803,8 +913,10 @@ const deadEye: Cast = (b) => {
   const subFire = (s: Phaser.GameObjects.Image, tx: number, ty: number, m: Monster | null, delay: number): void => {
     later(b, delay, () => {
       if (!s.active) return;
-      b.fx.tracer(s.x, s.y, tx, ty, 0xffe08a, 2, 160);
-      b.fx.spark(s.x, s.y, 0xfff0b0, 0.8);
+      const hue = [0xffe08a, 0xffa0c8, 0x7fffd0][subs.indexOf(s) % 3];
+      b.fx.tracer(s.x, s.y, tx, ty, hue, 2, 160);
+      b.fx.spark(s.x, s.y, hue, 0.8);
+      b.fx.pop(tx, ty, hue, 0.9);
       b.tweens.add({ targets: s, scale: 1.25, duration: 50, yoyo: true });
       if (m?.alive) b.hitMonster(m, b.weaponBase() * SUB_MUL, { knock: 20, quiet: true });
     });
@@ -814,6 +926,7 @@ const deadEye: Cast = (b) => {
       const s = b.add.image(p.x, p.y, subKey).setDepth(DEPTH.projectile).setScale(0.2).setAlpha(0);
       b.tweens.add({ targets: s, scale: 1, alpha: 1, duration: 240, ease: 'Back.Out' });
       b.fx.burst(p.x, p.y - 10, 0xffe08a, 6, 80, 260);
+      flutter(b, p.x, p.y - 10, 'star', [0xffe08a, 0xffa0c8, 0x7fffd0], 5, { spread: 10, speed: 90, life: 700 });
       subs.push(s);
     }
     if (n > 0) b.fx.text(p.x, p.body.top - 22, `서브 총 +${n}`, 'heal');
@@ -834,7 +947,16 @@ const deadEye: Cast = (b) => {
     const mul = GOLD_MUL[grade];
     b.fx.text(tx, ty - 30, grade === 'perfect' ? 'PERFECT!' : grade === 'good' ? 'GOOD' : '빗나감', grade === 'perfect' ? 'crit' : 'info');
     if (target?.alive) {
-      impactBurst(b, tx, ty, grade === 'perfect' ? 60 : 36, PAL.gold);
+      impactBurst(b, tx, ty, grade === 'perfect' ? 60 : 36, grade === 'miss' ? PAL.gold : PAL.sun);
+      if (grade !== 'miss') {
+        // 명중: 금빛 사이로 분홍·민트 별이 터지고, PERFECT면 빛의 결이 크게 말려 나간다.
+        flutter(b, tx, ty, 'star', [0xffe08a, 0xffa0c8, 0x7fffd0, 0xffffff], grade === 'perfect' ? 20 : 8, { spread: 10, speed: grade === 'perfect' ? 260 : 150, gravity: 160, life: 900 });
+        if (grade === 'perfect') {
+          wisps(b, tx, ty, PAL.sun, 8, 120, 560, { curl: 2.8, width: 7 });
+          rays(b, tx, ty, 10, 150, PAL.rose, 420);
+          wash(b, 0xff3a5a, 0xffd040, 0.16, 360);
+        }
+      }
       b.hitMonster(target, b.weaponBase() * mul, { knock: grade === 'perfect' ? 160 : 60 });
     }
     // 이미 떠 있는 서브 총들이 같은 적을 함께 쏘고, 판정에 따라 새 서브 총이 생긴다.
@@ -930,12 +1052,18 @@ const deadEye: Cast = (b) => {
 
 // ───────────────────────── 마법사 ─────────────────────────
 
+const BOLT_HUES = [0x9fe8ff, 0xc080ff, 0xfff07a, 0xff8ae0];
+const BOLT_PALS = [PAL.arcane, PAL.violet, PAL.storm, PAL.rose];
+
 /** 연쇄 번개: 번개가 최대 10마리를 잇따라 꿰뚫는다. */
 const chainLightning: Cast = (b) => {
   const p = b.player;
   p.startAction('cast', 0.5);
   const m0 = p.muzzle();
   b.fx.circle(m0.x, m0.y, 0x9fe8ff, 40, 500, true, DEPTH.fx);
+  wisps(b, m0.x, m0.y, PAL.storm, 6, 80, 480, { curl: 3.2, width: 5 });
+  glow(b, m0.x, m0.y, 90, 0x9a3aff, 420, 0.6);
+  wash(b, 0x4a5aff, 0x9a3aff, 0.14, 420);
   const visited = new Set<Monster>();
   let from = { x: m0.x, y: m0.y };
   const nearest = (o: { x: number; y: number }): Monster | undefined =>
@@ -953,11 +1081,17 @@ const chainLightning: Cast = (b) => {
     visited.add(next);
     const a = from;
     later(b, hop * 70, () => {
-      b.fx.lightning(a.x, a.y, next.x, next.y, 0x9fe8ff, 2, 220);
-      b.fx.lightning(a.x, a.y - 4, next.x, next.y + 4, 0xc080ff, 1, 200);
+      // 번개는 튈 때마다 하늘색 → 보라 → 노랑 → 분홍으로 빛깔이 바뀐다.
+      const hue = BOLT_HUES[hop % BOLT_HUES.length];
+      b.fx.lightning(a.x, a.y, next.x, next.y, hue, 3, 240);
+      b.fx.lightning(a.x, a.y - 4, next.x, next.y + 4, BOLT_HUES[(hop + 1) % BOLT_HUES.length], 1, 200);
+      b.fx.lightning(a.x, a.y + 5, next.x, next.y - 3, 0xffffff, 1, 140);
       b.fx.spark(next.x, next.y, 0xdff8ff, 2);
-      flare(b, next.x, next.y, 30, hop % 2 ? PAL.violet : PAL.arcane, 260);
-      rays(b, next.x, next.y, 8, 60, PAL.arcane, 260);
+      flare(b, next.x, next.y, 30, BOLT_PALS[hop % BOLT_PALS.length], 260);
+      rays(b, next.x, next.y, 8, 70, BOLT_PALS[(hop + 1) % BOLT_PALS.length], 260);
+      b.fx.lightning(next.x + (Math.random() - 0.5) * 20, next.y - 120 - Math.random() * 40, next.x, next.y, hue, 2, 200);
+      flutter(b, next.x, next.y, 'star', BOLT_HUES, 5, { spread: 8, speed: 150, gravity: 200, life: 600 });
+      glow(b, next.x, FLOOR_Y, 70, hue, 520, 0.5, 0.35);
       sfx.play('magic', 1.5);
       if (next.alive) b.hitMonster(next, b.skillBase({ int: 6 }), { knock: 30, stun: 0.3 });
     });
@@ -965,12 +1099,19 @@ const chainLightning: Cast = (b) => {
   }
 };
 
+/** 눈보라의 빛깔: 하양 · 얼음빛 · 연보라 · 민트 */
+const SNOW_HUES = [0xffffff, 0x9ff0ff, 0xc8b0ff, 0xb8ffe8];
+
 /** 블리자드: 4초 동안 화면 전체에 눈보라가 몰아친다. */
 const blizzard: Cast = (b) => {
   const p = b.player;
   p.startAction('cast', 0.5);
   b.fx.dim(0x0a2848, 0.35, 4200);
   skyCircles(b, 0xbff0ff, 4000);
+  // 눈보라가 시작되면 하늘이 연보라에서 얼음빛으로 물든다.
+  wash(b, 0x6a4aff, 0x7fd8ff, 0.24, 700);
+  wisps(b, p.x, p.y - 10, PAL.frost, 10, 160, 760, { curl: 3, width: 8 });
+  flutter(b, p.x, p.y - 10, 'snow', SNOW_HUES, 24, { spread: 30, speed: 220, gravity: 40, life: 1200 });
   // 눈송이: 화면 위쪽에서 비스듬히 날린다.
   const snow = b.time.addEvent({
     delay: 30,
@@ -986,6 +1127,10 @@ const blizzard: Cast = (b) => {
           .setDepth(DEPTH.fx);
         b.tweens.add({ targets: f, x: x - 140, y: FLOOR_Y, duration: 900 + Math.random() * 500, onComplete: () => f.destroy() });
       }
+      // 큰 눈 결정과, 비스듬히 몰아치는 바람결 (얼음빛·연보라·민트)
+      flutter(b, v.x + Math.random() * (v.width + 100), v.y + Math.random() * 40, 'snow', SNOW_HUES, 2, { spread: 6, speed: 150, angle: 2.5, cone: 0.25, gravity: 120, sway: 10, life: 1500 });
+      const gust = b.fx.streak(v.x + Math.random() * (v.width + 160), v.y + Math.random() * (FLOOR_Y - v.y - 20), 2.52, 50 + Math.random() * 70, SNOW_HUES[Math.floor(Math.random() * SNOW_HUES.length)], 0, Math.random() < 0.3 ? 2 : 1).setAlpha(0.7);
+      b.tweens.add({ targets: gust, x: gust.x - 130, y: gust.y + 92, alpha: 0, duration: 420, onComplete: () => gust.destroy() });
     },
   });
   for (let k = 0; k < 10; k++) {
@@ -993,34 +1138,71 @@ const blizzard: Cast = (b) => {
       for (const m of onScreen(b)) {
         b.hitMonster(m, b.skillBase({ int: 0.8 }), { quiet: true, slow: [0.6, 1] });
         b.fx.burst(m.x, m.y, 0xdff8ff, 3, 50, 300);
+        // 적마다 서리가 터진다: 얼음빛 섬광과 눈 결정
+        flare(b, m.x, m.y, 20, k % 2 ? PAL.violet : PAL.frost, 240);
+        flutter(b, m.x, m.y, 'snow', SNOW_HUES, 4, { spread: 10, speed: 110, gravity: 90, life: 800 });
+        if (k % 2 === 0) b.fx.iceSpike(m.x + (Math.random() - 0.5) * 16, FLOOR_Y, 1 + Math.random() * 0.5, 420);
       }
       const v = view(b);
-      for (let i = 0; i < 4; i++) b.fx.iceSpike(v.x + Math.random() * v.width, FLOOR_Y, 0.6 + Math.random() * 0.4, 350, i * 60);
-      shockwave(b, v.x + Math.random() * v.width, FLOOR_Y, 180, PAL.frost, 600);
-      if (k % 3 === 0) tint(b, 0x7fd8ff, 0.14, 360);
+      for (let i = 0; i < 6; i++) b.fx.iceSpike(v.x + Math.random() * v.width, FLOOR_Y, 0.7 + Math.random() * 0.8, 350, i * 60);
+      // 돌풍: 화면 여기저기서 냉기가 소용돌이치고 땅에 서리빛이 깔린다.
+      for (let i = 0; i < 2; i++) {
+        const gx = v.x + Math.random() * v.width;
+        const pal = (k + i) % 3 === 0 ? PAL.violet : (k + i) % 3 === 1 ? PAL.frost : PAL.aurora;
+        shockwave(b, gx, FLOOR_Y, 150 + Math.random() * 60, pal, 600);
+        wisps(b, gx, FLOOR_Y - 30 - Math.random() * 80, pal, 4, 120, 620, { angle: Math.PI, cone: 0.7, curl: 3.2, width: 7 });
+        glow(b, gx, FLOOR_Y, 150, pal[0], 900, 0.5, 0.3);
+        column(b, gx, FLOOR_Y, 16, 150 + Math.random() * 100, pal, 520);
+      }
+      if (k % 3 === 0) wash(b, 0x6a4aff, 0x7fd8ff, 0.14, 420);
     });
   }
-  later(b, 4300, () => snow.remove());
+  later(b, 4300, () => {
+    snow.remove();
+    // 눈보라가 걷히며 얼어붙은 것들이 한꺼번에 부서진다.
+    const v = view(b);
+    b.fx.flashScreen(0xdff8ff, 0.3, 260);
+    b.fx.shake(1.2, 220);
+    shockwave(b, v.centerX, FLOOR_Y, v.width * 0.7, PAL.frost, 800, 0.25, 12);
+    shockwave(b, v.centerX, FLOOR_Y, v.width * 0.45, PAL.violet, 700, 0.25, 7);
+    wash(b, 0x8a6aff, 0xb8ffe8, 0.24, 600);
+    for (const m of onScreen(b)) {
+      impactBurst(b, m.x, m.y, 40, PAL.frost, FLOOR_Y);
+      flutter(b, m.x, m.y, 'snow', SNOW_HUES, 8, { spread: 10, speed: 200, gravity: 140, life: 1000 });
+    }
+    flutter(b, v.centerX, v.y + 40, 'snow', SNOW_HUES, 40, { spread: v.width / 2, spreadY: 40, speed: 30, gravity: 60, sway: 16, life: 2000, within: 400 });
+    afterglow(b, v.centerX, FLOOR_Y, v.width * 0.8, PAL.frost, 'snow', 1500);
+  });
 };
 
 /** 운석 하나가 x에 떨어진다. */
-function meteorAt(b: BattleScene, x: number, damage: number, loud: boolean): void {
+function meteorAt(b: BattleScene, x: number, damage: number, loud: boolean, el: RuneElement = 'fire'): void {
   const v = view(b);
+  const look = METEOR_LOOK[el];
   const rock = b.add.sprite(x - 100, v.y - 30, 'fx-meteor').play('fx-meteor').setDepth(DEPTH.projectile).setOrigin(26 / 40, 26 / 40);
+  // 운석은 그 룬의 원소 빛을 띤다 (불은 그대로, 얼음은 푸르게, 번개는 노랗게).
+  if (look.tint !== undefined) rock.setTint(look.tint);
+  let trail = 0;
   b.tweens.add({
     targets: rock,
     x,
     y: FLOOR_Y - 14,
     duration: 380,
     ease: 'Quad.In',
-    onUpdate: () => b.fx.burst(rock.x - 4, rock.y - 4, 0xffa040, 1, 30, 240),
+    onUpdate: () => {
+      b.fx.burst(rock.x - 4, rock.y - 4, look.pal[1], 1, 30, 240);
+      if (trail++ % 2 === 0) flutter(b, rock.x - 6, rock.y - 6, look.mote, hues(look.pal), 1, { spread: 4, speed: 40, angle: -2.4, cone: 0.5, gravity: -20, life: 460 });
+    },
     onComplete: () => {
       rock.destroy();
       sfx.play('boom', 0.6);
-      b.fx.boom(x, FLOOR_Y - 20, 34, 'fire');
-      b.fx.ring(x, FLOOR_Y, 60, 0xff6a1a);
-      impactBurst(b, x, FLOOR_Y - 26, 70, PAL.flame, FLOOR_Y);
-      column(b, x, FLOOR_Y, 26, 260, PAL.flame, 460);
+      b.fx.boom(x, FLOOR_Y - 20, 34, look.boom);
+      b.fx.ring(x, FLOOR_Y, 60, look.pal[0]);
+      impactBurst(b, x, FLOOR_Y - 26, 70, look.pal, FLOOR_Y);
+      column(b, x, FLOOR_Y, 26, 260, look.pal, 460);
+      wisps(b, x, FLOOR_Y - 10, look.pal, 5, 100, 500, { angle: -Math.PI / 2, cone: 1.3, curl: 2.6, width: 7 });
+      flutter(b, x, FLOOR_Y - 16, look.mote, hues(look.pal), 8, { spread: 16, spreadY: 8, speed: 200, cone: 1.0, gravity: 160, life: 800 });
+      afterglow(b, x, FLOOR_Y, 110, look.pal, look.mote, 900);
       b.fx.shake(0.9, 140);
       b.hitArea(x - 45, FLOOR_Y - 110, 90, 110, damage, { knock: 80, quiet: !loud });
     },
@@ -1052,6 +1234,13 @@ const ELEMENT: Record<RuneElement, { color: number; css: string; name: string }>
   bolt: { color: 0xffe04a, css: '#fff07a', name: '번개' },
 };
 
+/** 원소별 운석 생김새 */
+const METEOR_LOOK: Record<RuneElement, { pal: Palette3; mote: MoteKind; boom: 'fire' | 'frost' | 'gold'; tint?: number }> = {
+  fire: { pal: PAL.flame, mote: 'flame', boom: 'fire' },
+  ice: { pal: PAL.frost, mote: 'snow', boom: 'frost', tint: 0x8fd0ff },
+  bolt: { pal: PAL.storm, mote: 'star', boom: 'gold', tint: 0xfff07a },
+};
+
 /** 원소 묶음을 다 맞혔을 때 터지는 마법 (단계에 비례) */
 function runeBurst(b: BattleScene, el: RuneElement, stage: number): void {
   const foes = onScreen(b);
@@ -1062,8 +1251,11 @@ function runeBurst(b: BattleScene, el: RuneElement, stage: number): void {
     sfx.play('boom', 0.8);
     foes.forEach((m, i) =>
       later(b, i * 50, () => {
-        column(b, m.x, FLOOR_Y, 34, 300, PAL.flame, 520);
+        column(b, m.x, FLOOR_Y, 34, 300, i % 2 ? PAL.sun : PAL.flame, 520);
         b.fx.boom(m.x, FLOOR_Y - 30, 30, 'fire');
+        wisps(b, m.x, FLOOR_Y - 10, PAL.flame, 5, 130, 560, { angle: -Math.PI / 2, cone: 0.8, curl: 2.4, width: 8 });
+        flutter(b, m.x, FLOOR_Y - 30, 'flame', hues(PAL.flame), 10, { spread: 14, spreadY: 30, speed: 130, cone: 0.6, gravity: -130, life: 900 });
+        if (i === 0) wash(b, 0xd0186a, 0xff7a1a, 0.18, 420);
         if (m.alive) b.hitMonster(m, b.skillBase({ int: 7.5 * stage }), { knock: 60, quiet: i > 0 });
       }),
     );
@@ -1071,9 +1263,12 @@ function runeBurst(b: BattleScene, el: RuneElement, stage: number): void {
     // 얼음 감옥: 적을 얼음 가시로 가두고 잠깐 멈춘다.
     b.announce('원소 조합 · 얼음 감옥!', 0.9);
     sfx.play('magic', 1.2);
-    tint(b, 0x7fd8ff, 0.2, 400);
+    wash(b, 0x6a4aff, 0x7fd8ff, 0.22, 460);
     foes.forEach((m, i) => {
       for (let k = -1; k <= 1; k++) b.fx.iceSpike(m.x + k * 12, FLOOR_Y, 1 + (k === 0 ? 0.4 : 0), 900, i * 30 + Math.abs(k) * 40);
+      impactBurst(b, m.x, m.y, 44, i % 2 ? PAL.violet : PAL.frost, FLOOR_Y);
+      flutter(b, m.x, m.y - 10, 'snow', SNOW_HUES, 10, { spread: 16, speed: 150, gravity: 70, life: 1100 });
+      glow(b, m.x, FLOOR_Y, 80, 0x6a4aff, 1100, 0.55, 0.35);
       if (m.alive) b.hitMonster(m, b.skillBase({ int: 6 * stage }), { stun: 1.5, quiet: i > 0 });
     });
   } else {
@@ -1083,8 +1278,13 @@ function runeBurst(b: BattleScene, el: RuneElement, stage: number): void {
     foes.slice(0, 12).forEach((m, i) => {
       const a = from;
       later(b, i * 60, () => {
-        b.fx.lightning(a.x, a.y, m.x, m.y, 0xfff07a, 2, 220);
+        b.fx.lightning(a.x, a.y, m.x, m.y, 0xfff07a, 3, 240);
+        b.fx.lightning(a.x, a.y - 4, m.x, m.y + 4, i % 2 ? 0xc080ff : 0x9fe8ff, 1, 200);
         b.fx.spark(m.x, m.y, 0xffffff, 2);
+        flare(b, m.x, m.y, 30, i % 2 ? PAL.violet : PAL.storm, 260);
+        rays(b, m.x, m.y, 8, 70, PAL.storm, 280);
+        flutter(b, m.x, m.y, 'star', BOLT_HUES, 5, { spread: 8, speed: 150, gravity: 200, life: 600 });
+        glow(b, m.x, FLOOR_Y, 70, 0x9a3aff, 520, 0.5, 0.35);
         sfx.play('magic', 1.4);
         if (m.alive) b.hitMonster(m, b.skillBase({ int: 7 * stage }), { knock: 30, quiet: i > 0 });
       });
@@ -1171,13 +1371,16 @@ const armageddon: Cast = (b) => {
             const fly = ultText(b, 30, ELEMENT[el].css).setPosition(rune.x, rune.y).setText(current.glyph);
             b.tweens.add({ targets: fly, y: view(b).y + 30, alpha: 0, scale: 1.6, duration: 380, onComplete: () => fly.destroy() });
             b.fx.burst(rune.x, rune.y, ELEMENT[el].color, 8, 90, 260);
+            wisps(b, rune.x, rune.y, METEOR_LOOK[el].pal, 4, 60, 420, { angle: -Math.PI / 2, cone: 1.2, curl: 3, width: 5 });
+            flutter(b, rune.x, rune.y, METEOR_LOOK[el].mote, hues(METEOR_LOOK[el].pal), 6, { spread: 8, speed: 110, life: 700 });
+            glow(b, rune.x, rune.y, 50, ELEMENT[el].color, 320, 0.6);
             sfx.play('magic', 0.8 + count * 0.04);
             const meteors = Math.min(3, stage);
             const v = view(b);
             for (let i = 0; i < meteors; i++) {
               const targets = onScreen(b);
               const m = targets.length ? targets[Math.floor(Math.random() * targets.length)] : null;
-              later(b, i * 90, () => meteorAt(b, m ? m.x + (Math.random() - 0.5) * 30 : v.x + 40 + Math.random() * (v.width - 80), b.skillBase({ int: RUNE_METEOR_INT * count }), i === 0));
+              later(b, i * 90, () => meteorAt(b, m ? m.x + (Math.random() - 0.5) * 30 : v.x + 40 + Math.random() * (v.width - 80), b.skillBase({ int: RUNE_METEOR_INT * count }), i === 0, el));
             }
             // 같은 원소 셋을 다 맞혔다: 원소 마법
             if (count % 3 === 0) runeBurst(b, el, stage);
@@ -1209,9 +1412,21 @@ const armageddon: Cast = (b) => {
       b.fx.flashScreen(0xfff0c0, 0.45 + Math.min(0.35, count * 0.03), 600);
       b.fx.shake(1.4 + count * 0.12, 420);
       for (let i = 0; i < 5; i++) b.fx.boom(v.x + (v.width * (i + 0.5)) / 5, FLOOR_Y - 40 - Math.random() * 60, 40 + count * 3, 'fire');
-      for (let i = 0; i < 5; i++) later(b, i * 60, () => impactBurst(b, v.x + (v.width * (i + 0.5)) / 5, FLOOR_Y - 60, 80 + count * 6, i % 2 ? PAL.gold : PAL.flame, FLOOR_Y));
+      // 대폭발: 불·금·다홍·보라·해돋이 빛이 차례로 터지고, 온 하늘이 자홍에서 주황으로 탄다.
+      const pals = [PAL.flame, PAL.gold, PAL.crimson, PAL.violet, PAL.sun];
+      for (let i = 0; i < 5; i++) {
+        const x = v.x + (v.width * (i + 0.5)) / 5;
+        later(b, i * 60, () => {
+          impactBurst(b, x, FLOOR_Y - 60, 80 + count * 6, pals[i], FLOOR_Y);
+          column(b, x, FLOOR_Y, 30 + count * 2, 300, pals[i], 700);
+          wisps(b, x, FLOOR_Y - 20, pals[i], 6, 140 + count * 6, 720, { angle: -Math.PI / 2, cone: 1.3, curl: 2.6, width: 9 });
+          flutter(b, x, FLOOR_Y - 30, 'flame', hues(pals[i]), 12, { spread: 30, spreadY: 14, speed: 260, cone: 1.1, gravity: 120, life: 1200 });
+        });
+      }
       shockwave(b, v.centerX, FLOOR_Y, v.width, PAL.flame, 900, 0.25, 14);
-      tint(b, 0xff3a00, 0.4, 700);
+      shockwave(b, v.centerX, FLOOR_Y, v.width * 0.7, PAL.violet, 800, 0.25, 9);
+      wash(b, 0xd0186a, 0xff8a1a, 0.34, 800);
+      afterglow(b, v.centerX, FLOOR_Y, v.width * 0.9, PAL.flame, 'flame', 1800);
       for (const m of onScreen(b)) b.hitMonster(m, b.skillBase({ int: power }), { knock: 200 });
       cleanup();
       return true;
@@ -1239,16 +1454,24 @@ const ULTIMATES: Record<string, Cast> = {
 /** 무기 계열별 궁극기 시전 색 */
 const ULT_PAL: Record<string, Palette3> = { sword: PAL.sky, dao: PAL.moon, bow: PAL.gold, gun: PAL.flame, staff: PAL.violet };
 
+/** 시전 때 겹치는 두 번째 빛깔 */
+const ULT_PAL2: Record<string, Palette3> = { sword: PAL.aurora, dao: PAL.rose, bow: PAL.sun, gun: PAL.rose, staff: PAL.arcane };
+
 /** 상급·궁극 스킬을 시전한다. 없는 스킬이면 false */
 export function castUltimate(b: BattleScene, id: string): boolean {
   const cast = ULTIMATES[id];
   if (!cast) return false;
   const pal = ULT_PAL[id.split('_')[0]] ?? PAL.gold;
   const p = b.player;
+  const pal2 = ULT_PAL2[id.split('_')[0]] ?? PAL.sun;
   aura(b, p.x, p.feet, pal, 80);
   flare(b, p.x, p.y, 50, pal, 360);
   shards(b, p.x, p.y, pal, 30, 260, 600);
   tint(b, pal[0], 0.18, 380);
+  // 두 번째 빛깔의 물결과 결이 한 박자 늦게 겹친다.
+  shockwave(b, p.x, p.y, 150, pal2, 520, 1, 6);
+  wisps(b, p.x, p.y, pal2, 7, 120, 620, { curl: 3.2, width: 7, delay: 60 });
+  flutter(b, p.x, p.y, 'star', [...hues(pal), ...hues(pal2)], 18, { spread: 20, speed: 200, gravity: 40, life: 900 });
   cast(b);
   return true;
 }
