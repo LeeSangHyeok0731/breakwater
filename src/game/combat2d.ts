@@ -67,10 +67,8 @@ export function updatePlayerCombat(b: BattleScene, dt: number): void {
     b.hud.flashWeapon();
   }
   if (input.pressed('skillPage') && p.nextSkillPage()) sfx.play('parry', 0.5);
-  if (input.pressed('dodge') && p.dodgeCd <= 0 && p.dodgeTime <= 0) {
-    p.startDodge();
-    sfx.play('dodge');
-  }
+  // 구르기 (마법사는 블링크). 대기 시간이 끝나기 직전에 누른 것도 먹는다.
+  p.tryDodge(input);
 
   // 타락한 엘프전에서는 원거리 무기도 가드키로 짧게 패링 자세를 잡는다 (막지는 못하고 파란 화살만 튕긴다).
   if (!p.isMelee && b.legion?.id === 'elf' && input.pressed('guard') && p.parryCd <= 0 && p.dodgeTime <= 0) {

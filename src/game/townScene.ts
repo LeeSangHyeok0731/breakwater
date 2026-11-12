@@ -323,7 +323,7 @@ export class TownScene extends Phaser.Scene {
     const input = ctx.input;
     const p = this.player;
     p.updateTimers(dt);
-    if (input.pressed('dodge') && p.dodgeCd <= 0) p.startDodge();
+    p.tryDodge(input);
     p.updateMovement(dt, input);
     p.animate();
     if (this.mid) this.mid.tilePositionX = (this.cameras.main.scrollX * 0.3) / this.mid.scaleX;
