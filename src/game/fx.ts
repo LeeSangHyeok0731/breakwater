@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { SLASH_ORIGIN, SLASH_R, slashKey, type Palette, type SlashStyle } from './fxArt';
+import { mix, toneOf, vary } from './tone';
 
 export type TextKind = 'normal' | 'crit' | 'player' | 'info' | 'heal' | 'quiet';
 
@@ -104,7 +105,7 @@ export class Fx {
   /** 사방으로 흩어지는 네모 픽셀. gravity를 주면 떨어진다. */
   burst(x: number, y: number, color: number, count = 8, speed = 90, life = 380, size = 1, gravity = 0): void {
     for (let i = 0; i < count; i++) {
-      const p = this.scene.add.image(x, y, 'fx-px').setTint(color).setDepth(DEPTH.fx).setBlendMode(Phaser.BlendModes.ADD);
+      const p = this.scene.add.image(x, y, 'fx-px').setTint(vary(color, i)).setDepth(DEPTH.fx).setBlendMode(Phaser.BlendModes.ADD);
       p.setScale(Math.max(1, Math.round((1 + Math.random() * 2) * size)));
       const a = Math.random() * Math.PI * 2;
       const v = speed * (0.4 + Math.random() * 0.8);
@@ -126,7 +127,7 @@ export class Fx {
     for (let i = 0; i < count; i++) {
       const p = this.scene.add
         .image(x + (Math.random() - 0.5) * 2 * spreadX, y + (Math.random() - 0.5) * 6, 'fx-px')
-        .setTint(color)
+        .setTint(vary(color, i))
         .setDepth(DEPTH.fx)
         .setBlendMode(Phaser.BlendModes.ADD)
         .setScale(Math.random() < 0.3 ? 2 : 1);
@@ -149,7 +150,9 @@ export class Fx {
   slash(x: number, y: number, facing: 1 | -1, radius: number, color: number, wide = false, o: SlashOpts = {}): void {
     const key = slashKey(wide, o.style);
     const scale = radius / SLASH_R;
-    const make = (k: string, tint: number): void => {
+    // 잔상은 한 색이 아니라 칼끝 쪽은 밝게, 꼬리 쪽은 테두리 색으로 흐른다 (네 귀퉁이 색을 달리한다).
+    const tone = toneOf(color);
+    const make = (k: string, tint: number, grade: boolean): void => {
       const s = this.scene.add
         .sprite(x, y, k)
         .setDepth(DEPTH.fx)
@@ -159,15 +162,15 @@ export class Fx {
         .setFlipY(!!o.up)
         .setScale(scale * (o.stretch ?? 1), scale * (o.squash ?? 1))
         .setRotation((o.rot ?? 0) * facing);
-      s.setTint(tint);
+      if (grade) s.setTint(mix(tint, tone.alt, 0.45), tint, tint, tone.rim);
+      else s.setTint(tint);
       s.play(k);
       if (o.speed) s.anims.timeScale = o.speed;
       s.once('animationcomplete', () => s.destroy());
     };
-    make(key, color);
+    make(key, color, true);
     // 하얀 날도 무기 색을 살짝 머금게 한다 (하양 60% + 무기 색 40%).
-    const mix = (c: number, sh: number): number => Math.round(255 * 0.6 + ((c >> sh) & 255) * 0.4) << sh;
-    make(`${key}-core`, mix(color, 16) | mix(color, 8) | mix(color, 0));
+    make(`${key}-core`, mix(0xffffff, color, 0.4), false);
   }
 
   /** 베인 자국: 양 끝이 뾰족한 빛줄기가 쭉 그어졌다가 가늘어지며 사라진다. */
@@ -204,7 +207,7 @@ export class Fx {
       const s = this.scene.add
         .image(x, y, 'fx-streak')
         .setOrigin(1, 0.5)
-        .setTint(i % 3 === 0 ? 0xffffff : color)
+        .setTint(i % 3 === 0 ? 0xffffff : vary(color, i))
         .setDepth(DEPTH.fx)
         .setBlendMode(Phaser.BlendModes.ADD)
         .setScale(len / 32, 1)
@@ -307,6 +310,19 @@ export class Fx {
       .setBlendMode(Phaser.BlendModes.ADD)
       .setScale(0.3, height / 96);
     s.play('fx-pillar');
+    // 테두리 색의 넓은 겹이 뒤에서 함께 솟는다.
+    const back = this.scene.add
+      .sprite(x, feetY + 2, 'fx-pillar')
+      .setOrigin(0.5, 1)
+      .setTint(toneOf(color).rim)
+      .setDepth(DEPTH.fx - 1)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setAlpha(0.7)
+      .setFlipX(true)
+      .setScale(0.4, (height / 96) * 0.92);
+    back.play({ key: 'fx-pillar', startFrame: 1 });
+    this.scene.tweens.add({ targets: back, scaleX: 1.9, duration: 160, ease: 'Quad.Out' });
+    this.scene.tweens.add({ targets: back, scaleX: 0, alpha: 0, delay: ms - 220, duration: 220, onComplete: () => back.destroy() });
     this.scene.tweens.add({ targets: s, scaleX: 1.2, duration: 120, ease: 'Quad.Out' });
     this.scene.tweens.add({ targets: s, scaleX: 0, alpha: 0, delay: ms - 220, duration: 220, onComplete: () => s.destroy() });
   }
@@ -338,12 +354,13 @@ export class Fx {
   /** 화면을 가로지르는 거대한 참격선: 넓은 빛 + 색 + 하얀 심이 펼쳐졌다 사라진다. */
   bigSlash(x1: number, y1: number, x2: number, y2: number, color: number, width = 10, ms = 380): void {
     const g = this.scene.add.graphics().setDepth(DEPTH.fx + 1).setBlendMode(Phaser.BlendModes.ADD);
+    const tone = toneOf(color);
     let t = 0;
     const len = Math.hypot(x2 - x1, y2 - y1) || 1;
     const ux = (x2 - x1) / len;
     const uy = (y2 - y1) / len;
     // 섬광 옆으로 갈라져 나가는 가는 곁가지 [시작 위치, 길이, 옆으로 벗어난 거리]
-    const twigs = Array.from({ length: 5 }, () => ({ at: 0.1 + Math.random() * 0.6, len: 0.12 + Math.random() * 0.22, off: (Math.random() - 0.5) * width * 2.4 }));
+    const twigs = Array.from({ length: 6 }, (_, i) => ({ at: 0.1 + Math.random() * 0.6, len: 0.12 + Math.random() * 0.22, off: (Math.random() - 0.5) * width * 2.4, color: i % 3 === 0 ? 0xffffff : i % 3 === 1 ? tone.alt : tone.rim }));
     const draw = (): void => {
       // 처음 80ms 동안 한쪽 끝에서 반대쪽으로 그어 나간다.
       const k = Math.min(1, t / 80);
@@ -358,15 +375,16 @@ export class Fx {
         g.fillTriangle(x1, y1, mx - uy * w, my + ux * w, mx + uy * w, my - ux * w);
         g.fillTriangle(ex, ey, mx - uy * w, my + ux * w, mx + uy * w, my - ux * w);
       };
-      blade(width * 1.5, color, 0.25);
-      blade(width * 0.6, color, 0.9);
+      blade(width * 1.7, tone.rim, 0.3);
+      blade(width * 1.1, color, 0.35);
+      blade(width * 0.6, mix(color, tone.alt, 0.3), 0.9);
       blade(Math.max(1, width / 5), 0xffffff, 1);
       for (const tw of twigs) {
         if (tw.at > k) continue;
         const sx = x1 + ux * len * tw.at - uy * tw.off;
         const sy = y1 + uy * len * tw.at + ux * tw.off;
         const l = Math.min(len * tw.len, len * (k - tw.at));
-        g.lineStyle(1, 0xffffff, 0.8).lineBetween(sx, sy, sx + ux * l, sy + uy * l);
+        g.lineStyle(1, tw.color, 0.85).lineBetween(sx, sy, sx + ux * l, sy + uy * l);
       }
     };
     draw();
@@ -407,8 +425,9 @@ export class Fx {
       }
       return pts;
     };
+    const rim = toneOf(color).rim;
     const draw = (pts: Phaser.Math.Vector2[], w: number): void => {
-      g.lineStyle(w + 3, color, 0.35).strokePoints(pts);
+      g.lineStyle(w + 4, rim, 0.4).strokePoints(pts);
       g.lineStyle(w, color, 1).strokePoints(pts);
       g.lineStyle(1, 0xffffff, 1).strokePoints(pts);
     };
@@ -436,7 +455,7 @@ export class Fx {
   /** 총알 궤적: 넓은 빛 + 하얀 심 */
   tracer(x1: number, y1: number, x2: number, y2: number, color: number, width: number, ms = 110): void {
     const g = this.scene.add.graphics().setDepth(DEPTH.projectile).setBlendMode(Phaser.BlendModes.ADD);
-    g.lineStyle(width + 3, color, 0.3).lineBetween(x1, y1, x2, y2);
+    g.lineStyle(width + 3, toneOf(color).rim, 0.35).lineBetween(x1, y1, x2, y2);
     g.lineStyle(width, color, 0.9).lineBetween(x1, y1, x2, y2);
     g.lineStyle(Math.max(1, width - 2), 0xffffff, 1).lineBetween(x1, y1, x2, y2);
     this.scene.tweens.add({ targets: g, alpha: 0, duration: ms, onComplete: () => g.destroy() });
@@ -452,6 +471,7 @@ export class Fx {
     const len = Math.hypot(dx, dy) || 1;
     const nx = -dy / len;
     const ny = dx / len;
+    const rim = toneOf(color).rim;
     const draw = (k: number): void => {
       g.clear();
       const s = Math.pow(k, 0.6) * 0.92;
@@ -461,7 +481,7 @@ export class Fx {
       const wedge = (w: number, c: number, alpha: number): void => {
         g.fillStyle(c, alpha * a).fillTriangle(sx, sy, x2 + nx * w, y2 + ny * w, x2 - nx * w, y2 - ny * w);
       };
-      wedge(width * 1.6 + 1.5, color, 0.3);
+      wedge(width * 1.6 + 1.5, rim, 0.35);
       wedge(width * 0.8 + 0.5, color, 0.9);
       wedge(Math.max(0.6, width * 0.3), 0xffffff, 1);
     };
@@ -534,9 +554,12 @@ export class Fx {
       .setStrokeStyle(1, 0xffffff, 0.9)
       .setDepth(DEPTH.fx)
       .setBlendMode(Phaser.BlendModes.ADD);
+    // 테두리 색의 넓은 물결이 한 겹 더 뒤따른다.
+    const wake = this.scene.add.ellipse(x, y, 8, 3, color, 0).setStrokeStyle(2, toneOf(color).rim, 0.8).setDepth(DEPTH.fx).setBlendMode(Phaser.BlendModes.ADD);
     for (const [t, k] of [
       [outer, 1],
       [inner, 0.8],
+      [wake, 1.18],
     ] as const) {
       this.scene.tweens.add({
         targets: t,

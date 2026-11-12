@@ -9,7 +9,8 @@ import { MOB_COUNT_MUL, type PhaseDef } from '../data/phases';
 import { DIFFICULTY, LEGIONS, rewardMul, SILENCE_STACKS, SILENCE_TIME, type LegionRun } from '../data/legion';
 import { barProgress, totalReward, WORLD_BOSS_BARS, WORLD_BOSS_TIME } from '../data/worldBoss';
 import { koNum } from '../ui/format';
-import { column, impactBurst, PAL, rays, shockwave, tint, type Palette3 } from './vfx';
+import { afterglow, column, flutter, glow, hues, impactBurst, PAL, rays, resetVfx, shockwave, wash, wisps, type Palette3 } from './vfx';
+import { toneOf } from './tone';
 import { chunkSkills, SKILL_BY_ID, SKILL_SLOTS, skillsFor, SKY_FLASH_ID, SKY_MAX_BLADES, SKY_STACKS_PER_BLADE, skyShotMana, type SkillDef } from '../data/skills';
 import { CLASS_NAME, GRADES, WEAPONS, type WeaponType } from '../data/weapons';
 import { Hud, type HudSlot, type HudState } from '../ui/hud';
@@ -313,6 +314,11 @@ export class BattleScene extends Phaser.Scene {
   init(data: { phase: PhaseDef; legion?: LegionRun; raid?: RaidRun; worldBoss?: boolean; tutorial?: boolean; trialOnly?: boolean; training?: boolean }): void {
     this.raidRun = data.raid ?? null;
     this.raid = null;
+    // 씬 객체는 전투마다 다시 쓰인다. 궁극기 도중에 전투가 끝났다면 그 채널이 남아,
+    // 다음 전투에서 이미 지워진 그림을 건드리며 매 프레임 오류를 낸다. 여기서 비운다.
+    this.ult = null;
+    this.hitHook = null;
+    resetVfx();
     this.fullStats = null;
     this.isTutorial = !!data.tutorial;
     this.skyStacks = SKY_MAX_BLADES * SKY_STACKS_PER_BLADE;
@@ -1304,7 +1310,7 @@ export class BattleScene extends Phaser.Scene {
           .sprite(o.x, o.y, 'fx-comet')
           .play({ key: 'fx-comet', startFrame: Math.floor(Math.random() * 3) })
           .setOrigin(1, 0.5)
-          .setTint(o.color ?? 0xe8dcc0)
+          .setTint(toneOf(o.color ?? 0xe8dcc0).rim, o.color ?? 0xe8dcc0, toneOf(o.color ?? 0xe8dcc0).rim, o.color ?? 0xe8dcc0)
           .setBlendMode(Phaser.BlendModes.ADD)
           .setRotation(ang)
           .setScale((22 + 16 * size) / 40, size >= 1.5 ? 2 : 1)
@@ -1312,8 +1318,17 @@ export class BattleScene extends Phaser.Scene {
         radius = 4 * size;
         break;
       case 'wave':
-        obj = this.add.sprite(o.x, o.y, 'fx-wave').play('fx-wave').setFlipX(o.vx < 0).setBlendMode(Phaser.BlendModes.ADD).setScale(size);
-        if (o.color !== undefined) obj.setTint(o.color);
+        obj = this.add
+          .sprite(o.x, o.y, o.color !== undefined ? 'fx-wave-g' : 'fx-wave')
+          .play(o.color !== undefined ? 'fx-wave-g' : 'fx-wave')
+          .setFlipX(o.vx < 0)
+          .setBlendMode(Phaser.BlendModes.ADD)
+          .setScale(size);
+        // 검기는 위아래 색이 다르다: 칼끝 쪽은 밝고 꼬리 쪽은 테두리 색으로 흐른다.
+        if (o.color !== undefined) {
+          const t = toneOf(o.color);
+          obj.setTint(t.alt, o.color, o.color, t.rim);
+        }
         radius = 14 * size;
         break;
       case 'grenade':
@@ -1358,12 +1373,12 @@ export class BattleScene extends Phaser.Scene {
         b.fxTimer = 0.035;
         const s = b.obj as Phaser.GameObjects.Sprite;
         const ghost = this.add
-          .image(b.x, b.y, 'fx-wave', s.frame.name)
+          .image(b.x, b.y, s.texture.key, s.frame.name)
           .setFlipX(s.flipX)
           .setDepth(DEPTH.projectile - 1)
           .setBlendMode(Phaser.BlendModes.ADD)
           .setScale(s.scaleX, s.scaleY)
-          .setTint(s.tintTopLeft)
+          .setTint(s.tintTopLeft, s.tintTopRight, s.tintBottomLeft, s.tintBottomRight)
           .setAlpha(0.5);
         this.tweens.add({ targets: ghost, alpha: 0, scaleY: s.scaleY * 0.7, duration: 180, onComplete: () => ghost.destroy() });
         break;
@@ -1447,6 +1462,12 @@ export class BattleScene extends Phaser.Scene {
     impactBurst(this, x, y, radius * 0.9, pal3, ground);
     this.fx.burst(x, y, bitColor, 8, 160, 450, 1, 300);
     this.fx.sparks(x, y, bitColor, 8, -Math.PI / 2, 1.4, 220, 420, 420);
+    // 큰 폭발은 결이 말려 오르고 잔불이 남는다.
+    if (radius >= 40) {
+      wisps(this, x, y, pal3, 6, radius * 1.3, 480, { angle: -Math.PI / 2, cone: 1.5, curl: 2.6, width: 6 });
+      flutter(this, x, y, palette === 'frost' ? 'snow' : palette === 'fire' ? 'flame' : 'star', hues(pal3), 12, { spread: radius * 0.3, speed: radius * 2.6, cone: 1.3, gravity: 140, life: 800 });
+      afterglow(this, x, ground, radius * 2, pal3, palette === 'frost' ? 'snow' : palette === 'fire' ? 'flame' : 'star', 900);
+    }
     for (let i = 0; i < 3; i++) this.time.delayedCall(120 + i * 60, () => this.fx.smoke(x + (i - 1) * radius * 0.4, y - 4, 2, smokeColor));
     this.fx.shake(0.5);
     this.hitArea(x - radius, y - radius, radius * 2, radius * 2, damage, { stun, knock: 90 });
@@ -1617,7 +1638,9 @@ export class BattleScene extends Phaser.Scene {
         this.fx.iceSpike(x, FLOOR_Y, 0.7 + Math.random() * 0.5, Math.max(200, ms - delay - 150), delay);
       }
       this.fx.burst(cx, FLOOR_Y - 8, 0xdff8ff, 16, 120, 450);
+      glow(this, cx, FLOOR_Y, spec.w * 0.8, 0x6a4aff, ms, 0.5, 0.3);
     } else if (style === 'fire') {
+      glow(this, cx, FLOOR_Y, spec.w * 0.8, 0xd0186a, ms, 0.5, 0.3);
       const n = Math.max(3, Math.floor(spec.w / 12));
       for (let i = 0; i < n; i++) deco.push(this.fx.flame(spec.x + ((i + 0.5) * spec.w) / n, FLOOR_Y, 0.8 + Math.random() * 0.7, 0));
     } else if (style === 'rain') {
@@ -1637,7 +1660,9 @@ export class BattleScene extends Phaser.Scene {
         if (Math.random() < dt * 34) {
           const top = FLOOR_Y - 146;
           const arrow = this.add.image(x, top, 'fx-arrow').setRotation(Math.PI / 2).setDepth(DEPTH.projectile);
-          const tail = this.fx.streak(x, top, Math.PI / 2, 26, 0xffe08a, 0);
+          // 빗줄기마다 금빛·분홍·민트로 꼬리 색이 다르다.
+          const hue = [0xffe08a, 0xffa0c8, 0x9affc0, 0xfff0c0][Math.floor(Math.random() * 4)];
+          const tail = this.fx.streak(x, top, Math.PI / 2, 30, hue, 0);
           this.tweens.add({
             targets: [arrow, tail],
             y: FLOOR_Y - 4,
@@ -1646,8 +1671,8 @@ export class BattleScene extends Phaser.Scene {
             onComplete: () => {
               arrow.destroy();
               tail.destroy();
-              this.fx.spark(x, FLOOR_Y - 3, 0xffe08a);
-              this.fx.burst(x, FLOOR_Y - 2, 0xc8b890, 2, 40, 220, 1, 300);
+              this.fx.spark(x, FLOOR_Y - 3, hue);
+              this.fx.burst(x, FLOOR_Y - 2, hue, 2, 40, 220, 1, 300);
             },
           });
         }
@@ -1655,10 +1680,12 @@ export class BattleScene extends Phaser.Scene {
       case 'frost':
         if (Math.random() < dt * 8) this.fx.smoke(x, FLOOR_Y - 6, 2, 0x8fc8e8, -10);
         if (Math.random() < dt * 14) this.fx.embers(x, FLOOR_Y - 4, 0xdff8ff, 1, 4, 24, 700);
+        if (Math.random() < dt * 9) flutter(this, x, FLOOR_Y - 60 - Math.random() * 30, 'snow', [0xb8ffe8, 0x9ff0ff, 0xc8b0ff, 0xffffff], 1, { spread: 4, speed: 10, gravity: 60, sway: 10, life: 1100 });
         break;
       case 'fire':
         if (Math.random() < dt * 18) this.fx.embers(x, FLOOR_Y - 8, Math.random() < 0.5 ? 0xffc040 : 0xff7a1a, 1, 4, 40, 700);
         if (Math.random() < dt * 4) this.fx.smoke(x, FLOOR_Y - 16, 1, 0x5a4a44, -14);
+        if (Math.random() < dt * 8) flutter(this, x, FLOOR_Y - 10, 'flame', hues(PAL.flame), 1, { spread: 3, speed: 30, cone: 0.4, gravity: -90, life: 800 });
         break;
       default:
         if (Math.random() < dt * 10) this.fx.burst(x, FLOOR_Y - 6, f.color, 1, 30, 600);
@@ -1774,7 +1801,10 @@ export class BattleScene extends Phaser.Scene {
       onUpdate: () => {
         trailAcc++;
         this.fx.burst(rock.x - 6, rock.y - 6, trailAcc % 2 ? 0xffc040 : 0xff7a1a, 2, 40, 300);
-        if (trailAcc % 3 === 0) this.fx.smoke(rock.x - 14, rock.y - 14, 2, 0x5a4a44, -6);
+        if (trailAcc % 3 === 0) this.fx.smoke(rock.x - 14, rock.y - 14, 2, 0x6a3a5a, -6);
+        // 운석 꼬리: 노랑 → 주황 → 자홍으로 식어 가는 불꽃 혀
+        if (trailAcc % 2 === 0) flutter(this, rock.x - 8, rock.y - 8, 'flame', hues(PAL.flame), 2, { spread: 6, speed: 50, angle: -2.4, cone: 0.6, gravity: -30, life: 520 });
+        if (trailAcc % 4 === 0) glow(this, rock.x, rock.y, 46, 0xd0186a, 260, 0.5);
       },
       onComplete: () => {
         rock.destroy();
@@ -1792,7 +1822,12 @@ export class BattleScene extends Phaser.Scene {
         column(this, x, FLOOR_Y, 44, 360, PAL.flame, 650);
         shockwave(this, x, FLOOR_Y, 260, PAL.gold, 600);
         rays(this, x, FLOOR_Y - 30, 16, 200, PAL.flame, 460);
-        tint(this, 0xff5a1a, 0.2, 380);
+        // 화면이 위는 자홍, 아래는 주황으로 물들고, 불꽃 결이 터져 오른 뒤 잔불이 남는다.
+        wash(this, 0xd0186a, 0xff7a1a, 0.2, 460);
+        shockwave(this, x, FLOOR_Y, 180, PAL.crimson, 520, 0.3, 6);
+        wisps(this, x, FLOOR_Y - 10, PAL.flame, 9, 150, 620, { angle: -Math.PI / 2, cone: 1.3, curl: 2.4, width: 9 });
+        flutter(this, x, FLOOR_Y - 20, 'flame', hues(PAL.flame), 26, { spread: 40, spreadY: 16, speed: 230, cone: 1.1, gravity: 120, life: 1000 });
+        afterglow(this, x, FLOOR_Y, 220, PAL.flame, 'flame', 1300);
         this.fx.burst(x, FLOOR_Y - 16, 0xffb050, 26, 240, 650, 1, 500);
         this.fx.burst(x, FLOOR_Y - 10, 0x8a6a50, 14, 200, 700, 1.5, 700);
         for (let i = 0; i < 6; i++) this.time.delayedCall(150 + i * 50, () => this.fx.smoke(x + (i - 2.5) * 22, FLOOR_Y - 18, 3, 0x6a5a54, -24));
@@ -1828,9 +1863,15 @@ export class BattleScene extends Phaser.Scene {
     this.beam.setPosition(x, m.y).setSize(len, 3 + Math.sin(t * 0.05) * 1.2);
     this.beamGlow.setPosition(x, m.y).setSize(len, 12 + Math.sin(t * 0.031) * 3);
     this.beamCircle?.setPosition(m.x + f * 3, m.y);
-    if (Math.random() < 0.35) this.fx.lightning(m.x, m.y, m.x + f * (60 + Math.random() * 300), m.y + (Math.random() - 0.5) * 6, 0x7fe8ff, 1, 90);
-    if (Math.random() < 0.5) this.fx.spark(m.x + f * len, m.y, 0x9fe8ff, 1 + Math.round(Math.random()));
+    // 프리즘처럼 색이 흐른다: 바깥 빛이 하늘색 → 보라 → 분홍으로 돌고, 전류와 별빛도 색이 섞인다.
+    const prism = [0x3fc8ff, 0x8a6aff, 0xff7ad8, 0x7fffd8];
+    this.beamGlow.setFillStyle(prism[Math.floor(t / 90) % prism.length], 0.4);
+    if (Math.random() < 0.35) this.fx.lightning(m.x, m.y, m.x + f * (60 + Math.random() * 300), m.y + (Math.random() - 0.5) * 6, prism[Math.floor(Math.random() * 4)], 1, 90);
+    if (Math.random() < 0.5) this.fx.spark(m.x + f * len, m.y, prism[Math.floor(Math.random() * 4)], 1 + Math.round(Math.random()));
     if (Math.random() < 0.6) this.fx.burst(m.x + f * Math.random() * len, m.y, 0xd8fbff, 1, 40, 250);
+    if (Math.random() < 0.3) flutter(this, m.x + f * Math.random() * len, m.y, 'star', prism, 1, { spread: 2, speed: 40, life: 500 });
+    if (Math.random() < 0.12) glow(this, m.x + f * (20 + Math.random() * (len - 20)), m.y, 34, prism[Math.floor(Math.random() * 4)], 220, 0.5);
+    if (Math.random() < 0.1) wisps(this, m.x + f * 4, m.y, PAL.arcane, 2, 50, 300, { angle: f === 1 ? 0 : Math.PI, cone: 1.0, curl: 2.6, width: 4 });
   }
 
   // ───────────────────────── HUD ─────────────────────────
