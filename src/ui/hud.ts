@@ -50,6 +50,8 @@ export interface HudState {
   kills: number;
   boss: { name: string; hp: number; maxHp: number; phase2: boolean; stack?: { left: number; ratio: number; color: string; under: string } } | null;
   dodgeReady: boolean;
+  /** 구르기 표시 이름 (마법사는 블링크) */
+  dodgeLabel: string;
   /** 군단장 전투: 침묵 스택, 남은 침묵 시간, 남은 부활 */
   legion?: { stacks: number; max: number; silence: number; revive: number; status?: string } | null;
 }
@@ -400,6 +402,7 @@ export class Hud {
     setText(this.levelText, String(s.level));
     setStyle(this.expFill, 'width', pct(s.expRatio));
     setClass(this.dodge, 'ready', s.dodgeReady);
+    setText(this.dodge, s.dodgeLabel);
 
     // 방어막 횟수 표시
     const pips = Math.max(0, Math.floor(s.wardHits));
@@ -583,7 +586,7 @@ export class Hud {
       ['더블 점프', `공중에서 ${k('jump')} (좌우 키: 그쪽으로 강하게 · ${k('up')}: 위로)`],
       ['기본 공격', k('attack')],
       ['강화 공격', `${k('special')} (누르고 있다가 놓기)`],
-      ['구르기', k('dodge')],
+      ['구르기 (마법사는 블링크: 순간이동)', k('dodge')],
       ['가드 (근접)', `${k('guard')} 누르고 있기`],
       ['직업 교체', k('swap')],
       ['스킬 장 넘기기 (슬롯보다 스킬이 많을 때)', k('skillPage')],

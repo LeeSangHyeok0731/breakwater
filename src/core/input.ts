@@ -138,6 +138,11 @@ export class Input {
     return this.releasedSet.has(a);
   }
 
+  /** 이미 처리한 입력을 지운다 (다음 프레임까지 남겨 둘 때 같은 키가 두 번 먹지 않게). */
+  consume(a: Action): void {
+    this.pressedSet.delete(a);
+  }
+
   endFrame(): void {
     this.pressedSet.clear();
     this.releasedSet.clear();

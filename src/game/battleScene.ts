@@ -461,7 +461,10 @@ export class BattleScene extends Phaser.Scene {
       input.endFrame();
       return;
     }
-    if (input.pressed('menu')) this.togglePause();
+    if (input.pressed('menu')) {
+      this.togglePause();
+      input.consume('menu');
+    }
     if (this.paused) {
       input.endFrame();
       return;
@@ -470,7 +473,7 @@ export class BattleScene extends Phaser.Scene {
     if (this.fx.hitstop > 0) {
       this.fx.hitstop -= dt;
       if (!this.physics.world.isPaused) this.physics.pause();
-      input.endFrame();
+      // 멈춘 동안 누른 키(점프·구르기·스킬)는 버리지 않고 다음 프레임에 처리한다.
       return;
     }
     if (this.physics.world.isPaused) this.physics.resume();
@@ -804,7 +807,7 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
     if (p.invuln > 0) {
-      if (p.dodgeTime > 0) this.fx.text(p.x, headY, '회피', 'info');
+      if (p.dodgeTime > 0 || p.blinkTime > 0) this.fx.text(p.x, headY, '회피', 'info');
       return;
     }
     if (p.guarding && !src.unblockable) {
@@ -1952,6 +1955,7 @@ export class BattleScene extends Phaser.Scene {
           }
         : null,
       dodgeReady: p.dodgeCd <= 0,
+      dodgeLabel: p.blinks ? '블링크' : '구르기',
     };
   }
 

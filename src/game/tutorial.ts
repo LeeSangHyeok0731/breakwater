@@ -77,8 +77,8 @@ const STEPS: Step[] = [
   },
   {
     title: '구르기',
-    text: [{ key: 'dodge' }, ' 키로 구르세요. 구르는 동안은 공격을 맞지 않습니다.'],
-    done: (t) => t.b.player.dodgeTime > 0,
+    text: [{ key: 'dodge' }, ' 키로 구르세요. 구르는 동안은 공격을 맞지 않습니다. 마법사는 구르는 대신 블링크로 순간이동합니다.'],
+    done: (t) => t.b.player.dodgeTime > 0 || t.b.player.blinkTime > 0,
   },
   {
     title: '가드',

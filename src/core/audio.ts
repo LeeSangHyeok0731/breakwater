@@ -13,6 +13,7 @@ export type SfxName =
   | 'block'
   | 'parry'
   | 'dodge'
+  | 'blink'
   | 'kill'
   | 'reload'
   | 'wave'
@@ -102,6 +103,12 @@ class Sfx {
         break;
       case 'dodge':
         this.noiseHit(now, 0.2, 'bandpass', 900, 2200, 0.3 * gain);
+        break;
+      case 'blink':
+        // 빨려 들어갔다가 맑게 튀어나오는 소리
+        this.noiseHit(now, 0.12, 'bandpass', 2600, 700, 0.22 * gain);
+        this.tone(now, 'sine', 520, 1560, 0.11, 0.16 * gain);
+        this.tone(now + 0.07, 'triangle', 1320, 1980, 0.12, 0.12 * gain);
         break;
       case 'kill':
         this.tone(now, 'triangle', 340, 140, 0.16, 0.2 * gain);

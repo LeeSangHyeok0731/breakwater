@@ -9,6 +9,8 @@ import { heldDef, heldStyle, meleeLook, RANGED_AURA } from './weaponArt';
 import { createWeaponSprites, heldKey, heldOrigin } from './weaponSprites';
 import { DEPTH } from './fx';
 import type { Derived } from './stats';
+import { toneOf } from './tone';
+import { flutter, glow, pop, twinkles, wisps, type Palette3 } from './vfx';
 
 export interface EquippedWeapon {
   def: WeaponDef;
@@ -93,9 +95,24 @@ const MOVES: Partial<Record<ActionKind, string[]>> = {
 
 /** 1m를 몇 픽셀로 보는가 (데이터의 m/s 이동속도를 픽셀로 바꿀 때) */
 export const PX_PER_M = 24;
-const JUMP_V = -390;
-const DODGE_SPEED = 300;
-const DODGE_TIME = 0.24;
+const JUMP_V = -400;
+/** 점프 키를 일찍 떼면 이 속도까지만 오른다 (짧게 누르면 낮게 뛴다). */
+const JUMP_CUT_V = -150;
+/** 떨어질 때 더해지는 중력 (px/초²). 정점에서 오래 떠 있지 않고 바로 내려온다. */
+const FALL_EXTRA_G = 480;
+/** 발판 끝에서 떨어진 직후에도 땅에서 뛴 것으로 쳐 주는 시간 */
+const COYOTE_TIME = 0.09;
+/** 착지·구르기 끝나기 직전에 누른 점프를 기억하는 시간 */
+const JUMP_BUFFER = 0.13;
+/** 대기 시간이 끝나기 직전에 누른 구르기를 기억하는 시간 */
+const DODGE_BUFFER = 0.18;
+/** 구르기: 처음에 확 튀어 나가고 끝으로 갈수록 느려진다 (평균 속도, 걸리는 시간). 약 83px. */
+const DODGE_SPEED = 320;
+const DODGE_TIME = 0.26;
+const DODGE_CD = 0.55;
+/** 블링크(마법사의 구르기): 순간이동 거리, 무적 시간 */
+const BLINK_DIST = 124;
+const BLINK_INVULN = 0.3;
 /** 방향 더블 점프 [초안]: 가로 속도, 세로 속도, 잔상이 남는 시간 */
 const AIR_DASH_VX = 460;
 const AIR_DASH_VY = -220;
@@ -129,6 +146,15 @@ export class Player {
 
   dodgeTime = 0;
   dodgeCd = 0;
+  /** 블링크 직후의 남은 시간 (무적 표시·튜토리얼 판정에 쓴다) */
+  blinkTime = 0;
+  /** 미리 눌러 둔 구르기·점프 (남은 시간) */
+  private dodgeBuf = 0;
+  private jumpBuf = 0;
+  /** 발이 땅에서 떨어진 뒤에도 땅 점프가 되는 남은 시간 */
+  private coyote = 0;
+  /** 점프로 오르는 중 (키를 떼면 낮게 끊긴다) */
+  private rising = false;
   invuln = 0;
   guarding = false;
   parryTimer = 0;
@@ -342,6 +368,8 @@ export class Player {
     this.silenceTime = Math.max(0, this.silenceTime - dt);
     this.parryCd = Math.max(0, this.parryCd - dt);
     this.dodgeCd = Math.max(0, this.dodgeCd - dt);
+    this.dodgeBuf = Math.max(0, this.dodgeBuf - dt);
+    this.blinkTime = Math.max(0, this.blinkTime - dt);
     this.invuln = Math.max(0, this.invuln - dt);
     this.parryTimer = Math.max(0, this.parryTimer - dt);
     this.slowTime = Math.max(0, this.slowTime - dt);
@@ -375,18 +403,107 @@ export class Player {
     if (!this.dead && this.hoverTime <= 0) this.mp = Math.min(this.derived.maxMp, this.mp + this.derived.mpRegen * dt);
   }
 
+  /** 마법사(지팡이)는 구르는 대신 블링크로 순간이동한다. */
+  get blinks(): boolean {
+    return this.weapon.def.type === 'staff';
+  }
+
+  /**
+   * 구르기 키 처리. 대기 시간이 끝나기 직전에 누른 것도 기억했다가 바로 나간다.
+   * 방향키를 누르고 있으면 그쪽으로, 아니면 보는 쪽으로 간다. 썼으면 true.
+   */
+  tryDodge(input: Input): boolean {
+    if (input.pressed('dodge')) this.dodgeBuf = DODGE_BUFFER;
+    if (this.dodgeBuf <= 0 || this.dodgeCd > 0 || this.dodgeTime > 0 || this.dead || this.hoverTime > 0 || this.locked) return false;
+    this.dodgeBuf = 0;
+    const wish = (input.isDown('right') ? 1 : 0) - (input.isDown('left') ? 1 : 0);
+    const dir = wish === 0 ? this.facing : (wish as 1 | -1);
+    if (this.blinks) this.blink(dir);
+    else {
+      this.facing = dir;
+      this.startDodge();
+      sfx.play('dodge');
+    }
+    return true;
+  }
+
   startDodge(): void {
     this.resetCombo();
     this.dodgeTime = DODGE_TIME;
-    this.dodgeCd = 0.7 * this.derived.passive.dodgeCdMul;
-    this.invuln = DODGE_TIME + 0.06;
+    this.dodgeCd = DODGE_CD * this.derived.passive.dodgeCdMul;
+    this.invuln = Math.max(this.invuln, DODGE_TIME + 0.06);
     this.action = null;
     this.charge = -1;
     this.guarding = false;
+    this.rising = false;
+  }
+
+  /**
+   * 블링크: 정해진 거리를 순간이동한다. 그동안은 맞지 않는다.
+   * 구르기와 달리 시전·차징이 끊기지 않아, 쓰자마자 바로 다음 행동을 할 수 있다.
+   */
+  blink(dir: 1 | -1): void {
+    const body = this.body;
+    // 스킬·차징으로 방향이 묶여 있으면 몸은 그대로 두고 자리만 옮긴다.
+    const lockFacing = (this.action !== null && !BASIC_ACTIONS.has(this.action.kind)) || this.charge >= 0;
+    if (!lockFacing) this.facing = dir;
+    const bounds = this.scene.physics.world.bounds;
+    const x0 = this.x;
+    const x1 = Phaser.Math.Clamp(x0 + dir * BLINK_DIST, bounds.x + 10, bounds.right - 10);
+    const dx = x1 - x0;
+    const y = this.y;
+
+    this.blinkFx(x0, x1, y, dir);
+    // 몸(물리)을 바로 옮긴다. zone은 이번 프레임 끝에 몸을 따라온다.
+    body.x += dx;
+    body.updateCenter();
+    // 공중에서 쓰면 잠깐 떠 있는다 (떨어지던 속도를 지운다).
+    body.setVelocity(0, Math.min(body.velocity.y, 0) * 0.4);
+    this.rising = false;
+
+    this.dodgeCd = DODGE_CD * this.derived.passive.dodgeCdMul;
+    this.invuln = Math.max(this.invuln, BLINK_INVULN);
+    this.blinkTime = BLINK_INVULN;
+    this.guarding = false;
+    sfx.play('blink');
+  }
+
+  /** 블링크 연출: 떠난 자리에서 몸이 흩어지고, 길을 따라 잔상과 별가루가 남고, 닿은 자리에서 빛이 모인다. */
+  private blinkFx(x0: number, x1: number, y: number, dir: 1 | -1): void {
+    const scene = this.scene;
+    // 지팡이마다 기운 색이 다르다 (룬은 보라, 용암은 주황 …). 없으면 마력의 청록.
+    const base = RANGED_AURA[heldStyle(this.weapon.def)] ?? 0x7fe8ff;
+    const t = toneOf(base);
+    const pal: Palette3 = [t.rim, base, 0xffffff];
+    const dist = Math.abs(x1 - x0);
+    const along = dir === 1 ? 0 : Math.PI;
+
+    // 떠난 자리: 몸이 빛으로 흩어진다.
+    this.afterimage(t.rim, 0, 0.75, 320);
+    glow(scene, x0, y, 30, t.rim, 320, 0.6);
+    wisps(scene, x0, y - 2, pal, 4, Math.max(30, dist * 0.7), 300, { angle: along, cone: 0.35, curl: 0.7, width: 3 });
+    flutter(scene, x0, y - 4, 'star', [base, t.alt, 0xffffff], 6, { spread: 8, spreadY: 14, speed: 70, gravity: -30, life: 520 });
+
+    // 지나간 길: 옅어지는 잔상과 별가루
+    const ghosts = Math.floor(dist / 34);
+    for (let i = 1; i <= ghosts; i++) {
+      const r = i / (ghosts + 1);
+      this.afterimage(r < 0.5 ? t.rim : base, (x1 - x0) * r, 0.2 + r * 0.3, 200 + r * 160);
+    }
+    if (dist > 20) {
+      flutter(scene, (x0 + x1) / 2, y - 2, 'star', [base, t.alt, t.rim, 0xffffff], 8, { spread: dist / 2, spreadY: 10, speed: 40, angle: along, cone: 0.8, gravity: -20, life: 620, within: 120 });
+    }
+
+    // 닿은 자리: 빛이 터지며 몸이 나타난다.
+    glow(scene, x1, y, 38, base, 380, 0.75);
+    pop(scene, x1, y - 2, 0xffffff, 1.3);
+    wisps(scene, x1, y - 2, pal, 5, 30, 360, { curl: 1.6, width: 2 });
+    twinkles(scene, x1, y - 6, 22, t.alt, 4, 220);
   }
 
   /** 넉백: 맞은 방향 반대로 튕겨 나간다. */
   knockback(fromX: number, power: number): void {
+    this.rising = false;
     const dir = this.x >= fromX ? 1 : -1;
     this.body.setVelocity(dir * power, -power * 0.6);
   }
@@ -399,16 +516,26 @@ export class Player {
       return;
     }
     if (this.hoverTime > 0) {
+      this.jumpBuf = 0;
+      this.rising = false;
       body.setVelocity(0, this.y > this.hoverY + 2 ? Math.max(-420, (this.hoverY - this.y) * 8) : 0);
       return;
     }
+    // 떨어질 때는 더 빨리 내려온다.
+    if (!this.grounded && body.velocity.y > 0 && body.allowGravity) body.velocity.y += FALL_EXTRA_G * dt;
     if (this.locked) {
+      this.jumpBuf = 0;
       body.setVelocityX(0);
       return;
     }
+    // 착지 직전·구르는 중에 누른 점프는 잠깐 기억해 두었다가 가능해지는 순간 뛴다.
+    this.jumpBuf = input.pressed('jump') ? JUMP_BUFFER : Math.max(0, this.jumpBuf - dt);
+    this.coyote = this.grounded ? COYOTE_TIME : Math.max(0, this.coyote - dt);
     if (this.dodgeTime > 0) {
+      // 처음에 확 튀어 나가고 끝으로 갈수록 느려진다.
+      const r = 1 - this.dodgeTime / DODGE_TIME;
       this.dodgeTime -= dt;
-      body.setVelocityX(this.facing * DODGE_SPEED);
+      body.setVelocityX(this.facing * DODGE_SPEED * (1.45 - 0.9 * r));
       this.afterimageTimer -= dt;
       if (this.afterimageTimer <= 0) {
         this.afterimageTimer = 0.04;
@@ -438,15 +565,17 @@ export class Player {
       // 넉백 중에는 조작이 덜 먹힌다.
       body.setVelocityX(vx + (wish * speed - vx) * k(0.05));
     } else if (this.grounded) {
-      body.setVelocityX(vx + (wish * speed - vx) * k(0.35));
+      // 출발과 방향 전환은 바로 붙고, 멈출 때는 아주 조금 미끄러진다.
+      body.setVelocityX(vx + (wish * speed - vx) * k(wish !== 0 ? 0.5 : 0.4));
     } else {
-      // 공중에서는 관성을 지킨다: 반대로 꺾어도 조금 늦출 뿐 방향이 바뀌지 않고, 키를 떼도 그대로 날아간다.
+      // 공중에서도 방향키가 바로 먹는다 (반대로 꺾으면 돌아올 수 있다). 키를 떼면 관성으로 조금 더 날아간다.
       let next = vx;
-      if (wish !== 0 && (Math.abs(vx) < 20 || Math.sign(wish) === Math.sign(vx))) {
-        // 같은 방향(또는 제자리 점프)이면 이동 속도까지 천천히 붙는다.
-        if (Math.abs(vx) < speed) next = vx + (wish * speed - vx) * k(0.05);
-      } else if (wish !== 0) {
-        next = vx * (1 - k(0.02));
+      if (wish !== 0) {
+        // 구르기·공중 돌진으로 이동 속도보다 빠를 때 같은 방향을 누르면 그 속도를 지킨다.
+        const boosted = Math.abs(vx) > speed && Math.sign(wish) === Math.sign(vx);
+        if (!boosted) next = vx + (wish * speed - vx) * k(0.16);
+      } else {
+        next = vx * (1 - k(0.035));
       }
       // 구르기 직후처럼 이동 속도보다 빠르면 서서히 줄인다.
       // 방향 더블 점프로 튀어 나가는 동안은 줄이지 않는다.
@@ -455,26 +584,42 @@ export class Player {
     }
 
     if (this.grounded) this.airJumps = 1;
-    if (input.pressed('jump') && !this.guarding) {
-      if (this.grounded) {
-        if (input.isDown('down') && this.onPlatform) {
+    // 점프 키를 일찍 떼면 낮게 뛴다.
+    if (this.rising) {
+      if (body.velocity.y >= 0 || this.grounded) this.rising = false;
+      else if (!input.isDown('jump')) {
+        this.rising = false;
+        if (body.velocity.y < JUMP_CUT_V) body.setVelocityY(JUMP_CUT_V);
+      }
+    }
+    if (this.jumpBuf > 0 && !this.guarding) {
+      // 발판 끝에서 막 떨어진 참이면 땅에서 뛴 것으로 친다 (더블 점프를 쓰지 않는다).
+      const onGround = this.grounded || (this.coyote > 0 && body.velocity.y >= 0);
+      if (onGround) {
+        this.jumpBuf = 0;
+        this.coyote = 0;
+        if (this.grounded && input.isDown('down') && this.onPlatform) {
           // ↓ + 점프: 발판 아래로 내려간다.
           this.dropTimer = 0.3;
           body.setVelocityY(40);
         } else {
           body.setVelocityY(JUMP_V);
+          this.rising = true;
         }
-      } else if (this.airJumps > 0) {
-        // 더블 점프: 공중에서 한 번 더
+      } else if (this.airJumps > 0 && input.pressed('jump')) {
+        // 더블 점프: 공중에서 한 번 더 (미리 눌러 둔 것으로는 나가지 않는다)
+        this.jumpBuf = 0;
         this.airJumps--;
         if (wish !== 0 && !input.isDown('up')) {
           // 방향키만 누르고 있으면 그쪽으로 강하게 튀어 나간다.
           body.setVelocity(wish * Math.max(AIR_DASH_VX, this.moveSpeed()), AIR_DASH_VY);
           this.airDashTime = AIR_DASH_TRAIL;
+          this.rising = false;
           sfx.play('dodge', 0.8);
         } else {
           // 방향키를 안 눌렀거나 ↑를 누르면 위로 뛴다. 공중에서 방향을 바꾸는 수단이기도 하다.
           body.setVelocityY(JUMP_V * 0.9);
+          this.rising = true;
           if (wish !== 0) body.setVelocityX(wish * this.moveSpeed());
         }
         this.jumpPuff();
@@ -512,17 +657,17 @@ export class Player {
   }
 
   /** 몸의 잔상. 구르기·공중 돌진은 하늘빛, 평타의 큰 동작은 무기 색으로 남긴다. */
-  afterimage(tint = 0x9fd8ff): void {
+  afterimage(tint = 0x9fd8ff, dx = 0, alpha = 0.5, ms = 220): void {
     const s = this.sprite;
     const ghost = this.scene.add
-      .image(s.x, s.y, s.texture.key, s.frame.name)
+      .image(s.x + dx, s.y, s.texture.key, s.frame.name)
       .setOrigin(s.originX, s.originY)
       .setFlipX(s.flipX)
       .setDepth(DEPTH.player - 1)
       .setTint(tint)
-      .setAlpha(0.5)
+      .setAlpha(alpha)
       .setBlendMode(Phaser.BlendModes.ADD);
-    this.scene.tweens.add({ targets: ghost, alpha: 0, duration: 220, onComplete: () => ghost.destroy() });
+    this.scene.tweens.add({ targets: ghost, alpha: 0, duration: ms, onComplete: () => ghost.destroy() });
   }
 
   /**
@@ -584,10 +729,13 @@ export class Player {
     s.setPosition(Math.round(this.x), Math.round(this.feet + 1));
 
     if (this.swapFlash > 0) s.setTintFill(0xfff6e0);
+    // 블링크로 나타나는 순간 몸이 빛으로 번쩍인다.
+    else if (this.blinkTime > BLINK_INVULN - 0.05) s.setTintFill(0xe8f6ff);
     else if (s.isTinted) s.clearTint();
 
-    // 피격 무적 중 깜빡임
-    s.setAlpha(this.invuln > 0 && this.dodgeTime <= 0 && Math.floor(this.invuln * 20) % 2 === 0 ? 0.4 : 1);
+    // 피격 무적 중 깜빡임 (구르기·블링크의 무적은 깜빡이지 않는다)
+    const evading = this.dodgeTime > 0 || this.blinkTime > 0;
+    s.setAlpha(this.invuln > 0 && !evading && Math.floor(this.invuln * 20) % 2 === 0 ? 0.4 : 1);
 
     this.guardFx.setVisible(this.guarding).setPosition(this.x + this.facing * 10, this.y);
     const t = this.scene.time.now;

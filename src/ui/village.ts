@@ -72,7 +72,7 @@ const ACTION_LABELS: Record<Action, string> = {
   jump: '점프',
   attack: '기본 공격',
   special: '강화 공격 (누르고 있기)',
-  dodge: '구르기',
+  dodge: '구르기 (마법사: 블링크)',
   guard: '가드 (근접)',
   swap: '직업 교체',
   skillPage: '스킬 장 넘기기',
