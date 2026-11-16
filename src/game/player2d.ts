@@ -568,14 +568,14 @@ export class Player {
       // 출발과 방향 전환은 바로 붙고, 멈출 때는 아주 조금 미끄러진다.
       body.setVelocityX(vx + (wish * speed - vx) * k(wish !== 0 ? 0.5 : 0.4));
     } else {
-      // 공중에서도 방향키가 바로 먹는다 (반대로 꺾으면 돌아올 수 있다). 키를 떼면 관성으로 조금 더 날아간다.
+      // 공중에서는 관성을 지킨다 (사용자 요청): 반대로 꺾어도 조금 늦출 뿐 방향이 바뀌지 않고, 키를 떼도 그대로 날아간다.
+      // 공중에서 방향을 바꾸는 수단은 더블 점프다.
       let next = vx;
-      if (wish !== 0) {
-        // 구르기·공중 돌진으로 이동 속도보다 빠를 때 같은 방향을 누르면 그 속도를 지킨다.
-        const boosted = Math.abs(vx) > speed && Math.sign(wish) === Math.sign(vx);
-        if (!boosted) next = vx + (wish * speed - vx) * k(0.16);
-      } else {
-        next = vx * (1 - k(0.035));
+      if (wish !== 0 && (Math.abs(vx) < 20 || Math.sign(wish) === Math.sign(vx))) {
+        // 같은 방향(또는 제자리 점프)이면 이동 속도까지 천천히 붙는다.
+        if (Math.abs(vx) < speed) next = vx + (wish * speed - vx) * k(0.05);
+      } else if (wish !== 0) {
+        next = vx * (1 - k(0.02));
       }
       // 구르기 직후처럼 이동 속도보다 빠르면 서서히 줄인다.
       // 방향 더블 점프로 튀어 나가는 동안은 줄이지 않는다.
