@@ -54,15 +54,17 @@
 
 연출 원칙 (사용자가 "딱딱하고 기계적", "너무 정확한 반달"이라고 해서 정함): 완전한 원·직선·균일한 굵기를 쓰지 않는다. 끊긴 고리, 제각각인 빛살, 칼끝으로 뻗는 궤적, 갈라지는 결, 불티·별빛을 이펙트마다 미리 뽑은 난수로 그린다.
 
-### 2026-11-12 세션 (PR #60, 머지 대기)
+### 2026-11-12 세션 (PR #60·#61 머지됨, #62 머지 대기)
 
 | PR | 내용 |
 |---|---|
 | #60 | **스킬 42개 색감 리메이크** (사용자 요청 "화려하고 색감있도록"). 한 색의 밝기 차이로만 칠하던 이펙트를 여러 색이 흐르게 바꿨다. `src/game/tone.ts`(기준색에서 테두리 색 rim·곁들임 색 alt를 뽑음), `vfx.ts`의 팔레트별 `tone()`·`hues()`, 새 이펙트 `glow`(망점 빛무리)·`wisps`(말려 드는 결)·`flutter`(꽃잎·잎·눈·별·불꽃 알갱이)·`afterglow`(잔광)·`wash`(화면 두 색 물들임), 새 팔레트 sakura·storm·sun·aurora·hex. 스킬마다 두 번째 색과 전용 알갱이(발도 = 벚꽃잎, 서리·블리자드 = 눈 결정, 질풍 = 나뭇잎 등), 마나검·도탄·연쇄 번개는 발마다 색이 다르고, 룬 아마겟돈 운석은 룬의 원소 색. 색을 입히는 검기는 회색조 그림 `fx-wave-g`를 쓴다. 같은 PR에서 궁극기 도중 전투가 끝나면 `BattleScene.ult`가 다음 전투까지 남던 버그를 고쳤다 (`init`에서 비움). |
 
+#62(머지 대기): **전투 핵심 코드 리팩토링** (동작 변화 없음). 2,000줄짜리 `battleScene.ts`에서 탄·장판을 `battle/`로, `combat2d.ts`를 `combat/`으로, `ultimates.ts`를 `ultimates/`로 나눴다. 보스 리그의 프레임 시간 계산 5곳은 `BattleScene.rigStep()`으로 합쳤다. 손대지 않은 큰 파일: `data/phases.ts`·`data/monsters.ts`(데이터 표), `ui/setArt.ts`, `player2d.ts`, `monster2d.ts`, `fxArt.ts`, `vfx.ts`, 보스 파일들.
+
 색감 원칙: 이펙트 하나에 색을 한 가지만 쓰지 않는다. 바깥 빛·꼬리는 테두리 색(색상을 돌린 깊은 색), 결·알갱이 일부는 곁들임 색으로 칠한다. 새 이펙트를 만들 때는 `PAL.*`과 `tone(pal)`을 쓰고, 단색 숫자만 넘기는 `Fx` 도우미도 `tone.ts`의 `toneOf`/`vary`로 알아서 색이 갈린다.
 
-#61(머지 대기, #60 위에 쌓음): **조작감 개선 + 마법사 블링크** (사용자 요청 "점프·이동기·구르기가 뻑뻑하다"). `player2d.ts`: 점프 선입력(0.13초)·코요테 타임(0.09초)·짧게 누르면 낮은 점프·낙하 가속, 공중에서 방향 전환 가능(전에는 관성 고정), 구르기는 누른 방향으로·처음에 빠르게·선입력(0.18초)·대기 0.7→0.55초, 히트스톱 중 누른 키를 버리지 않음(`battleScene.update`). 지팡이를 들면 구르기 키가 `Player.blink`(124px 순간이동, 무적 0.3초, 시전·차징이 안 끊김)로 바뀐다. 구르기 키 처리는 `Player.tryDodge` 한 곳. 실제 손맛은 사용자 확인 전이라 수치는 [초안].
+#61(머지됨): **조작감 개선 + 마법사 블링크** (사용자 요청 "점프·이동기·구르기가 뻑뻑하다"). `player2d.ts`: 점프 선입력(0.13초)·코요테 타임(0.09초)·짧게 누르면 낮은 점프·낙하 가속, 공중에서 방향 전환 가능(전에는 관성 고정), 구르기는 누른 방향으로·처음에 빠르게·선입력(0.18초)·대기 0.7→0.55초, 히트스톱 중 누른 키를 버리지 않음(`battleScene.update`). 지팡이를 들면 구르기 키가 `Player.blink`(124px 순간이동, 무적 0.3초, 시전·차징이 안 끊김)로 바뀐다. 구르기 키 처리는 `Player.tryDodge` 한 곳. 실제 손맛은 사용자 확인 전이라 수치는 [초안].
 
 ---
 
@@ -144,9 +146,11 @@
 | `src/data/monsters.ts`, `bestiary.ts` | 몬스터 수치·도감 설명 |
 | `src/data/skills.ts` | 스킬 정의, 천공 섬광 계수 함수 |
 | `src/data/classPassives.ts` | 직업 패시브·총 숙련 |
-| `src/game/battleScene.ts` | 전투 루프, 피해(`hitMonster`, `src`, `withSource`), 장판·탄·궁극기 채널, 수련장 연결 |
-| `src/game/combat2d.ts` | 플레이어 공격·스킬 시전(`tryCast`) |
-| `src/game/ultimates.ts` | 상급·궁극 스킬 |
+| `src/game/battleScene.ts` | 전투 루프, 피해(`hitMonster`, `src`, `withSource`), 웨이브·결과, 궁극기 채널, 수련장 연결. 탄·장판은 아래 두 파일을 부르는 창구(`spawnPlayerBolt`, `addField` …)만 둔다 |
+| `src/game/battle/projectiles.ts` | 플레이어 투사체와 적 탄 (`Projectiles`) |
+| `src/game/battle/hazards.ts` | 장판·공격 예고·충격파·불기둥·운석·레이저 줄기 (`Hazards`) |
+| `src/game/combat/` | 플레이어 공격. `index.ts` 입력 처리, `basic.ts` 평타 연계·강화 공격, `hits.ts` 동작별 타격(`performHit`), `skills.ts` 일반 스킬 시전(`tryCast`), `shared.ts` 히트박스·공유 값 |
+| `src/game/ultimates/` | 상급·궁극 스킬. 무기별 파일(`sword.ts` `dao.ts` `bow.ts` `gun.ts` `staff.ts`), `shared.ts` 공용 도우미, `index.ts` 이름표와 `castUltimate` |
 | `src/game/monster2d.ts` | 몬스터 공통 AI·LOOKS, 행동 연결 |
 | `src/game/mobs/` | 챕터별 몬스터 행동 |
 | `src/game/dragon/` | 용 리그·그림·보스 패턴, 챕터 6~10 그림 |

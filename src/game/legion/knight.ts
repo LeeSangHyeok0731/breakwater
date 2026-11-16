@@ -387,7 +387,7 @@ export const silentKnight: Behavior = (m, dt) => {
     states.set(m, s);
     // 리그는 본체(물리 몸) 발밑을 따라가고, 맞으면 번쩍이고, 쓰러지면 함께 사라진다.
     const follow = (): void => {
-      const step = b.fx.hitstop > 0 ? 0 : Math.min(0.05, b.game.loop.delta / 1000);
+      const step = b.rigStep();
       s.rig.mirror(m.sprite);
       s.rig.update(m.x, m.body.bottom + 1, m.facing, step);
     };

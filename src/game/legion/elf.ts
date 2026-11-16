@@ -376,7 +376,7 @@ export const corruptedElf: Behavior = (m, dt) => {
     states.set(m, s);
     // 리그는 본체 발밑을 따라간다. 그로기(멈춤) 동안에는 무릎 꿇은 자세로 무너진다.
     const follow = (): void => {
-      const step = b.fx.hitstop > 0 ? 0 : Math.min(0.05, b.game.loop.delta / 1000);
+      const step = b.rigStep();
       if (m.alive && m.stun > 0) {
         s.rig.pose = lerpPose(s.rig.pose, ELF_GROGGY, Math.min(1, step * 8));
         s.rig.glowing = false;

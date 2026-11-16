@@ -107,7 +107,7 @@ function attach(m: Monster, cfg: DragonCfg): DragonState {
   const st: DragonState = { rig, cfg, z, wyvern, pattern: null, t: 0, fired: new Set(), dir: -1, tx: 0, ty: 0, from: 0, walk: 0, last: null, flying: false, heat: 0 };
   states.set(m, st);
   const follow = (): void => {
-    const step = b.fx.hitstop > 0 ? 0 : Math.min(0.05, b.game.loop.delta / 1000);
+    const step = b.rigStep();
     rig.mirror(m.sprite);
     rig.update(m.x, m.body.bottom, m.facing, step);
     if (!m.alive) rig.root.setAlpha(m.sprite.alpha);
