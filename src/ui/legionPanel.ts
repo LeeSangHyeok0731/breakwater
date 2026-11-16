@@ -21,6 +21,7 @@ import { button, el, iconImg } from './dom';
 import { draggable, dropZone } from './drag';
 import type { PanelHost } from './equipPanel';
 import { gearIconUrl } from './iconArt';
+import { LEGION_HUE, legionPortraitUrl } from './legionPortrait';
 
 // 창을 다시 그려도 유지되는 선택
 let boss: LegionId = 'knight';
@@ -54,6 +55,10 @@ export function renderLegionPanel(host: PanelHost, save: SaveData): void {
   for (const id of LEGION_ORDER) {
     const def = LEGIONS[id];
     const card = el('button', `lg-boss${id === boss ? ' active' : ''}${def.locked ? ' locked' : ''}`, cards);
+    // 얼굴을 보고 고른다: 군단장의 빛깔을 깐 액자에 초상화를 넣는다.
+    const face = el('div', 'lg-boss-face', card);
+    face.style.setProperty('--hue', LEGION_HUE[id]);
+    iconImg(face, legionPortraitUrl(id));
     el('div', 'lg-boss-title', card, def.title);
     el('div', 'lg-boss-name', card, def.name);
     el('div', 'lg-boss-weapons', card, def.weapons.map((t) => WEAPON_TYPE_NAME[t]).join(' · '));

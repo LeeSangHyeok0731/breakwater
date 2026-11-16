@@ -767,6 +767,42 @@
   cursor: default;
 }
 
+/* 군단장 초상화: 42px 도트 그림을 3배로 보여 준다 */
+.lg-boss-face {
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  height: 132px;
+  margin: -4px -4px 10px;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.6);
+  border-radius: 6px;
+  background:
+    radial-gradient(ellipse at 50% 35%, color-mix(in srgb, var(--hue) 55%, transparent), transparent 70%),
+    linear-gradient(180deg, #1c1420, #0c080e);
+  box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.7);
+}
+
+.lg-boss-face .px-icon {
+  width: 126px;
+  height: 126px;
+  image-rendering: pixelated;
+  filter: saturate(0.75) brightness(0.8);
+  transition: filter 0.15s, transform 0.15s;
+}
+
+.lg-boss:hover .lg-boss-face .px-icon,
+.lg-boss.active .lg-boss-face .px-icon {
+  filter: none;
+}
+
+.lg-boss.active .lg-boss-face {
+  border-color: color-mix(in srgb, var(--hue) 70%, #fff);
+  box-shadow:
+    inset 0 0 18px rgba(0, 0, 0, 0.5),
+    0 0 10px color-mix(in srgb, var(--hue) 60%, transparent);
+}
+
 .lg-boss-title {
   font-size: 11px;
   font-weight: 800;
