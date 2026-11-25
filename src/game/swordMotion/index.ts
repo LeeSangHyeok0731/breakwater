@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { newBuf, type Buf } from './pixels';
-import { COMBOS } from './poses';
+import { COMBOS, FPS } from './poses';
 import { drawPose, FRAME_H, FRAME_W } from './rig';
 import { cutStamps } from './stamps';
 
@@ -16,10 +16,7 @@ export function swordTexKey(step: number): string {
 
 /** 동작이 시작한 뒤 t초일 때 몇 번째 칸인가 */
 export function swordFrameAt(step: number, t: number): number {
-  const keys = COMBOS[step - 1];
-  let f = 0;
-  for (let i = 0; i < keys.length; i++) if (keys[i].at <= t) f = i;
-  return f;
+  return Math.max(0, Math.min(COMBOS[step - 1].length - 1, Math.floor(t * FPS)));
 }
 
 export function hasSwordMotion(step: number): boolean {
@@ -45,7 +42,7 @@ export function createSwordMotion(scene: Phaser.Scene): void {
   COMBOS.forEach((keys, n) => {
     const sheet: Buf = newBuf(FRAME_W * keys.length, FRAME_H);
     keys.forEach((k, i) => {
-      const f = drawPose(k.pose, stamps);
+      const f = drawPose(k, stamps);
       for (let y = 0; y < FRAME_H; y++) {
         for (let x = 0; x < FRAME_W; x++) {
           const s = (y * FRAME_W + x) * 4;
