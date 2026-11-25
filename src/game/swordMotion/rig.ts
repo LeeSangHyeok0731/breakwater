@@ -1,5 +1,5 @@
 import { blit, line, newBuf, polySpans, px, rect, thick, type Buf } from './pixels';
-import type { Limb, Pt, SwordPose } from './poses';
+import type { Limb, Pt, Smear, SwordPose } from './poses';
 import type { Stamps } from './stamps';
 
 export const FRAME_W = 96;
@@ -80,6 +80,30 @@ function drawBlade(b: Buf, base: Pt, tip: Pt): void {
   px(b, gx, gy, GOLD[0]);
 }
 
+/**
+ * 칼이 지나간 자리: 앞 어깨 둘레의 부채꼴. 시작(꼬리)은 가늘고 성기며 끝(칼이 있는 쪽)은 두껍고 밝다.
+ * 바깥은 크림색, 안쪽으로 갈수록 회색. 가장자리는 들쭉날쭉해서 붓결처럼 보인다.
+ */
+function drawSmear(b: Buf, pivot: Pt, [a0, a1, r0, r1]: Smear): void {
+  const span = Math.abs(a1 - a0);
+  const dir = Math.sign(a1 - a0) || 1;
+  for (let d = 0; d <= span; d += 1.2) {
+    const u = d / span;
+    const a = ((a0 + dir * d) * Math.PI) / 180;
+    // 꼬리일수록 안쪽 반지름이 바깥으로 물러난다 (가늘어짐)
+    const lo = r0 + (r1 - r0) * (1 - Math.pow(u, 0.7)) * 0.8;
+    // 바깥 가장자리도 살짝 들쭉날쭉
+    const hi = r1 - ((Math.floor(d * 1.7) % 3) === 0 ? 1 : 0) - (u < 0.25 ? 2 : 0);
+    for (let r = lo; r <= hi; r += 0.8) {
+      const k = (r - lo) / Math.max(1, hi - lo);
+      // 꼬리 쪽은 성기게
+      if (u < 0.45 && ((Math.round(d * 3) + Math.round(r * 2)) % 3 !== 0)) continue;
+      const color = k > 0.66 ? BLADE_EDGE : k > 0.3 ? 0xd9bfa6 : BLADE;
+      px(b, pivot[0] + Math.cos(a) * r, pivot[1] + Math.sin(a) * r, color);
+    }
+  }
+}
+
 /** 포즈 하나를 96×64 칸에 그린다. 그리는 순서: 망토 → 뒷팔 → 뒷다리 → 가슴 → 머리 → 앞다리 → 앞팔 → 칼 */
 export function drawPose(p: SwordPose, s: Stamps): Buf {
   const b = newBuf(FRAME_W, FRAME_H);
@@ -92,6 +116,7 @@ export function drawPose(p: SwordPose, s: Stamps): Buf {
   blit(b, s.head, p.head[0], p.head[1]);
   blit(b, s.pauldron, p.pauldron[0], p.pauldron[1], p.lean);
   drawLeg(b, p.hip, p.frontLeg[0], p.frontLeg[1], true);
+  if (p.smear) drawSmear(b, p.front.shoulder, p.smear);
   drawBlade(b, p.blade[0], p.blade[1]);
   drawArm(b, p.front, true);
   return b;
