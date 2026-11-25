@@ -374,6 +374,11 @@ if (import.meta.env.DEV) {
       startRaid({ difficulty, weapons: raidWeaponUids(lo), armor: lo.armor });
       return 'started';
     },
+    /** 마을 창을 바로 연다 (화면 확인용) */
+    panel(tab: Tab, title = ''): string {
+      village.open([tab], title);
+      return 'opened';
+    },
     step(frames = 60): string {
       const b = battle();
       if (!b) return 'no battle';
