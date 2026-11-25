@@ -64,6 +64,7 @@ export function updatePlayerCombat(b: BattleScene, dt: number): void {
           comboPop(b, n);
           const [dur, hits] = SLASH_TIMING[n - 1];
           p.startAction('slash', dur, hits);
+          p.action!.step = n;
         }
       } else if (free && input.pressed('special')) {
         if (type === 'sword') p.startAction('thrust', 0.5, [0.18]);
