@@ -9,6 +9,7 @@ import { heldDef, heldStyle, meleeLook, RANGED_AURA } from './weaponArt';
 import { createWeaponSprites, heldKey, heldOrigin } from './weaponSprites';
 import { DEPTH } from './fx';
 import type { Derived } from './stats';
+import { hasSwordMotion, isSwordSkill, SWORD_ORIGIN_X, skillFrameAt, skillTexKey, swordFrameAt, swordLastFrame, swordTexKey, type SwordSkill } from './swordMotion';
 import { toneOf } from './tone';
 import { flutter, glow, pop, twinkles, wisps, type Palette3 } from './vfx';
 
@@ -60,6 +61,10 @@ export interface PlayerAction {
   done: number;
   /** 이 동작을 부른 스킬 (없으면 평타·특수 공격). 수련장 집계에 쓴다. */
   src?: string;
+  /** 검 평타 연계 단계 (1~5). 시작할 때 정해 두고, 동작 그림을 고르는 데 쓴다. */
+  step?: number;
+  /** 검사 스킬 몸동작 (종류가 곧 동작이 아닌 경우: 함성은 'cast'로 시작한다) */
+  motion?: SwordSkill;
 }
 
 export interface Buff {
@@ -188,6 +193,11 @@ export class Player {
 
   private lastAnimAction: PlayerAction | null = null;
   private lastAnimSeg = 0;
+  /** 직전 프레임에 검 평타 칸을 직접 골라 보였는가 (그러면 애니메이션 재생이 멈춘 상태다) */
+  private posed = false;
+  /** 검 평타가 마지막으로 끝난 단과 시각(ms). 이어 치는 동안 자세를 잠깐 붙들어 끊기지 않게 한다. */
+  private lastSwordStep = 0;
+  private lastSwordAt = -1e9;
   /** 직업 교체 직후 몸이 하얗게 번쩍이는 시간 */
   private swapFlash = 0;
   /** 쏜 뒤 조준 자세를 유지하는 남은 시간 */
@@ -677,14 +687,17 @@ export class Player {
   private play(base: string, restartFor?: PlayerAction | null, seg = 0): void {
     const s = this.sprite;
     const key = classAnimKey(this.weapon.def.type, base);
+    // 칸을 직접 고르던 직후에는 같은 키여도 다시 재생해야 멈춰 있지 않는다.
+    const stale = this.posed;
+    this.posed = false;
     if (restartFor !== undefined) {
-      if (restartFor !== this.lastAnimAction || seg !== this.lastAnimSeg || s.anims.currentAnim?.key !== key) {
+      if (stale || restartFor !== this.lastAnimAction || seg !== this.lastAnimSeg || s.anims.currentAnim?.key !== key) {
         // 이어지는 수는 휘두르기 직전 칸부터 시작해 빠르게 몰아친다.
         s.play({ key, startFrame: seg > 0 ? 1 : 0 });
         this.lastAnimAction = restartFor;
         this.lastAnimSeg = seg;
       }
-    } else if (s.anims.currentAnim?.key !== key) {
+    } else if (stale || s.anims.currentAnim?.key !== key) {
       s.play(key);
     }
   }
@@ -701,17 +714,41 @@ export class Player {
     const a = this.action;
     /** 회전베기처럼 잠깐 뒤를 돌아보며 베는 수 */
     let reverse = false;
+    /** 이번 프레임에 검 평타 칸을 직접 골랐는가 */
+    let swordPose = false;
     if (this.dead) this.play('hero-hurt');
     else if (this.hurtTimer > 0.2) this.play('hero-hurt');
     else if (a && !RANGED_ACTIONS.has(a.kind)) {
       const moves = MOVES[a.kind];
-      if (moves) {
+      const skill = a.motion ?? (isSwordSkill(a.kind) ? a.kind : undefined);
+      if (skill && this.weapon.def.type === 'sword' && this.grounded) {
+        // 검사 스킬: 평타처럼 흐른 시간에 맞는 칸을 직접 보인다.
+        s.anims.stop();
+        s.setTexture(skillTexKey(skill), skillFrameAt(skill, a.t));
+        this.posed = true;
+        swordPose = true;
+        this.lastSwordStep = 0;
+      } else if (moves) {
         const i = this.moveIndex(a);
         this.play(moves[i % moves.length], a, i);
         reverse = (a.kind === 'whirl' && i % 2 === 1) || (a.kind === 'crescent' && i === 1);
+      } else if (a.kind === 'slash' && a.step && hasSwordMotion(a.step) && this.weapon.def.type === 'sword' && this.grounded) {
+        // 검 평타: 동작이 흐른 시간에 맞는 칸을 직접 보인다 (타격 시점에 타격 칸이 온다).
+        s.anims.stop();
+        s.setTexture(swordTexKey(a.step), swordFrameAt(a.step, a.t));
+        this.posed = true;
+        swordPose = true;
+        this.lastSwordStep = a.step;
+        this.lastSwordAt = this.scene.time.now;
       } else if (a.kind === 'crouchSlash') this.play('hero-crouch-slash', a);
       else if (a.kind === 'airSlash' || !this.grounded) this.play('hero-jump-attack', a);
       else this.play('hero-attack', a);
+    } else if (!a && this.lastSwordStep > 0 && this.lastSwordStep < 5 && this.grounded && this.scene.time.now - this.lastSwordAt < 200 && Math.abs(this.body.velocity.x) < 90) {
+      // 연타 사이: 방금 끝난 단의 마지막 자세를 붙든다 (다음 단이 그 자세에서 시작한다)
+      s.anims.stop();
+      s.setTexture(swordTexKey(this.lastSwordStep), swordLastFrame(this.lastSwordStep));
+      this.posed = true;
+      swordPose = true;
     } else if (this.aiming) this.play(AIM_ANIM);
     else if (this.dodgeTime > 0) this.play('hero-run');
     else if (!this.grounded) this.play('hero-jump');
@@ -722,7 +759,7 @@ export class Player {
 
     // 프레임마다 몸통 위치가 다른 시트는 기준점을 맞춘다.
     const key = baseAnimKey(s.anims.currentAnim?.key ?? 'hero-idle');
-    const ox = key === AIM_ANIM ? AIM_ORIGIN_X : (ORIGIN_X[key] ?? 0.5);
+    const ox = swordPose ? SWORD_ORIGIN_X : key === AIM_ANIM ? AIM_ORIGIN_X : (ORIGIN_X[key] ?? 0.5);
     const look = reverse ? -this.facing : this.facing;
     s.setFlipX(look === -1);
     s.setOrigin(look === 1 ? ox : 1 - ox, 1);

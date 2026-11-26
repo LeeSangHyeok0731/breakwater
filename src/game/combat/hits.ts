@@ -8,6 +8,7 @@ import type { ActionKind } from '../player2d';
 import { meleeLook } from '../weaponArt';
 import { afterglow, column, crescent, flare, flutter, glow, hues, impactBurst, PAL, pop, rays, shards, shockwave, tint, twinkles, wisps } from '../vfx';
 import { comboSlash, manaCombo, gunShot } from './basic';
+import { swordCombo } from './swordCombo';
 import { box, around, combatState, slashStyle, swingFx, LONG, swordReach } from './shared';
 
 const SWINGS: ReadonlySet<ActionKind> = new Set([
@@ -41,7 +42,8 @@ export function performHit(b: BattleScene, kind: ActionKind, index: number): voi
   if (SWINGS.has(kind)) sfx.play('slash');
   switch (kind) {
     case 'slash':
-      comboSlash(b, p.combo || 1, index, base * mul, color);
+      if (p.weapon.def.type === 'sword') swordCombo(b, p.combo || 1, index, base * mul, color);
+      else comboSlash(b, p.combo || 1, index, base * mul, color);
       break;
     case 'airSlash':
       b.fx.slash(p.x + f * 14, p.y - 4, f, swordReach(p, 40), color, true, { style: slashStyle(b), stretch: LONG[0], squash: LONG[1] });

@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { createAnimations, preloadAssets } from './assets2d';
 import { createClassSprites, createLegionSprites } from './classSprites';
+import { createSwordMotion } from './swordMotion';
 import { createFxArt } from './fxArt';
 import { createChapter6Art } from './dragon/chapter6Art';
 import { createLateArt } from './dragon/lateArt';
@@ -20,6 +21,7 @@ export class BootScene extends Phaser.Scene {
   create(): void {
     createAnimations(this);
     createClassSprites(this);
+    createSwordMotion(this);
     createLegionSprites(this);
     createFxArt(this);
     createChapter6Art(this);

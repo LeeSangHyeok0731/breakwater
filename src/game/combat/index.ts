@@ -5,6 +5,7 @@ import { sfx } from '../../core/audio';
 import type { BattleScene } from '../battleScene';
 import { BASIC_ACTIONS } from '../player2d';
 import { releaseOrb, fireArrow, SLASH_TIMING, comboPop, gunCombo, startReload } from './basic';
+import { SWORD_TIMING } from '../swordMotion/poses';
 import { performHit, updateLaser } from './hits';
 import { CHANNELS, combatState } from './shared';
 import { tryCast } from './skills';
@@ -62,8 +63,9 @@ export function updatePlayerCombat(b: BattleScene, dt: number): void {
         } else {
           const n = p.nextCombo();
           comboPop(b, n);
-          const [dur, hits] = SLASH_TIMING[n - 1];
+          const [dur, hits] = (type === 'sword' ? SWORD_TIMING : SLASH_TIMING)[n - 1];
           p.startAction('slash', dur, hits);
+          p.action!.step = n;
         }
       } else if (free && input.pressed('special')) {
         if (type === 'sword') p.startAction('thrust', 0.5, [0.18]);
