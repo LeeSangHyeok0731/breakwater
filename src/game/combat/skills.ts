@@ -7,6 +7,7 @@ import type { BattleScene } from '../battleScene';
 import { DEPTH } from '../fx';
 import { castUltimate } from '../ultimates';
 import { afterglow, aura, column, crescent, flare, flutter, glow, hues, impactBurst, PAL, pop, rays, shards, shockwave, tint, tone, twinkles, wisps } from '../vfx';
+import { SKILL_TIMING } from '../swordMotion/skillMotions';
 import { snipeSight } from './hits';
 import { CHANNELS, combatState, palOf } from './shared';
 
@@ -115,33 +116,34 @@ function castSkill(b: BattleScene, skill: SkillDef): void {
   const f = p.facing;
   switch (skill.id) {
     case 'sword_whirl':
-      p.startAction('whirl', 0.62, [0.08, 0.2, 0.32, 0.46]);
+      p.startAction('whirl', ...SKILL_TIMING.whirl);
       break;
     case 'sword_upper':
-      p.startAction('upper', 0.56, [0.08, 0.2, 0.36]);
+      p.startAction('upper', ...SKILL_TIMING.upper);
       break;
     case 'sword_sunder':
-      p.startAction('sunder', 0.52, [0.08, 0.2, 0.34]);
+      p.startAction('sunder', ...SKILL_TIMING.sunder);
       break;
-    case 'sword_waves': {
-      const hits: number[] = [];
-      for (let i = 0; i < 12; i++) hits.push(0.06 + i * 0.075);
-      p.startAction('waves', 1.0, hits);
+    case 'sword_waves':
+      p.startAction('waves', ...SKILL_TIMING.waves);
       break;
-    }
     case 'sword_cry':
       p.addBuff({ id: 'cry', name: '전투의 함성', damageMul: 0.3, time: 12 });
       castCircle(b, 0xffb040, true);
-      b.fx.ring(p.x, p.feet, 100, 0xffb040, 420);
-      b.fx.flashScreen(0xffb040, 0.15, 220);
-      rays(b, p.x, p.y - 10, 16, 170, PAL.gold, 460);
-      shockwave(b, p.x, p.y - 6, 200, PAL.gold, 520, 1, 6);
-      // 함성: 금빛 사이로 다홍 불길이 치솟고 투기가 온몸에서 피어오른다.
-      shockwave(b, p.x, p.y - 6, 130, PAL.crimson, 420, 1, 4);
-      wisps(b, p.x, p.y - 6, PAL.sun, 8, 120, 620, { curl: 2.6, width: 7 });
-      flutter(b, p.x, p.y, 'flame', [0xffd040, 0xff7a1a, 0xff3a5a, 0xfffbe0], 20, { spread: 26, spreadY: 20, speed: 120, cone: 0.9, gravity: -110, life: 1000, within: 240 });
-      b.fx.shake(0.8);
-      p.startAction('cast', 0.3);
+      p.startAction('cast', ...SKILL_TIMING.cry);
+      p.action!.motion = 'cry';
+      // 웅크려 기를 모은 뒤 몸을 젖히는 순간에 함성이 터진다.
+      b.time.delayedCall(220, () => {
+        b.fx.ring(p.x, p.feet, 100, 0xffb040, 420);
+        b.fx.flashScreen(0xffb040, 0.15, 220);
+        rays(b, p.x, p.y - 10, 16, 170, PAL.gold, 460);
+        shockwave(b, p.x, p.y - 6, 200, PAL.gold, 520, 1, 6);
+        // 함성: 금빛 사이로 다홍 불길이 치솟고 투기가 온몸에서 피어오른다.
+        shockwave(b, p.x, p.y - 6, 130, PAL.crimson, 420, 1, 4);
+        wisps(b, p.x, p.y - 6, PAL.sun, 8, 120, 620, { curl: 2.6, width: 7 });
+        flutter(b, p.x, p.y, 'flame', [0xffd040, 0xff7a1a, 0xff3a5a, 0xfffbe0], 20, { spread: 26, spreadY: 20, speed: 120, cone: 0.9, gravity: -110, life: 1000, within: 240 });
+        b.fx.shake(0.8);
+      });
       break;
     case 'staff_meteor':
       castCircle(b, 0xff8a3a);

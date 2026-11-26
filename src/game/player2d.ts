@@ -9,7 +9,7 @@ import { heldDef, heldStyle, meleeLook, RANGED_AURA } from './weaponArt';
 import { createWeaponSprites, heldKey, heldOrigin } from './weaponSprites';
 import { DEPTH } from './fx';
 import type { Derived } from './stats';
-import { hasSwordMotion, SWORD_ORIGIN_X, swordFrameAt, swordLastFrame, swordTexKey } from './swordMotion';
+import { hasSwordMotion, isSwordSkill, SWORD_ORIGIN_X, skillFrameAt, skillTexKey, swordFrameAt, swordLastFrame, swordTexKey, type SwordSkill } from './swordMotion';
 import { toneOf } from './tone';
 import { flutter, glow, pop, twinkles, wisps, type Palette3 } from './vfx';
 
@@ -63,6 +63,8 @@ export interface PlayerAction {
   src?: string;
   /** 검 평타 연계 단계 (1~5). 시작할 때 정해 두고, 동작 그림을 고르는 데 쓴다. */
   step?: number;
+  /** 검사 스킬 몸동작 (종류가 곧 동작이 아닌 경우: 함성은 'cast'로 시작한다) */
+  motion?: SwordSkill;
 }
 
 export interface Buff {
@@ -718,7 +720,15 @@ export class Player {
     else if (this.hurtTimer > 0.2) this.play('hero-hurt');
     else if (a && !RANGED_ACTIONS.has(a.kind)) {
       const moves = MOVES[a.kind];
-      if (moves) {
+      const skill = a.motion ?? (isSwordSkill(a.kind) ? a.kind : undefined);
+      if (skill && this.weapon.def.type === 'sword' && this.grounded) {
+        // 검사 스킬: 평타처럼 흐른 시간에 맞는 칸을 직접 보인다.
+        s.anims.stop();
+        s.setTexture(skillTexKey(skill), skillFrameAt(skill, a.t));
+        this.posed = true;
+        swordPose = true;
+        this.lastSwordStep = 0;
+      } else if (moves) {
         const i = this.moveIndex(a);
         this.play(moves[i % moves.length], a, i);
         reverse = (a.kind === 'whirl' && i % 2 === 1) || (a.kind === 'crescent' && i === 1);
@@ -733,7 +743,7 @@ export class Player {
       } else if (a.kind === 'crouchSlash') this.play('hero-crouch-slash', a);
       else if (a.kind === 'airSlash' || !this.grounded) this.play('hero-jump-attack', a);
       else this.play('hero-attack', a);
-    } else if (!a && this.lastSwordStep > 0 && this.lastSwordStep < 5 && this.grounded && this.scene.time.now - this.lastSwordAt < 200&& Math.abs(this.body.velocity.x) < 90) {
+    } else if (!a && this.lastSwordStep > 0 && this.lastSwordStep < 5 && this.grounded && this.scene.time.now - this.lastSwordAt < 200 && Math.abs(this.body.velocity.x) < 90) {
       // 연타 사이: 방금 끝난 단의 마지막 자세를 붙든다 (다음 단이 그 자세에서 시작한다)
       s.anims.stop();
       s.setTexture(swordTexKey(this.lastSwordStep), swordLastFrame(this.lastSwordStep));

@@ -52,7 +52,7 @@ export interface SwordPose {
 }
 
 /** 키 하나에 적는 포즈 */
-interface P {
+export interface P {
   /** 가슴 윗면 가운데 */
   c: Pt;
   yaw: number;
@@ -73,7 +73,7 @@ interface P {
 
 type Full = Required<Omit<P, 'lh'>> & { lh?: Pt };
 
-function full(p: P): Full {
+export function full(p: P): Full {
   return { ...p, hy: p.hy ?? p.yaw, lean: p.lean ?? 0, len: p.len ?? 30, hipDy: p.hipDy ?? 0 };
 }
 
@@ -178,8 +178,10 @@ function pose(p: Full, capeTip: Pt, smear: Seg[] | undefined, headD: Pt, bladeBe
 
 export const FPS = 60;
 
-type Ease = 'in' | 'out' | 'io';
+export type Ease = 'in' | 'out' | 'io' | 'lin';
 const EASE: Record<Ease, (u: number) => number> = {
+  /** 일정한 속도 (연속으로 도는 동작) */
+  lin: (u) => u,
   /** 점점 빨라진다 (휘두름) */
   in: (u) => Math.pow(u, 1.7),
   /** 처음에 빠르고 끝에서 느려진다 (여운) */
@@ -188,7 +190,7 @@ const EASE: Record<Ease, (u: number) => number> = {
 };
 
 /** 핵심 포즈. at초에 이 포즈가 되고, 앞 키에서 여기까지 ease로 이어진다. swing이면 그 사이에 칼 잔상이 따라붙는다. */
-interface KeySpec {
+export interface KeySpec {
   at: number;
   p: Full;
   ease?: Ease;
@@ -282,8 +284,8 @@ const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.m
 const BLADE_LEAD = 0.03;
 
 /** 키들을 1/60초마다 한 칸씩 이어 붙인다. 칸 i는 동작이 시작하고 i/60초 뒤의 모습이다. */
-function buildFrames(keys: KeySpec[], dur: number): SwordPose[] {
-  const n = Math.ceil(dur * SPEED * FPS) + 1;
+export function buildFrames(keys: KeySpec[], dur: number): SwordPose[] {
+  const n = Math.ceil(dur * FPS) + 1;
   const dt = 1 / FPS;
   const out: SwordPose[] = [];
   const capeTarget = (p: Full): Pt => [p.c[0] - 25 * Math.cos(p.yaw * RAD), p.c[1] + 21 + 3 * Math.abs(Math.sin(p.yaw * RAD))];
@@ -373,9 +375,14 @@ function buildFrames(keys: KeySpec[], dur: number): SwordPose[] {
 }
 
 /** 키에 적은 시간(초)에 곱하는 배율. 작을수록 빠릿하다. 키·길이·타격 시점이 함께 줄어 서로 어긋나지 않는다. */
-const SPEED = 0.78;
+export const SPEED = 0.78;
 
-const K = (at: number, p: P, ease?: Ease, swing?: boolean): KeySpec => ({ at: at * SPEED, p: full(p), ease, swing });
+/** 시간 배율 없이 적는 키 (스킬 동작). 스킬은 타격 시점이 스킬 정의에 고정돼 있다. */
+export const K0 = (at: number, p: P, ease?: Ease, swing?: boolean): KeySpec => ({ at, p: full(p), ease, swing });
+
+const K = (at: number, p: P, ease?: Ease, swing?: boolean): KeySpec => K0(at * SPEED, p, ease, swing);
+
+const buildCombo = (keys: KeySpec[], dur: number): SwordPose[] => buildFrames(keys, dur * SPEED);
 
 // 흐름: 젖힌다(천천히) → 휘두른다(점점 빨라져 타격에서 멈춘다) → 여운 → 다음 동작의 시작 자세로 이어진다.
 // 뒤 동작의 첫 키는 앞 동작의 마지막 키와 같은 자세라서, 이어 치면 끊김 없이 이어진다.
@@ -398,7 +405,7 @@ const C3: P = { c: [52, 37], yaw: 0, rf: [46, 62], lf: [60, 62], rh: [62, 41], a
 const C4: P = { c: [53, 39], yaw: 0, lean: 5, rf: [63, 62], lf: [48, 62], rh: [62, 43], az: 0, el: -40, len: 32 };
 
 // ───────── 1타: 왼발을 내디디며 왼쪽에서 오른쪽으로 수평 가로베기 ─────────
-const COMBO1 = buildFrames(
+const COMBO1 = buildCombo(
   [
     K(0, { c: [38, 35], yaw: 12, rf: [43, 62], lf: [33, 62], rh: [46, 41], az: 0, el: -25 }),
     // 오른팔을 뒤로 감는다: 가슴이 살짝 정면으로 돌지만 시선은 앞에 둔다
@@ -412,7 +419,7 @@ const COMBO1 = buildFrames(
 );
 
 // ───────── 2타: 오른발을 교차해 내디디며 돌아서 (등이 보인다), 검을 수평으로 올렸다가 왼쪽 아래로 내려베기 ─────────
-const COMBO2 = buildFrames(
+const COMBO2 = buildCombo(
   [
     K(0, C1),
     // 몸이 왼쪽으로 돌며 오른발이 앞으로 나간다. 검은 지면과 수평인 채 오른쪽 위로 올라간다.
@@ -428,7 +435,7 @@ const COMBO2 = buildFrames(
 );
 
 // ───────── 3타: 왼쪽 아래의 검을 오른쪽으로 돌리며, 왼발을 앞으로 내딛고 한 바퀴 돌며 수평으로 베기 ─────────
-const COMBO3 = buildFrames(
+const COMBO3 = buildCombo(
   [
     // 2타가 끝난 자세 (같은 칼 방향을 가로 표현으로 바꿔 쓴다)
     K(0, { ...C2, az: 180, el: -52 }),
@@ -442,7 +449,7 @@ const COMBO3 = buildFrames(
 );
 
 // ───────── 4타: 오른발을 내딛고 돌아서 왼쪽 아래로 내려베고, 검을 수직으로 올려 등 뒤에서 넘겨 오른쪽으로 내려베기 ─────────
-const COMBO4 = buildFrames(
+const COMBO4 = buildCombo(
   [
     K(0, { ...C3, az: 0 }),
     K(0.2, { c: [50, 38], yaw: -85, rf: [56, 62], lf: [46, 62], rh: [61, 28], az: 0, el: 0 }, 'io'),
@@ -462,7 +469,7 @@ const COMBO4 = buildFrames(
 );
 
 // ───────── 5타: 바로 서서 오른쪽·왼쪽으로 검을 돌리고, 왼발을 빼며 수평으로 베고, 오른발을 내딛으며 찌르기 ─────────
-const COMBO5 = buildFrames(
+const COMBO5 = buildCombo(
   [
     K(0, C4),
     // 바로 선다

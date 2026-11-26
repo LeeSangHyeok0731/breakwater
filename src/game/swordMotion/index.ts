@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import { newBuf, type Buf } from './pixels';
-import { COMBOS, FPS } from './poses';
+import { COMBOS, FPS, type SwordPose } from './poses';
 import { drawPose, FRAME_H, FRAME_W } from './rig';
+import { SKILL_MOTIONS, type SwordSkill } from './skillMotions';
 import { cutStamps } from './stamps';
 
 // 검사 평타 몸동작. 단계(1~5)마다 칸을 가로로 이어 붙인 텍스처 `sword-combo-N`을 부팅 때 만든다.
@@ -28,6 +29,20 @@ export function hasSwordMotion(step: number): boolean {
   return step >= 1 && step <= COMBOS.length;
 }
 
+export type { SwordSkill };
+
+export function skillTexKey(skill: SwordSkill): string {
+  return `sword-skill-${skill}`;
+}
+
+export function skillFrameAt(skill: SwordSkill, t: number): number {
+  return Math.max(0, Math.min(SKILL_MOTIONS[skill].length - 1, Math.floor(t * FPS)));
+}
+
+export function isSwordSkill(name: string | undefined): name is SwordSkill {
+  return name !== undefined && name in SKILL_MOTIONS;
+}
+
 function toBuf(scene: Phaser.Scene, key: string, frame: number): Buf {
   const src = scene.textures.get(key);
   const img = src.getSourceImage() as HTMLImageElement;
@@ -44,7 +59,11 @@ function toBuf(scene: Phaser.Scene, key: string, frame: number): Buf {
 export function createSwordMotion(scene: Phaser.Scene): void {
   if (scene.textures.exists(swordTexKey(1))) return;
   const stamps = cutStamps(toBuf(scene, 'hero-idle', 0));
-  COMBOS.forEach((keys, n) => {
+  const sheets: [string, SwordPose[]][] = [
+    ...COMBOS.map((keys, n): [string, SwordPose[]] => [swordTexKey(n + 1), keys]),
+    ...(Object.keys(SKILL_MOTIONS) as SwordSkill[]).map((k): [string, SwordPose[]] => [skillTexKey(k), SKILL_MOTIONS[k]]),
+  ];
+  sheets.forEach(([texKey, keys]) => {
     const sheet: Buf = newBuf(FRAME_W * keys.length, FRAME_H);
     keys.forEach((k, i) => {
       const f = drawPose(k, stamps);
@@ -63,7 +82,7 @@ export function createSwordMotion(scene: Phaser.Scene): void {
     canvas.width = sheet.w;
     canvas.height = sheet.h;
     canvas.getContext('2d')!.putImageData(new ImageData(sheet.data, sheet.w, sheet.h), 0, 0);
-    const tex = scene.textures.addCanvas(swordTexKey(n + 1), canvas)!;
+    const tex = scene.textures.addCanvas(texKey, canvas)!;
     keys.forEach((_, i) => tex.add(i, 0, i * FRAME_W, 0, FRAME_W, FRAME_H));
   });
 }
