@@ -3,7 +3,7 @@
 
 import { buildFrames, K0, type KeySpec, type P, type SwordPose } from './poses';
 
-export type SwordSkill = 'whirl' | 'upper' | 'sunder' | 'waves' | 'cry' | 'heaven' | 'judge' | 'sky';
+export type SwordSkill = 'whirl' | 'upper' | 'sunder' | 'waves' | 'cry' | 'heaven' | 'judge';
 
 /** 서 있는 자세 (평타 5타가 끝나는 자세와 같다) */
 const IDLE: P = { c: [40, 35], yaw: 10, rf: [44, 62], lf: [34, 62], rh: [47, 41], az: 0, el: -25 };
@@ -15,10 +15,9 @@ export const SKILL_TIMING: Record<SwordSkill, [number, number[]]> = {
   sunder: [0.82, [0.17, 0.32, 0.5]],
   waves: [1.15, Array.from({ length: 12 }, (_, i) => 0.12 + i * 0.075)],
   cry: [0.7, []],
-  // 궁극기: 타격은 이펙트가 정한다 (천공 일섬 0.2초, 십자 심판 0.22·0.46초). 천공 섬광은 떠 있는 동안 자세를 보인다.
+  // 궁극기: 타격은 이펙트가 정한다 (천공 일섬 0.2초, 십자 심판 0.22·0.46초).
   heaven: [0.85, []],
   judge: [0.95, []],
-  sky: [1.5, []],
 };
 
 // ───────── 선풍: 몸을 낮춰 감았다가 두 바퀴 돌며 앞·뒤로 네 번 벤다 ─────────
@@ -144,23 +143,4 @@ const judge = buildFrames(
   0.95,
 );
 
-// ───────── 천공 섬광: 웅크렸다 솟아올라 정면을 보고 두 팔을 활짝 펴 마나검을 불러낸다 ─────────
-const sky = buildFrames(
-  [
-    K0(0, IDLE),
-    // 깊이 웅크려 칼을 뒤로 젖힌다 (이 동안 몸은 땅에 있다)
-    K0(0.14, { c: [40, 41], yaw: 10, lean: 5, hipDy: 3, rf: [47, 62], lf: [33, 62], rh: [36, 52], lh: [34, 50], az: 0, el: -100 }, 'io'),
-    // 박차고 솟는다: 다리가 곧게 펴지고 두 팔이 머리 위로 뻗는다
-    K0(0.21, { c: [40, 33], yaw: 20, lean: -2, hipDy: -2, rf: [43, 60], lf: [37, 61], rh: [47, 21], lh: [35, 23], az: 0, el: 85 }, 'in'),
-    // 올라가며 무릎을 끌어당기고 팔이 벌어지기 시작한다
-    K0(0.36, { c: [40, 31], yaw: 60, lean: -3, rf: [46, 56], lf: [35, 52], rh: [57, 27], lh: [23, 27], az: 0, el: 65 }, 'out'),
-    // 꼭대기: 정면을 보고 두 팔을 활짝 편다
-    K0(0.52, { c: [40, 30], yaw: 90, lean: -4, rf: [44, 56], lf: [36, 55], rh: [62, 27], lh: [18, 27], az: 0, el: 65 }, 'out'),
-    K0(0.85, { c: [40, 32], yaw: 90, lean: -4, rf: [44, 57], lf: [36, 56], rh: [62, 29], lh: [18, 29], az: 0, el: 55 }, 'io'),
-    K0(1.15, { c: [40, 30], yaw: 90, lean: -4, rf: [44, 56], lf: [36, 55], rh: [62, 27], lh: [18, 27], az: 0, el: 65 }, 'io'),
-    K0(1.5, { c: [40, 31], yaw: 90, lean: -4, rf: [44, 56], lf: [36, 56], rh: [62, 28], lh: [18, 28], az: 0, el: 60 }, 'io'),
-  ],
-  1.5,
-);
-
-export const SKILL_MOTIONS: Record<SwordSkill, SwordPose[]> = { whirl, upper, sunder, waves, cry, heaven, judge, sky };
+export const SKILL_MOTIONS: Record<SwordSkill, SwordPose[]> = { whirl, upper, sunder, waves, cry, heaven, judge };
