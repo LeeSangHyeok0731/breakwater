@@ -124,10 +124,13 @@ function polyline(b: Buf, pts: Pt[], dx: number, dy: number, color: number): voi
 }
 
 /** 칼: 빠르게 휘두를 때는 칼끝 반대쪽으로 살짝 휜다 */
-function drawBlade(b: Buf, base: Pt, tip: Pt, bend: Pt): void {
+function drawBlade(b: Buf, base: Pt, tip: Pt, bend: Pt, dao = false): void {
   const [bx, by] = base;
   const [tx, ty] = tip;
-  const ctrl: Pt = [(bx + tx) / 2 + bend[0] * 2, (by + ty) / 2 + bend[1] * 2];
+  // 도는 칼등 쪽으로 휘어 있다: 가리키는 방향에서 시계 반대쪽으로 볼록하다.
+  const dl = Math.hypot(tx - bx, ty - by) || 1;
+  const curve = dao ? dl * 0.13 : 0;
+  const ctrl: Pt = [(bx + tx) / 2 + bend[0] * 2 + ((ty - by) / dl) * curve, (by + ty) / 2 + bend[1] * 2 - ((tx - bx) / dl) * curve];
   const n = Math.max(4, Math.round(Math.hypot(tx - bx, ty - by) / 3));
   const pts = bezier(base, ctrl, tip, n);
   const g = Math.max(1, Math.round(n * 0.16));
@@ -137,7 +140,7 @@ function drawBlade(b: Buf, base: Pt, tip: Pt, bend: Pt): void {
   polyline(b, blade, 0, -1, BLADE_EDGE);
   polyline(b, blade, 0, 0, BLADE);
   polyline(b, blade.slice(0, Math.max(2, Math.round(blade.length * 0.75))), 0, 1, 0x87725f);
-  // 날밑
+  // 날밑 (도는 둥근 날밑이라 작다)
   const [gx, gy] = pts[g];
   const nx = -(ty - by);
   const ny = tx - bx;
@@ -168,7 +171,7 @@ function drawSmear(b: Buf, segs: Seg[]): void {
 }
 
 /** 포즈 하나를 96×64 칸에 그린다. 화면 쪽(깊이 z가 큰 것)이 나중에 그려진다. */
-export function drawPose(p: SwordPose, s: Stamps): Buf {
+export function drawPose(p: SwordPose, s: Stamps, weapon: 'sword' | 'dao' = 'sword'): Buf {
   const b = newBuf(FRAME_W, FRAME_H);
   const items: { z: number; draw: () => void }[] = [];
   const add = (z: number, draw: () => void): void => {
@@ -221,7 +224,7 @@ export function drawPose(p: SwordPose, s: Stamps): Buf {
   // 칼은 몸 앞(화면 쪽)을 지날 때만 몸 위에 그린다. 몸 뒤를 지나면 몸에 가려진다.
   const bladeZ = p.bladeZ >= -0.05 ? rArmZ + 0.3 : -2;
   if (p.smear) add(bladeZ - 0.05, () => drawSmear(b, p.smear!));
-  add(bladeZ, () => drawBlade(b, p.blade[0], p.blade[1], p.bladeBend));
+  add(bladeZ, () => drawBlade(b, p.blade[0], p.blade[1], p.bladeBend, weapon === 'dao'));
 
   items.sort((x, y) => x.z - y.z);
   for (const it of items) it.draw();

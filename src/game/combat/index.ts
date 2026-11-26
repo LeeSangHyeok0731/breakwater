@@ -4,7 +4,8 @@ import { SLOT_ACTIONS } from '../../core/input';
 import { sfx } from '../../core/audio';
 import type { BattleScene } from '../battleScene';
 import { BASIC_ACTIONS } from '../player2d';
-import { releaseOrb, fireArrow, SLASH_TIMING, comboPop, gunCombo, startReload } from './basic';
+import { releaseOrb, fireArrow, comboPop, gunCombo, startReload } from './basic';
+import { DAO_TIMING } from '../swordMotion/daoMotions';
 import { SWORD_TIMING } from '../swordMotion/poses';
 import { performHit, updateLaser } from './hits';
 import { CHANNELS, combatState } from './shared';
@@ -63,7 +64,7 @@ export function updatePlayerCombat(b: BattleScene, dt: number): void {
         } else {
           const n = p.nextCombo();
           comboPop(b, n);
-          const [dur, hits] = (type === 'sword' ? SWORD_TIMING : SLASH_TIMING)[n - 1];
+          const [dur, hits] = (type === 'sword' ? SWORD_TIMING : DAO_TIMING)[n - 1];
           p.startAction('slash', dur, hits);
           p.action!.step = n;
         }

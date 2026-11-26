@@ -7,6 +7,7 @@ import type { BattleScene } from '../battleScene';
 import { DEPTH } from '../fx';
 import { castUltimate } from '../ultimates';
 import { afterglow, aura, column, crescent, flare, flutter, glow, hues, impactBurst, PAL, pop, rays, shards, shockwave, tint, tone, twinkles, wisps } from '../vfx';
+import { DAO_SKILL_TIMING } from '../swordMotion/daoMotions';
 import { SKILL_TIMING } from '../swordMotion/skillMotions';
 import { snipeSight } from './hits';
 import { CHANNELS, combatState, palOf } from './shared';
@@ -218,31 +219,35 @@ function castSkill(b: BattleScene, skill: SkillDef): void {
       p.startAction('cast', 0.35);
       break;
     case 'dao_crescent':
-      p.startAction('crescent', 0.62, [0.1, 0.25, 0.42]);
+      p.startAction('crescent', ...DAO_SKILL_TIMING.crescent);
       break;
     case 'dao_skyfall':
-      p.startAction('skyfall', 0.62, [0.1, 0.42]);
+      p.startAction('skyfall', ...DAO_SKILL_TIMING.skyfall);
       break;
     case 'dao_hamstring':
-      p.startAction('hamstring', 0.5, [0.08, 0.2, 0.32]);
+      p.startAction('hamstring', ...DAO_SKILL_TIMING.hamstring);
       break;
     case 'dao_rage':
       p.addBuff({ id: 'rage', name: '투혼', damageMul: 0.25, speedMul: 0.2, time: 10 });
       castCircle(b, 0xff5a3a, true);
-      b.fx.boom(p.x, p.y - 4, 22, 'fire');
-      b.fx.ring(p.x, p.feet, 90, 0xff5a3a, 380);
-      b.fx.flashScreen(0xff3a1a, 0.18, 200);
-      rays(b, p.x, p.y - 6, 14, 160, PAL.flame, 460);
-      flare(b, p.x, p.y - 6, 60, PAL.flame, 400);
-      // 투혼: 붉은 불길이 몸을 휘감아 오르고 자홍빛 열기가 번진다.
-      shockwave(b, p.x, p.y - 6, 140, PAL.crimson, 460, 1, 5);
-      wisps(b, p.x, p.feet - 6, PAL.flame, 8, 130, 640, { angle: -Math.PI / 2, cone: 1.0, curl: 2.8, width: 8 });
-      flutter(b, p.x, p.y, 'flame', hues(PAL.flame), 24, { spread: 22, spreadY: 22, speed: 130, cone: 0.7, gravity: -140, life: 1000, within: 260 });
-      b.fx.shake(0.9);
-      p.startAction('cast', 0.3);
+      p.startAction('cast', ...DAO_SKILL_TIMING.rage);
+      p.action!.motion = 'rage';
+      // 웅크려 투기를 모은 뒤 몸을 일으키는 순간에 터진다.
+      b.time.delayedCall(200, () => {
+        b.fx.boom(p.x, p.y - 4, 22, 'fire');
+        b.fx.ring(p.x, p.feet, 90, 0xff5a3a, 380);
+        b.fx.flashScreen(0xff3a1a, 0.18, 200);
+        rays(b, p.x, p.y - 6, 14, 160, PAL.flame, 460);
+        flare(b, p.x, p.y - 6, 60, PAL.flame, 400);
+        // 투혼: 붉은 불길이 몸을 휘감아 오르고 자홍빛 열기가 번진다.
+        shockwave(b, p.x, p.y - 6, 140, PAL.crimson, 460, 1, 5);
+        wisps(b, p.x, p.feet - 6, PAL.flame, 8, 130, 640, { angle: -Math.PI / 2, cone: 1.0, curl: 2.8, width: 8 });
+        flutter(b, p.x, p.y, 'flame', hues(PAL.flame), 24, { spread: 22, spreadY: 22, speed: 130, cone: 0.7, gravity: -140, life: 1000, within: 260 });
+        b.fx.shake(0.9);
+      });
       break;
     case 'dao_iai':
-      p.startAction('iai', 0.6, [0.06, 0.22, 0.28, 0.34, 0.42]);
+      p.startAction('iai', ...DAO_SKILL_TIMING.iai);
       break;
     case 'bow_fan': {
       const m = p.muzzle();

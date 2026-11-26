@@ -9,7 +9,8 @@ import { heldDef, heldStyle, meleeLook, RANGED_AURA } from './weaponArt';
 import { createWeaponSprites, heldKey, heldOrigin } from './weaponSprites';
 import { DEPTH } from './fx';
 import type { Derived } from './stats';
-import { hasSwordMotion, isSwordSkill, SWORD_ORIGIN_X, skillFrameAt, skillTexKey, swordFrameAt, swordLastFrame, swordTexKey, type SwordSkill } from './swordMotion';
+import { DAO_AIRBORNE } from './swordMotion/daoMotions';
+import { daoFrameAt, daoLastFrame, daoSkillFrameAt, daoSkillTexKey, daoTexKey, hasDaoMotion, isDaoSkill, hasSwordMotion, isSwordSkill, SWORD_ORIGIN_X, skillFrameAt, skillTexKey, swordFrameAt, swordLastFrame, swordTexKey, type DaoSkill, type SwordSkill } from './swordMotion';
 import { toneOf } from './tone';
 import { flutter, glow, pop, twinkles, wisps, type Palette3 } from './vfx';
 
@@ -64,7 +65,7 @@ export interface PlayerAction {
   /** 검 평타 연계 단계 (1~5). 시작할 때 정해 두고, 동작 그림을 고르는 데 쓴다. */
   step?: number;
   /** 검사 스킬 몸동작 (종류가 곧 동작이 아닌 경우: 함성은 'cast'로 시작한다) */
-  motion?: SwordSkill;
+  motion?: SwordSkill | DaoSkill;
 }
 
 export interface Buff {
@@ -197,6 +198,11 @@ export class Player {
   private posed = false;
   /** 검 평타가 마지막으로 끝난 단과 시각(ms). 이어 치는 동안 자세를 잠깐 붙들어 끊기지 않게 한다. */
   private lastSwordStep = 0;
+  /** 마지막 이어 치기 단이 검인지 도인지 */
+  private lastComboWeapon: 'sword' | 'dao' = 'sword';
+  /** 동작 없이 계속 보일 자세 (혈월을 모으는 동안) 와 그 뒤 흐른 시간 */
+  holdMotion?: DaoSkill;
+  holdT = 0;
   private lastSwordAt = -1e9;
   /** 직업 교체 직후 몸이 하얗게 번쩍이는 시간 */
   private swapFlash = 0;
@@ -375,6 +381,7 @@ export class Player {
       this.hoverTime -= dt;
       if (this.hoverTime <= 0) this.body.setAllowGravity(true);
     }
+    if (this.holdMotion) this.holdT += dt;
     this.silenceTime = Math.max(0, this.silenceTime - dt);
     this.parryCd = Math.max(0, this.parryCd - dt);
     this.dodgeCd = Math.max(0, this.dodgeCd - dt);
@@ -718,13 +725,21 @@ export class Player {
     let swordPose = false;
     if (this.dead) this.play('hero-hurt');
     else if (this.hurtTimer > 0.2) this.play('hero-hurt');
-    else if (a && !RANGED_ACTIONS.has(a.kind)) {
+    else if (a && (a.motion || !RANGED_ACTIONS.has(a.kind))) {
       const moves = MOVES[a.kind];
-      const skill = a.motion ?? (isSwordSkill(a.kind) ? a.kind : undefined);
-      if (skill && this.weapon.def.type === 'sword' && this.grounded) {
+      const name: string = a.motion ?? a.kind;
+      const wt = this.weapon.def.type;
+      if (wt === 'sword' && this.grounded && isSwordSkill(name)) {
         // 검사 스킬: 평타처럼 흐른 시간에 맞는 칸을 직접 보인다.
         s.anims.stop();
-        s.setTexture(skillTexKey(skill), skillFrameAt(skill, a.t));
+        s.setTexture(skillTexKey(name), skillFrameAt(name, a.t));
+        this.posed = true;
+        swordPose = true;
+        this.lastSwordStep = 0;
+      } else if (wt === 'dao' && isDaoSkill(name) && (this.grounded || DAO_AIRBORNE.has(name))) {
+        // 도객 스킬·궁극기
+        s.anims.stop();
+        s.setTexture(daoSkillTexKey(name), daoSkillFrameAt(name, a.t));
         this.posed = true;
         swordPose = true;
         this.lastSwordStep = 0;
@@ -732,13 +747,23 @@ export class Player {
         const i = this.moveIndex(a);
         this.play(moves[i % moves.length], a, i);
         reverse = (a.kind === 'whirl' && i % 2 === 1) || (a.kind === 'crescent' && i === 1);
-      } else if (a.kind === 'slash' && a.step && hasSwordMotion(a.step) && this.weapon.def.type === 'sword' && this.grounded) {
+      } else if (a.kind === 'slash' && a.step && wt === 'dao' && hasDaoMotion(a.step) && this.grounded) {
+        // 도 평타
+        s.anims.stop();
+        s.setTexture(daoTexKey(a.step), daoFrameAt(a.step, a.t));
+        this.posed = true;
+        swordPose = true;
+        this.lastSwordStep = a.step;
+        this.lastComboWeapon = 'dao';
+        this.lastSwordAt = this.scene.time.now;
+      } else if (a.kind === 'slash' && a.step && hasSwordMotion(a.step) && wt === 'sword' && this.grounded) {
         // 검 평타: 동작이 흐른 시간에 맞는 칸을 직접 보인다 (타격 시점에 타격 칸이 온다).
         s.anims.stop();
         s.setTexture(swordTexKey(a.step), swordFrameAt(a.step, a.t));
         this.posed = true;
         swordPose = true;
         this.lastSwordStep = a.step;
+        this.lastComboWeapon = 'sword';
         this.lastSwordAt = this.scene.time.now;
       } else if (a.kind === 'crouchSlash') this.play('hero-crouch-slash', a);
       else if (a.kind === 'airSlash' || !this.grounded) this.play('hero-jump-attack', a);
@@ -746,7 +771,14 @@ export class Player {
     } else if (!a && this.lastSwordStep > 0 && this.lastSwordStep < 5 && this.grounded && this.scene.time.now - this.lastSwordAt < 200 && Math.abs(this.body.velocity.x) < 90) {
       // 연타 사이: 방금 끝난 단의 마지막 자세를 붙든다 (다음 단이 그 자세에서 시작한다)
       s.anims.stop();
-      s.setTexture(swordTexKey(this.lastSwordStep), swordLastFrame(this.lastSwordStep));
+      if (this.lastComboWeapon === 'dao') s.setTexture(daoTexKey(this.lastSwordStep), daoLastFrame(this.lastSwordStep));
+      else s.setTexture(swordTexKey(this.lastSwordStep), swordLastFrame(this.lastSwordStep));
+      this.posed = true;
+      swordPose = true;
+    } else if (this.holdMotion && this.weapon.def.type === 'dao' && this.grounded) {
+      // 혈월을 모으는 동안: 허리를 낮추고 칼에 손을 얹은 채 떤다
+      s.anims.stop();
+      s.setTexture(daoSkillTexKey(this.holdMotion), daoSkillFrameAt(this.holdMotion, this.holdT));
       this.posed = true;
       swordPose = true;
     } else if (this.aiming) this.play(AIM_ANIM);
