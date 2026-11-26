@@ -3,6 +3,7 @@
 import Phaser from 'phaser';
 import { sfx } from '../../core/audio';
 import { SLOT_ACTIONS } from '../../core/input';
+import { DAO_SKILL_TIMING } from '../swordMotion/daoMotions';
 import { DEPTH } from '../fx';
 import { FLOOR_Y } from '../world';
 import { afterglow, column, crescent, flutter, glow, hues, impactBurst, PAL, shockwave, wash, wisps } from '../vfx';
@@ -11,9 +12,10 @@ import { view, onScreen, later, type Cast } from './shared';
 /** 월하 폭풍참: 거대한 초승달 참격 6개를 앞뒤로 번갈아 날린다. */
 export const moonStorm: Cast = (b) => {
   const p = b.player;
-  p.startAction('crescent', 0.95, []);
+  p.startAction('crescent', ...DAO_SKILL_TIMING.moonstorm);
+  p.action!.motion = 'moonstorm';
   for (let i = 0; i < 6; i++) {
-    later(b, 80 + i * 130, () => {
+    later(b, 120 + i * 130, () => {
       const dir = (i % 2 === 0 ? p.facing : -p.facing) as 1 | -1;
       b.fx.slash(p.x + dir * 8, p.y - 2, dir, 46, 0xffc08a, true, { up: i % 4 >= 2 });
       crescent(b, p.x, p.y - 4, dir, 130, i % 2 ? PAL.rose : PAL.moon, { from: i % 4 >= 2 ? 1.6 : -1.6, to: i % 4 >= 2 ? -1.5 : 1.5, ms: 360 });
@@ -31,7 +33,8 @@ export const moonStorm: Cast = (b) => {
 /** 천붕: 하늘 높이 뛰어올라 내려찍고, 화면 전체의 땅이 갈라진다. */
 export const heavenFall: Cast = (b) => {
   const p = b.player;
-  p.startAction('skyfall', 0.95, []);
+  p.startAction('skyfall', ...DAO_SKILL_TIMING.heavenfall);
+  p.action!.motion = 'heavenfall';
   p.body.setVelocityY(-560);
   p.invuln = Math.max(p.invuln, 1);
   b.fx.embers(p.x, p.feet, 0xd8c8ff, 12, 12, 40);
@@ -141,7 +144,10 @@ export const bloodMoon: Cast = (b) => {
     gauge.destroy();
     b.tweens.add({ targets: [moon, veil], alpha: 0, duration: 400, onComplete: () => (moon.destroy(), veil.destroy()) });
     p.action = null;
+    p.holdMotion = undefined;
   };
+  p.holdMotion = 'bloodcharge';
+  p.holdT = 0;
   const ult = {
     // 모으는 동안은 움직일 수 있지만 공격·스킬·구르기는 못 한다. 발도하는 동안은 제자리에 선다.
     lock: true,
@@ -178,6 +184,8 @@ export const bloodMoon: Cast = (b) => {
         hitDamage = b.skillBase({ str: IAI_STR * (1 + IAI_DMG_PER_STEP * Math.max(1, steps)) });
         b.fx.text(p.x, p.body.top - 30, `혈월 ${total}타 · 한 타 ${Math.round(IAI_STR * (1 + IAI_DMG_PER_STEP * Math.max(1, steps)) * 100)}%`, 'crit');
         p.startAction('iai', 99, []);
+        p.action!.motion = 'bloodstrike';
+        p.holdMotion = undefined;
         b.fx.flashScreen(0xff2a3a, 0.4, 240);
         wash(b, 0x8a1ad0, 0xff2a3a, 0.24, 520);
         wisps(b, p.x, p.y, PAL.crimson, 10, 170, 620, { curl: 3, width: 9 });

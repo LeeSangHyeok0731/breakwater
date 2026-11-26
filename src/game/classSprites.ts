@@ -25,7 +25,7 @@ const OUTLINE = 0x130a1b;
 const CAPE = [0xed053e, 0x810936, 0x800735];
 const TRIM = [0xffcc61, 0xbc6c17, 0x983e1d];
 
-interface ClassLook {
+export interface ClassLook {
   cape?: [number, number, number];
   trim?: [number, number, number];
   /** 그 밖의 색 바꾸기 (피부·머리 등) [원본, 바꿀 색] */
@@ -35,7 +35,7 @@ interface ClassLook {
 }
 
 /** 칸 하나에 그리는 도구. behind는 빈 픽셀에만 칠한다 (몸 뒤에 있는 것처럼). */
-interface Painter {
+export interface Painter {
   px(x: number, y: number, color: number): void;
   behind(x: number, y: number, color: number): void;
 }
@@ -137,7 +137,7 @@ const HEAD_OVERRIDE: Record<string, Record<number, [number, number]>> = {
   'hero-jump-attack': { 4: [45, 18], 5: [45, 18] },
 };
 
-function findHead(data: Uint8ClampedArray, width: number, fx: number, fw: number, fh: number): [number, number] | null {
+export function findHead(data: Uint8ClampedArray, width: number, fx: number, fw: number, fh: number): [number, number] | null {
   const hair = (x: number, y: number): boolean => {
     const i = (y * width + x) * 4;
     return data[i + 3] > 0 && HAIR.has((data[i] << 16) | (data[i + 1] << 8) | data[i + 2]);
@@ -342,6 +342,21 @@ const DARKLORD_LOOK: ClassLook = {
 const LEGION_LOOKS: Record<string, ClassLook> = { knight: KNIGHT_LOOK, elf: ELF_LOOK, darklord: DARKLORD_LOOK };
 
 /** 군단장 그림: knight:hero-run 처럼 '군단장:원본' 키로 텍스처와 애니메이션을 만든다. */
+/** 직업의 색 바꾸기 표 (원본 기사 색 → 직업 색). 몸동작 시트도 같은 표로 다시 칠한다. */
+export function lookColorMap(cls: WeaponType): Map<number, number> {
+  const look: ClassLook = cls === 'sword' ? {} : LOOKS[cls];
+  const map = new Map<number, number>();
+  look.cape?.forEach((c, i) => map.set(CAPE[i], c));
+  look.trim?.forEach((c, i) => map.set(TRIM[i], c));
+  look.extra?.forEach(([from, to]) => map.set(from, to));
+  return map;
+}
+
+/** 직업 머리 소품(머리띠 등)을 그리는 함수 */
+export function lookHat(cls: WeaponType): ClassLook['hat'] {
+  return cls === 'sword' ? undefined : LOOKS[cls].hat;
+}
+
 export function createLegionSprites(scene: Phaser.Scene): void {
   for (const [id, look] of Object.entries(LEGION_LOOKS)) {
     for (const base of HERO_ANIMS) {

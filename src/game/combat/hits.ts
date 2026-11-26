@@ -26,6 +26,9 @@ const SWINGS: ReadonlySet<ActionKind> = new Set([
   'iai',
 ]);
 
+/** 도 평타가 느려진 만큼 한 타 피해를 키운다 (5연타 약 2.04초 → 2.42초) [초안] */
+const DAO_DPS_COMP = 1.19;
+
 /** 레이저 판정 띠의 절반 높이 (px) */
 const LASER_HALF_H = 12;
 /** 발도가 지나간 길 (뒤따르는 칼바람이 친다) */
@@ -43,7 +46,7 @@ export function performHit(b: BattleScene, kind: ActionKind, index: number): voi
   switch (kind) {
     case 'slash':
       if (p.weapon.def.type === 'sword') swordCombo(b, p.combo || 1, index, base * mul, color);
-      else comboSlash(b, p.combo || 1, index, base * mul, color);
+      else comboSlash(b, p.combo || 1, index, base * mul * DAO_DPS_COMP, color);
       break;
     case 'airSlash':
       b.fx.slash(p.x + f * 14, p.y - 4, f, swordReach(p, 40), color, true, { style: slashStyle(b), stretch: LONG[0], squash: LONG[1] });

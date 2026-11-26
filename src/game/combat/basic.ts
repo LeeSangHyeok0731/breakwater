@@ -67,15 +67,6 @@ export function fireArrow(b: BattleScene, c: number): void {
 // 평타를 이어 치면 1 → 5단으로 강해지고, 5단 다음은 다시 1단이다.
 // 검·도는 더 많이·넓게 베고, 활은 한 번에 여러 발, 총은 연발·산탄, 스태프는 여러 번 쏜다.
 
-/** 검·도 평타 단계별 [동작 시간, 타격 시점들] */
-export const SLASH_TIMING: [number, number[]][] = [
-  [0.32, [0.11]],
-  [0.32, [0.11]],
-  [0.38, [0.09, 0.21]],
-  [0.42, [0.15]],
-  [0.6, [0.1, 0.23, 0.38]],
-];
-
 /** 연계 단계를 머리 위에 띄운다. 마지막 단은 크게. */
 export function comboPop(b: BattleScene, n: number): void {
   if (n < 2) return;
@@ -87,7 +78,7 @@ export function comboPop(b: BattleScene, n: number): void {
   }
 }
 
-/** 검·도 평타: 1 베기 → 2 역베기 → 3 두 번 → 4 크게 → 5 회전 세 번 (검사는 마지막에 관통 검기) */
+/** 도 평타: 1 올려 베기 → 2 내려 베기 → 3 엇갈려 두 번 → 4 크게 → 5 회전 세 번 (검 평타는 `swordCombo.ts`) */
 export function comboSlash(b: BattleScene, n: number, index: number, dmg: number, color: number): void {
   const p = b.player;
   const f = p.facing;
@@ -101,16 +92,16 @@ export function comboSlash(b: BattleScene, n: number, index: number, dmg: number
   const dir = (a: number): number => (f === 1 ? a : Math.PI - a);
   switch (n) {
     case 1:
-      // 내려 베기: 칼끝이 지나간 아래쪽으로 불티가 쏟아진다.
-      b.fx.slash(p.x + f * r(18), p.y - 2, f, r(42), color, true, { style, stretch, squash });
-      b.fx.sparks(p.x + f * r(46), p.y + 12, color, 4, dir(0.9), 0.5, 170, 260);
+      // 올려 베기: 낮게 파고들어 아래에서 위로. 불티는 위로 솟는다.
+      b.fx.slash(p.x + f * r(18), p.y - 2, f, r(42), color, false, { up: true, style, stretch, squash, rot: -0.15 });
+      b.fx.sparks(p.x + f * r(46), p.y - 14, color, 4, dir(-0.9), 0.5, 170, 260);
       swingFx(b, p.x + f * r(40), p.y - 2);
       box(b, 0, r(72), 48, 2, dmg, { basic: true, knock: 90 });
       break;
     case 2:
-      // 역베기: 아래에서 위로, 조금 더 넓게. 불티는 위로 솟는다.
-      b.fx.slash(p.x + f * r(18), p.y - 2, f, r(46), color, false, { up: true, style, stretch, squash, rot: -0.15 });
-      b.fx.sparks(p.x + f * r(46), p.y - 16, color, 5, dir(-1.0), 0.5, 190, 300);
+      // 내려 베기: 칼을 넘겨 돌려 쥐고 조금 더 넓게. 칼끝이 지나간 아래쪽으로 불티가 쏟아진다.
+      b.fx.slash(p.x + f * r(18), p.y - 2, f, r(46), color, true, { style, stretch, squash, rot: 0.15 });
+      b.fx.sparks(p.x + f * r(46), p.y + 12, color, 5, dir(1.0), 0.5, 190, 300);
       swingFx(b, p.x + f * r(44), p.y - 4);
       box(b, 0, r(80), 54, 4, dmg, { basic: true, knock: 90 });
       break;
