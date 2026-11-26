@@ -114,6 +114,8 @@ const DODGE_BUFFER = 0.18;
 /** 구르기: 처음에 확 튀어 나가고 끝으로 갈수록 느려진다 (평균 속도, 걸리는 시간). 약 83px. */
 const DODGE_SPEED = 320;
 const DODGE_TIME = 0.26;
+/** 떠오르기 전에 웅크리는 시간 (초) */
+const HOVER_CROUCH = 0.14;
 const DODGE_CD = 0.55;
 /** 블링크(마법사의 구르기): 순간이동 거리, 무적 시간 */
 const BLINK_DIST = 124;
@@ -532,7 +534,9 @@ export class Player {
     if (this.hoverTime > 0) {
       this.jumpBuf = 0;
       this.rising = false;
-      body.setVelocity(0, this.y > this.hoverY + 2 ? Math.max(-420, (this.hoverY - this.y) * 8) : 0);
+      // 먼저 웅크려 힘을 모으고(땅에 선 채), 다 모으면 박차고 솟는다.
+      const launched = this.hoverElapsed >= HOVER_CROUCH;
+      body.setVelocity(0, launched && this.y > this.hoverY + 2 ? Math.max(-560, (this.hoverY - this.y) * 9) : 0);
       return;
     }
     // 떨어질 때는 더 빨리 내려온다.

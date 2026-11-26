@@ -102,7 +102,7 @@ export const crossJudgment: Cast = (b) => {
 };
 
 /** 천공 섬광 [초안]: 소환까지 걸리는 시간, 모든 검이 한 번씩 쏘는 최대 시간(ms) */
-const SKY_SUMMON_MS = 700;
+const SKY_SUMMON_MS = 800;
 const SKY_ROUND_MS = 640;
 /** 공중에 머무는 몸 높이 (땅 기준 px) */
 const SKY_HOVER = 110;
@@ -123,6 +123,14 @@ export const skyFlash: Cast = (b) => {
   b.fx.flashScreen(0x9fd8ff, 0.25, 200);
   shockwave(b, p.x, p.feet, 170, PAL.sky, 500, 1, 6);
   sfx.play('magic', 1.2);
+  // 웅크렸다 박차고 솟는 순간: 발밑이 터지고 올라가는 길에 잔상이 남는다.
+  later(b, 140, () => {
+    b.fx.ring(p.x, p.feet, 54, 0x9fd8ff, 320);
+    b.fx.smoke(p.x, p.feet - 2, 4, 0xbfd8f0, -10);
+    b.fx.burst(p.x, p.feet - 2, 0x9fd8ff, 10, 120, 300);
+    b.fx.shake(0.6, 140);
+  });
+  for (const ms of [170, 220, 270, 330]) later(b, ms, () => p.afterimage(0x9fd8ff));
 
   const swords: SkySword[] = [];
   // 화면 너비 가득 세 줄로 넓게 펼친다. 몸에서 가까운 검부터 양옆으로 번지듯 나타난다.
@@ -133,7 +141,7 @@ export const skyFlash: Cast = (b) => {
     const row = i % 3;
     const x = v0.x + 40 + (span * (i + 0.5)) / count;
     const y = hoverY - 30 - row * 24 + Math.abs(x - p.x) * 0.04;
-    const appear = 120 + (480 * Math.abs(x - p.x)) / reach;
+    const appear = 240 + (440 * Math.abs(x - p.x)) / reach;
     later(b, appear, () => swords.push(skySword(b, x, y, lastShot + 400 - appear, i)));
   }
   for (let n = 0; n < shots; n++) {
