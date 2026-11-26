@@ -45,6 +45,8 @@ export interface SwordPose {
   /** 칼날 [손잡이 끝, 칼끝]과 깊이 (+면 화면 쪽, 몸 앞) */
   blade: [Pt, Pt];
   bladeZ: number;
+  /** 빠르게 휘두를 때 칼날 가운데가 칼끝 반대쪽으로 휘는 정도 (픽셀) */
+  bladeBend: Pt;
   capeTip: Pt;
   smear?: Seg[];
 }
@@ -103,7 +105,18 @@ function bend(a: Pt, b: Pt, l: number, prefer: (nx: number, ny: number) => numbe
   return [mid[0] + nx * h * s, mid[1] + ny * h * s];
 }
 
-function pose(p: Full, capeTip: Pt, smear?: Seg[]): SwordPose {
+/** 오른·왼 어깨 위치 */
+function shouldersOf(p: Full): [Pt, Pt] {
+  const r = p.yaw * RAD;
+  const cos = Math.cos(r);
+  const sin = Math.sin(r);
+  return [
+    [p.c[0] + 3.5 * cos - 5 * sin, p.c[1] + 5],
+    [p.c[0] - 2.5 * cos + 5 * sin, p.c[1] + 6],
+  ];
+}
+
+function pose(p: Full, capeTip: Pt, smear: Seg[] | undefined, headD: Pt, bladeBend: Pt): SwordPose {
   const r = p.yaw * RAD;
   const cos = Math.cos(r);
   const sin = Math.sin(r);
@@ -135,7 +148,7 @@ function pose(p: Full, capeTip: Pt, smear?: Seg[]): SwordPose {
     cx,
     cy,
     shear: p.lean * cos,
-    headD: [0, 0],
+    headD,
     sin,
     cos,
     rs,
@@ -155,6 +168,7 @@ function pose(p: Full, capeTip: Pt, smear?: Seg[]): SwordPose {
       [p.rh[0] + vx, p.rh[1] + vy],
     ],
     bladeZ: Math.cos(el) * Math.sin(az),
+    bladeBend,
     capeTip,
     smear,
   };
@@ -210,52 +224,150 @@ function lerpP(a: Full, b: Full, u: number): Full {
   };
 }
 
-/** 이 포즈에서 칼날 안쪽 점과 칼끝 (잔상용) */
+/** 이 포즈에서 칼날 안쪽 점과 칼끝 (잔상·휨 계산용) */
 function bladeSeg(p: Full): [Pt, Pt] {
   const el = p.el * RAD;
   const az = p.az * RAD;
   const vx = p.len * Math.cos(el) * Math.cos(az);
   const vy = -p.len * Math.sin(el) + p.len * Math.cos(el) * Math.sin(az) * 0.28;
   return [
-    [p.rh[0] + vx * 0.4, p.rh[1] + vy * 0.4],
+    [p.rh[0] + vx * 0.62, p.rh[1] + vy * 0.62],
     [p.rh[0] + vx, p.rh[1] + vy],
   ];
 }
 
+/** 키들이 정한 t초의 목표 포즈 */
+function evalAt(keys: KeySpec[], t: number): Full {
+  let k = 0;
+  while (k + 1 < keys.length && keys[k + 1].at <= t) k++;
+  const a = keys[k];
+  const b = keys[k + 1];
+  if (!b) return a.p;
+  const u = Math.min(1, Math.max(0, (t - a.at) / (b.at - a.at)));
+  return lerpP(a.p, b.p, EASE[b.ease ?? 'io'](u));
+}
+
+// ───────── 이차 운동: 스프링 ─────────
+// 목표를 그대로 따라가면 기계 같다. 칼은 손목이 꺾여 한 박자 늦게 따라오다 목표를 살짝 넘었다가 돌아오고,
+// 왼팔은 오른팔의 반대로 출렁이고, 머리는 몸이 움직인 반대쪽으로 살짝 밀린다.
+
+/** 한 프레임의 칼 상태 (잔상을 부드러운 호로 잇는 데 쓴다) */
+interface BladeState {
+  rh: Pt;
+  az: number;
+  el: number;
+  len: number;
+}
+
+const segOfState = (h: BladeState): [Pt, Pt] => bladeSeg(h as unknown as Full);
+
+interface Spring {
+  x: number;
+  v: number;
+}
+
+function stepSpring(s: Spring, target: number, w: number, z: number, dt: number): number {
+  const sub = 4;
+  const h = dt / sub;
+  for (let i = 0; i < sub; i++) {
+    s.v += (w * w * (target - s.x) - 2 * z * w * s.v) * h;
+    s.x += s.v * h;
+  }
+  return s.x;
+}
+
+const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
+
+/** 칼 목표를 미리 보는 시간: 스프링이 늦게 따라오는 만큼 앞당겨 타격 시점에 칼이 제자리에 있게 한다 */
+const BLADE_LEAD = 0.03;
+
 /** 키들을 1/60초마다 한 칸씩 이어 붙인다. 칸 i는 동작이 시작하고 i/60초 뒤의 모습이다. */
 function buildFrames(keys: KeySpec[], dur: number): SwordPose[] {
   const n = Math.ceil(dur * FPS) + 1;
+  const dt = 1 / FPS;
   const out: SwordPose[] = [];
   const capeTarget = (p: Full): Pt => [p.c[0] - 25 * Math.cos(p.yaw * RAD), p.c[1] + 21 + 3 * Math.abs(Math.sin(p.yaw * RAD))];
-  // 망토 끝은 몸이 가리키는 곳으로 한 박자 늦게 따라온다
-  let cape = capeTarget(keys[0].p);
+  const first = evalAt(keys, 0);
+  let cape = capeTarget(first);
+  // 상태: 칼 방향, 왼손, 머리
+  const az: Spring = { x: first.az, v: 0 };
+  const el: Spring = { x: first.el, v: 0 };
+  const lhx: Spring = { x: 0, v: 0 };
+  const lhy: Spring = { x: 0, v: 0 };
+  const hx: Spring = { x: 0, v: 0 };
+  const hy: Spring = { x: 0, v: 0 };
+  let init = false;
+  let prevC: Pt = first.c;
+  let prevTip: Pt | null = null;
+  const hist: BladeState[] = [];
   for (let i = 0; i < n; i++) {
-    const t = i / FPS;
-    let k = 0;
-    while (k + 1 < keys.length && keys[k + 1].at <= t) k++;
-    const a = keys[k];
-    const b = keys[k + 1];
-    let cur: Full;
+    const t = i * dt;
+    const cur = evalAt(keys, t);
+    const lead = evalAt(keys, t + BLADE_LEAD);
+    const [rs, ls] = shouldersOf(cur);
+    const cos = Math.cos(cur.yaw * RAD);
+    // 왼손 목표: 키가 정했으면 그것, 아니면 오른손의 반대로 출렁이는 자리
+    const rx = cur.rh[0] - rs[0];
+    const ry = cur.rh[1] - rs[1];
+    const lt: Pt = cur.lh ?? [ls[0] - 3 * cos - 0.28 * rx, ls[1] + 11 - 0.18 * ry];
+    if (!init) {
+      lhx.x = lt[0];
+      lhy.x = lt[1];
+      init = true;
+    }
+    const lx = stepSpring(lhx, lt[0], 15, 0.45, dt);
+    const ly = stepSpring(lhy, lt[1], 15, 0.45, dt);
+    // 머리: 몸이 빠르게 움직인 반대쪽으로 살짝 밀렸다가 돌아온다
+    const vcx = (cur.c[0] - prevC[0]) / dt;
+    const vcy = (cur.c[1] - prevC[1]) / dt;
+    prevC = cur.c;
+    const hdx = stepSpring(hx, clamp(-vcx * 0.012, -2.5, 2.5), 20, 0.5, dt);
+    const hdy = stepSpring(hy, clamp(-vcy * 0.012, -2, 2), 20, 0.5, dt);
+    // 칼: 손목이 꺾여 늦게 따라오다 목표를 살짝 넘었다 돌아온다
+    const baz = stepSpring(az, lead.az, 52, 0.55, dt);
+    const bel = stepSpring(el, lead.el, 52, 0.55, dt);
+    const final: Full = { ...cur, az: baz, el: bel, lh: [lx, ly] };
+    // 칼끝 속도 → 휨, 지나간 자리 → 잔상
+    const state: BladeState = { rh: final.rh, az: final.az, el: final.el, len: final.len };
+    const tip = segOfState(state)[1];
+    const vtx = prevTip ? tip[0] - prevTip[0] : 0;
+    const vty = prevTip ? tip[1] - prevTip[1] : 0;
+    prevTip = tip;
+    const bl = Math.hypot(vtx, vty) || 1;
+    const bendLen = Math.min(5, Math.hypot(vtx, vty) * 0.3);
+    const bladeBend: Pt = [(-vtx / bl) * bendLen, (-vty / bl) * bendLen];
+    hist.push(state);
+    if (hist.length > 7) hist.shift();
+    // 잔상: 지금 빠르게 움직이고 있을 때만, 빠르게 움직인 직전 몇 프레임을 이어 붙인다.
+    // 프레임 사이가 멀면 각도를 나눠 호를 부드럽게 잇는다.
     let smear: Seg[] | undefined;
-    if (!b) {
-      cur = a.p;
-    } else {
-      const u = Math.min(1, (t - a.at) / (b.at - a.at));
-      const ease = EASE[b.ease ?? 'io'];
-      cur = lerpP(a.p, b.p, ease(u));
-      if (b.swing && u >= 0.12) {
-        const u0 = Math.max(0, u - 0.5);
-        smear = [];
-        for (let j = 0; j <= 15; j++) {
-          const uj = u0 + ((u - u0) * j) / 15;
-          const [s0, s1] = bladeSeg(lerpP(a.p, b.p, ease(uj)));
-          smear.push({ a: s0, b: s1, k: j / 15 });
+    const moved = (j: number): number => {
+      const p0 = segOfState(hist[j - 1])[1];
+      const p1 = segOfState(hist[j])[1];
+      return Math.hypot(p1[0] - p0[0], p1[1] - p0[1]);
+    };
+    if (hist.length > 1 && moved(hist.length - 1) > 3.5) {
+      let j0 = hist.length - 1;
+      while (j0 > 1 && moved(j0 - 1) > 2.5) j0--;
+      j0 = Math.max(0, j0 - 1);
+      const raw: Seg[] = [];
+      for (let j = j0; j < hist.length - 1; j++) {
+        const A = hist[j];
+        const B = hist[j + 1];
+        const m = clamp(Math.ceil(Math.max(Math.abs(B.az - A.az), Math.abs(B.el - A.el)) / 9), 1, 12);
+        for (let q = 0; q < m; q++) {
+          const u = q / m;
+          const [sa, sb] = segOfState({ rh: lerpPt(A.rh, B.rh, u), az: lerp(A.az, B.az, u), el: lerp(A.el, B.el, u), len: lerp(A.len, B.len, u) });
+          raw.push({ a: sa, b: sb, k: 0 });
         }
       }
+      const [la, lb] = segOfState(hist[hist.length - 1]);
+      raw.push({ a: la, b: lb, k: 0 });
+      smear = raw.map((sg, q) => ({ ...sg, k: q / Math.max(1, raw.length - 1) }));
     }
     const tg = capeTarget(cur);
     cape = [lerp(cape[0], tg[0], 0.22), lerp(cape[1], tg[1], 0.22)];
-    out.push(pose(cur, cape, smear));
+    out.push(pose(final, cape, smear, [hdx, hdy], bladeBend));
   }
   return out;
 }

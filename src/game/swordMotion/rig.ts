@@ -110,17 +110,35 @@ function drawLeg(b: Buf, hip: Pt, knee: Pt, foot: Pt, near: boolean, toe: number
   px(b, toe >= 0 ? x1 : x0, fy - 1, GLOVE[2]);
 }
 
-function drawBlade(b: Buf, base: Pt, tip: Pt): void {
+function bezier(base: Pt, ctrl: Pt, tip: Pt, n: number): Pt[] {
+  const pts: Pt[] = [];
+  for (let i = 0; i <= n; i++) {
+    const u = i / n;
+    pts.push([(1 - u) * (1 - u) * base[0] + 2 * u * (1 - u) * ctrl[0] + u * u * tip[0], (1 - u) * (1 - u) * base[1] + 2 * u * (1 - u) * ctrl[1] + u * u * tip[1]]);
+  }
+  return pts;
+}
+
+function polyline(b: Buf, pts: Pt[], dx: number, dy: number, color: number): void {
+  for (let i = 0; i + 1 < pts.length; i++) line(b, pts[i][0] + dx, pts[i][1] + dy, pts[i + 1][0] + dx, pts[i + 1][1] + dy, color);
+}
+
+/** 칼: 빠르게 휘두를 때는 칼끝 반대쪽으로 살짝 휜다 */
+function drawBlade(b: Buf, base: Pt, tip: Pt, bend: Pt): void {
   const [bx, by] = base;
   const [tx, ty] = tip;
+  const ctrl: Pt = [(bx + tx) / 2 + bend[0] * 2, (by + ty) / 2 + bend[1] * 2];
+  const n = Math.max(4, Math.round(Math.hypot(tx - bx, ty - by) / 3));
+  const pts = bezier(base, ctrl, tip, n);
+  const g = Math.max(1, Math.round(n * 0.16));
   // 손잡이(뒤쪽)와 칼날
-  const gx = bx + (tx - bx) * 0.16;
-  const gy = by + (ty - by) * 0.16;
-  line(b, bx, by, gx, gy, GRIP);
-  line(b, gx, gy - 1, tx, ty - 1, BLADE_EDGE);
-  line(b, gx, gy, tx, ty, BLADE);
-  line(b, gx, gy + 1, tx - (tx - gx) * 0.25, ty - (ty - gy) * 0.25 + 1, 0x87725f);
+  polyline(b, pts.slice(0, g + 1), 0, 0, GRIP);
+  const blade = pts.slice(g);
+  polyline(b, blade, 0, -1, BLADE_EDGE);
+  polyline(b, blade, 0, 0, BLADE);
+  polyline(b, blade.slice(0, Math.max(2, Math.round(blade.length * 0.75))), 0, 1, 0x87725f);
   // 날밑
+  const [gx, gy] = pts[g];
   const nx = -(ty - by);
   const ny = tx - bx;
   const len = Math.hypot(nx, ny) || 1;
@@ -203,7 +221,7 @@ export function drawPose(p: SwordPose, s: Stamps): Buf {
   // 칼은 몸 앞(화면 쪽)을 지날 때만 몸 위에 그린다. 몸 뒤를 지나면 몸에 가려진다.
   const bladeZ = p.bladeZ >= -0.05 ? rArmZ + 0.3 : -2;
   if (p.smear) add(bladeZ - 0.05, () => drawSmear(b, p.smear!));
-  add(bladeZ, () => drawBlade(b, p.blade[0], p.blade[1]));
+  add(bladeZ, () => drawBlade(b, p.blade[0], p.blade[1], p.bladeBend));
 
   items.sort((x, y) => x.z - y.z);
   for (const it of items) it.draw();
