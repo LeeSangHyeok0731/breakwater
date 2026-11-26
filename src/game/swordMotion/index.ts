@@ -4,7 +4,8 @@ import { COMBOS, FPS, type SwordPose } from './poses';
 import { drawPose, FRAME_H, FRAME_W } from './rig';
 import { DAO_COMBOS, DAO_LOOPS, DAO_SKILL_MOTIONS, type DaoSkill } from './daoMotions';
 import { SKILL_MOTIONS, type SwordSkill } from './skillMotions';
-import { cutStamps } from './stamps';
+import { findHead, lookColorMap, lookHat } from '../classSprites';
+import { cutStamps, type Stamps } from './stamps';
 
 // 검사 평타 몸동작. 단계(1~5)마다 칸을 가로로 이어 붙인 텍스처 `sword-combo-N`을 부팅 때 만든다.
 // 칸은 애니메이션 재생이 아니라 동작이 시작한 뒤 흐른 시간으로 고른다 (타격 시점에 타격 칸이 오도록).
@@ -82,6 +83,55 @@ export function isDaoSkill(name: string | undefined): name is DaoSkill {
   return name !== undefined && name in DAO_SKILL_MOTIONS;
 }
 
+function setPx(b: Buf, x: number, y: number, color: number): void {
+  if (x < 0 || y < 0 || x >= b.w || y >= b.h) return;
+  const k = (y * b.w + x) * 4;
+  b.data[k] = (color >> 16) & 255;
+  b.data[k + 1] = (color >> 8) & 255;
+  b.data[k + 2] = color & 255;
+  b.data[k + 3] = 255;
+}
+
+/** 도객 조각: 원본 대기 칸에 머리띠를 얹은 뒤 오리고, 앞·등 머리에도 머리띠를 두른다. */
+function daoStamps(idle0: Buf): Stamps {
+  const painted: Buf = { w: idle0.w, h: idle0.h, data: new Uint8ClampedArray(idle0.data) };
+  const head = findHead(painted.data, painted.w, 0, painted.w, painted.h);
+  const hat = lookHat('dao');
+  if (head && hat) {
+    hat(
+      {
+        px: (x, y, c) => setPx(painted, x, y, c),
+        behind: (x, y, c) => {
+          if (painted.data[(y * painted.w + x) * 4 + 3] === 0) setPx(painted, x, y, c);
+        },
+      },
+      head[0],
+      head[1],
+    );
+  }
+  const st = cutStamps(painted);
+  // 앞·등 머리: 이마 높이에 머리띠
+  for (let x = 0; x < st.F.head.w; x++) setPx(st.F.head, x, 3, 0xf4f6fa);
+  for (let x = 0; x < st.B.head.w; x++) {
+    setPx(st.B.head, x, 3, 0xf4f6fa);
+    setPx(st.B.head, x, 4, 0x8a96aa);
+  }
+  setPx(st.B.head, 0, 5, 0xf4f6fa);
+  setPx(st.B.head, 0, 6, 0x8a96aa);
+  return st;
+}
+
+function recolor(b: Buf, map: Map<number, number>): void {
+  for (let i = 0; i < b.data.length; i += 4) {
+    if (b.data[i + 3] === 0) continue;
+    const to = map.get((b.data[i] << 16) | (b.data[i + 1] << 8) | b.data[i + 2]);
+    if (to === undefined) continue;
+    b.data[i] = (to >> 16) & 255;
+    b.data[i + 1] = (to >> 8) & 255;
+    b.data[i + 2] = to & 255;
+  }
+}
+
 function toBuf(scene: Phaser.Scene, key: string, frame: number): Buf {
   const src = scene.textures.get(key);
   const img = src.getSourceImage() as HTMLImageElement;
@@ -97,7 +147,10 @@ function toBuf(scene: Phaser.Scene, key: string, frame: number): Buf {
 
 export function createSwordMotion(scene: Phaser.Scene): void {
   if (scene.textures.exists(swordTexKey(1))) return;
-  const stamps = cutStamps(toBuf(scene, 'hero-idle', 0));
+  const idle0 = toBuf(scene, 'hero-idle', 0);
+  const stamps = cutStamps(idle0);
+  const dao = daoStamps(idle0);
+  const daoMap = lookColorMap('dao');
   const sheets: [string, SwordPose[], 'sword' | 'dao'][] = [
     ...COMBOS.map((keys, n): [string, SwordPose[], 'sword' | 'dao'] => [swordTexKey(n + 1), keys, 'sword']),
     ...(Object.keys(SKILL_MOTIONS) as SwordSkill[]).map((k): [string, SwordPose[], 'sword' | 'dao'] => [skillTexKey(k), SKILL_MOTIONS[k], 'sword']),
@@ -107,7 +160,8 @@ export function createSwordMotion(scene: Phaser.Scene): void {
   sheets.forEach(([texKey, keys, weapon]) => {
     const sheet: Buf = newBuf(FRAME_W * keys.length, FRAME_H);
     keys.forEach((k, i) => {
-      const f = drawPose(k, stamps, weapon);
+      const f = drawPose(k, weapon === 'dao' ? dao : stamps, weapon);
+      if (weapon === 'dao') recolor(f, daoMap);
       for (let y = 0; y < FRAME_H; y++) {
         for (let x = 0; x < FRAME_W; x++) {
           const s = (y * FRAME_W + x) * 4;
