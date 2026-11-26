@@ -184,6 +184,8 @@ export class Player {
   airJumps = 1;
   /** 공중에 떠서 스킬을 쓰는 남은 시간 (천공 섬광). 이동·공격을 할 수 없다. */
   hoverTime = 0;
+  /** 이번 떠오름이 시작된 뒤 흐른 시간 (천공 섬광 몸동작을 고른다) */
+  hoverElapsed = 0;
   /** 궁극기 채널 중 제자리에 선다 (중력은 그대로). 공격 막기는 BattleScene.ult.lock이 한다. */
   locked = false;
   private hoverY = 0;
@@ -361,6 +363,7 @@ export class Player {
   startHover(y: number, time: number): void {
     this.hoverY = y;
     this.hoverTime = time;
+    this.hoverElapsed = 0;
     this.invuln = Math.max(this.invuln, time + 0.2);
     this.action = null;
     this.charge = -1;
@@ -372,6 +375,7 @@ export class Player {
 
   updateTimers(dt: number): void {
     if (this.hoverTime > 0) {
+      this.hoverElapsed += dt;
       this.hoverTime -= dt;
       if (this.hoverTime <= 0) this.body.setAllowGravity(true);
     }
@@ -749,6 +753,13 @@ export class Player {
       s.setTexture(swordTexKey(this.lastSwordStep), swordLastFrame(this.lastSwordStep));
       this.posed = true;
       swordPose = true;
+    } else if (this.hoverTime > 0 && this.weapon.def.type === 'sword') {
+      // 천공 섬광: 떠오르며 두 팔을 펴 마나검을 불러내는 자세
+      s.anims.stop();
+      s.setTexture(skillTexKey('sky'), skillFrameAt('sky', this.hoverElapsed));
+      this.posed = true;
+      swordPose = true;
+      this.lastSwordStep = 0;
     } else if (this.aiming) this.play(AIM_ANIM);
     else if (this.dodgeTime > 0) this.play('hero-run');
     else if (!this.grounded) this.play('hero-jump');

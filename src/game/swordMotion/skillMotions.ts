@@ -3,7 +3,7 @@
 
 import { buildFrames, K0, type KeySpec, type P, type SwordPose } from './poses';
 
-export type SwordSkill = 'whirl' | 'upper' | 'sunder' | 'waves' | 'cry';
+export type SwordSkill = 'whirl' | 'upper' | 'sunder' | 'waves' | 'cry' | 'heaven' | 'judge' | 'sky';
 
 /** 서 있는 자세 (평타 5타가 끝나는 자세와 같다) */
 const IDLE: P = { c: [40, 35], yaw: 10, rf: [44, 62], lf: [34, 62], rh: [47, 41], az: 0, el: -25 };
@@ -15,6 +15,10 @@ export const SKILL_TIMING: Record<SwordSkill, [number, number[]]> = {
   sunder: [0.82, [0.17, 0.32, 0.5]],
   waves: [1.15, Array.from({ length: 12 }, (_, i) => 0.12 + i * 0.075)],
   cry: [0.7, []],
+  // 궁극기: 타격은 이펙트가 정한다 (천공 일섬 0.2초, 십자 심판 0.22·0.46초). 천공 섬광은 떠 있는 동안 자세를 보인다.
+  heaven: [0.85, []],
+  judge: [0.95, []],
+  sky: [1.5, []],
 };
 
 // ───────── 선풍: 몸을 낮춰 감았다가 두 바퀴 돌며 앞·뒤로 네 번 벤다 ─────────
@@ -113,4 +117,45 @@ const cry = buildFrames(
   0.7,
 );
 
-export const SKILL_MOTIONS: Record<SwordSkill, SwordPose[]> = { whirl, upper, sunder, waves, cry };
+// ───────── 천공 일섬: 허리를 낮추고 칼을 뒤로 모았다가, 크게 파고들며 아래에서 위로 쓸어 가른다. 벤 뒤에도 자세를 붙든다 ─────────
+const heaven = buildFrames(
+  [
+    K0(0, IDLE),
+    K0(0.12, { c: [36, 40], yaw: 50, lean: -3, hipDy: 3, rf: [46, 62], lf: [30, 62], rh: [32, 44], lh: [38, 42], az: 0, el: 190, len: 31 }, 'io'),
+    K0(0.2, { c: [52, 38], yaw: -20, lean: 6, rf: [40, 62], lf: [62, 62], rh: [62, 41], az: 0, el: 356, len: 34 }, 'in', true),
+    K0(0.3, { c: [54, 38], yaw: -20, lean: 6, rf: [40, 62], lf: [62, 62], rh: [64, 42], az: 0, el: 358, len: 34 }, 'out'),
+    K0(0.6, { c: [54, 39], yaw: -20, lean: 6, rf: [40, 62], lf: [62, 62], rh: [63, 44], az: 0, el: 350, len: 34 }, 'io'),
+    K0(0.85, { ...IDLE, el: 335 }, 'io'),
+  ],
+  0.85,
+);
+
+// ───────── 십자 심판: 검을 높이 들어 내려베고, 오른발을 교차해 등을 보이며 엇갈려 벤다 ─────────
+const judge = buildFrames(
+  [
+    K0(0, IDLE),
+    K0(0.1, { c: [38, 36], yaw: 25, lean: -3, rf: [43, 62], lf: [33, 62], rh: [36, 29], az: 0, el: 115 }, 'io'),
+    K0(0.22, { c: [47, 38], yaw: -20, lean: 4, rf: [40, 62], lf: [56, 62], rh: [57, 43], az: -10, el: -45, len: 32 }, 'in', true),
+    K0(0.3, { c: [47, 38], yaw: -85, rf: [52, 62], lf: [43, 62], rh: [58, 26], az: 0, el: 60 }, 'io'),
+    K0(0.46, { c: [47, 40], yaw: -85, rf: [52, 62], lf: [43, 62], rh: [42, 41], az: 0, el: 232 }, 'in', true),
+    K0(0.56, { c: [47, 40], yaw: -85, rf: [52, 62], lf: [43, 62], rh: [41, 43], az: 0, el: 232 }, 'out'),
+    K0(0.95, { ...IDLE, el: 335 }, 'io'),
+  ],
+  0.95,
+);
+
+// ───────── 천공 섬광: 웅크렸다 솟아올라 정면을 보고 두 팔을 활짝 펴 마나검을 불러낸다 ─────────
+const sky = buildFrames(
+  [
+    K0(0, IDLE),
+    K0(0.14, { c: [40, 41], yaw: 10, lean: 3, hipDy: 4, rf: [46, 62], lf: [34, 62], rh: [44, 50], lh: [38, 48], az: 0, el: -60 }, 'io'),
+    K0(0.34, { c: [40, 31], yaw: 90, lean: -4, rf: [44, 56], lf: [36, 56], rh: [62, 29], lh: [18, 29], az: 0, el: 60 }, 'out'),
+    K0(0.7, { c: [40, 30], yaw: 90, lean: -4, rf: [44, 56], lf: [36, 55], rh: [62, 27], lh: [18, 27], az: 0, el: 65 }, 'io'),
+    K0(1.0, { c: [40, 32], yaw: 90, lean: -4, rf: [44, 57], lf: [36, 56], rh: [62, 29], lh: [18, 29], az: 0, el: 55 }, 'io'),
+    K0(1.3, { c: [40, 30], yaw: 90, lean: -4, rf: [44, 56], lf: [36, 55], rh: [62, 27], lh: [18, 27], az: 0, el: 65 }, 'io'),
+    K0(1.5, { c: [40, 31], yaw: 90, lean: -4, rf: [44, 56], lf: [36, 56], rh: [62, 28], lh: [18, 28], az: 0, el: 60 }, 'io'),
+  ],
+  1.5,
+);
+
+export const SKILL_MOTIONS: Record<SwordSkill, SwordPose[]> = { whirl, upper, sunder, waves, cry, heaven, judge, sky };
