@@ -733,7 +733,7 @@ export class Player {
       } else if (a.kind === 'crouchSlash') this.play('hero-crouch-slash', a);
       else if (a.kind === 'airSlash' || !this.grounded) this.play('hero-jump-attack', a);
       else this.play('hero-attack', a);
-    } else if (!a && this.lastSwordStep > 0 && this.lastSwordStep < 5 && this.grounded && this.scene.time.now - this.lastSwordAt < 260 && Math.abs(this.body.velocity.x) < 90) {
+    } else if (!a && this.lastSwordStep > 0 && this.lastSwordStep < 5 && this.grounded && this.scene.time.now - this.lastSwordAt < 200&& Math.abs(this.body.velocity.x) < 90) {
       // 연타 사이: 방금 끝난 단의 마지막 자세를 붙든다 (다음 단이 그 자세에서 시작한다)
       s.anims.stop();
       s.setTexture(swordTexKey(this.lastSwordStep), swordLastFrame(this.lastSwordStep));

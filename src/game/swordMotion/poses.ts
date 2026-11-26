@@ -283,7 +283,7 @@ const BLADE_LEAD = 0.03;
 
 /** 키들을 1/60초마다 한 칸씩 이어 붙인다. 칸 i는 동작이 시작하고 i/60초 뒤의 모습이다. */
 function buildFrames(keys: KeySpec[], dur: number): SwordPose[] {
-  const n = Math.ceil(dur * FPS) + 1;
+  const n = Math.ceil(dur * SPEED * FPS) + 1;
   const dt = 1 / FPS;
   const out: SwordPose[] = [];
   const capeTarget = (p: Full): Pt => [p.c[0] - 25 * Math.cos(p.yaw * RAD), p.c[1] + 21 + 3 * Math.abs(Math.sin(p.yaw * RAD))];
@@ -372,19 +372,24 @@ function buildFrames(keys: KeySpec[], dur: number): SwordPose[] {
   return out;
 }
 
-const K = (at: number, p: P, ease?: Ease, swing?: boolean): KeySpec => ({ at, p: full(p), ease, swing });
+/** 키에 적은 시간(초)에 곱하는 배율. 작을수록 빠릿하다. 키·길이·타격 시점이 함께 줄어 서로 어긋나지 않는다. */
+const SPEED = 0.78;
+
+const K = (at: number, p: P, ease?: Ease, swing?: boolean): KeySpec => ({ at: at * SPEED, p: full(p), ease, swing });
 
 // 흐름: 젖힌다(천천히) → 휘두른다(점점 빨라져 타격에서 멈춘다) → 여운 → 다음 동작의 시작 자세로 이어진다.
 // 뒤 동작의 첫 키는 앞 동작의 마지막 키와 같은 자세라서, 이어 치면 끊김 없이 이어진다.
 
 /** 한 단의 [동작 시간, 타격 시점들] — 포즈의 타격 칸과 맞춰 있다. 도의 평타는 이 표를 쓰지 않는다. */
-export const SWORD_TIMING: [number, number[]][] = [
-  [0.46, [0.21]],
-  [0.6, [0.3]],
-  [0.62, [0.27, 0.4]],
-  [0.86, [0.32, 0.66]],
-  [1.0, [0.26, 0.4, 0.62, 0.8]],
-];
+export const SWORD_TIMING: [number, number[]][] = (
+  [
+    [0.46, [0.21]],
+    [0.6, [0.3]],
+    [0.62, [0.27, 0.4]],
+    [0.86, [0.32, 0.66]],
+    [1.0, [0.26, 0.4, 0.62, 0.8]],
+  ] as [number, number[]][]
+).map(([d, h]): [number, number[]] => [d * SPEED, h.map((x) => x * SPEED)]);
 
 // 각 단이 끝나는 자세 (다음 단의 시작과 같다)
 const C1: P = { c: [44, 36], yaw: -20, lean: 2, rf: [41, 62], lf: [56, 62], rh: [57, 43], az: -35, el: -25 };
