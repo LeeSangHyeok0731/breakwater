@@ -124,13 +124,15 @@ export const skyFlash: Cast = (b) => {
   shockwave(b, p.x, p.feet, 170, PAL.sky, 500, 1, 6);
   sfx.play('magic', 1.2);
   const swords: SkySword[] = [];
+  // 화면 너비 가득 세 줄로 넓게 펼친다. 몸에서 가까운 검부터 양옆으로 번지듯 나타난다.
+  const v0 = view(b);
+  const span = v0.width - 80;
+  const reach = Math.max(1, Math.max(p.x - v0.x, v0.right - p.x));
   for (let i = 0; i < count; i++) {
-    // 몸 위쪽 부채꼴에 세 줄로 펼친다.
     const row = i % 3;
-    const ang = -Math.PI * (0.08 + (0.84 * (i + 0.5)) / count);
-    const x = p.x + Math.cos(ang) * (46 + row * 20);
-    const y = hoverY - 4 + Math.sin(ang) * (40 + row * 18);
-    const appear = 120 + (i * 480) / count;
+    const x = v0.x + 40 + (span * (i + 0.5)) / count;
+    const y = hoverY - 30 - row * 24 + Math.abs(x - p.x) * 0.04;
+    const appear = 120 + (480 * Math.abs(x - p.x)) / reach;
     later(b, appear, () => swords.push(skySword(b, x, y, lastShot + 400 - appear, i)));
   }
   for (let n = 0; n < shots; n++) {
