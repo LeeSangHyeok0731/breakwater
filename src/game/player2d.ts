@@ -9,7 +9,7 @@ import { heldDef, heldStyle, meleeLook, RANGED_AURA } from './weaponArt';
 import { createWeaponSprites, heldKey, heldOrigin } from './weaponSprites';
 import { DEPTH } from './fx';
 import type { Derived } from './stats';
-import { hasSwordMotion, SWORD_ORIGIN_X, swordFrameAt, swordTexKey } from './swordMotion';
+import { hasSwordMotion, SWORD_ORIGIN_X, swordFrameAt, swordLastFrame, swordTexKey } from './swordMotion';
 import { toneOf } from './tone';
 import { flutter, glow, pop, twinkles, wisps, type Palette3 } from './vfx';
 
@@ -193,6 +193,9 @@ export class Player {
   private lastAnimSeg = 0;
   /** 직전 프레임에 검 평타 칸을 직접 골라 보였는가 (그러면 애니메이션 재생이 멈춘 상태다) */
   private posed = false;
+  /** 검 평타가 마지막으로 끝난 단과 시각(ms). 이어 치는 동안 자세를 잠깐 붙들어 끊기지 않게 한다. */
+  private lastSwordStep = 0;
+  private lastSwordAt = -1e9;
   /** 직업 교체 직후 몸이 하얗게 번쩍이는 시간 */
   private swapFlash = 0;
   /** 쏜 뒤 조준 자세를 유지하는 남은 시간 */
@@ -725,9 +728,17 @@ export class Player {
         s.setTexture(swordTexKey(a.step), swordFrameAt(a.step, a.t));
         this.posed = true;
         swordPose = true;
+        this.lastSwordStep = a.step;
+        this.lastSwordAt = this.scene.time.now;
       } else if (a.kind === 'crouchSlash') this.play('hero-crouch-slash', a);
       else if (a.kind === 'airSlash' || !this.grounded) this.play('hero-jump-attack', a);
       else this.play('hero-attack', a);
+    } else if (!a && this.lastSwordStep > 0 && this.lastSwordStep < 5 && this.grounded && this.scene.time.now - this.lastSwordAt < 260 && Math.abs(this.body.velocity.x) < 90) {
+      // 연타 사이: 방금 끝난 단의 마지막 자세를 붙든다 (다음 단이 그 자세에서 시작한다)
+      s.anims.stop();
+      s.setTexture(swordTexKey(this.lastSwordStep), swordLastFrame(this.lastSwordStep));
+      this.posed = true;
+      swordPose = true;
     } else if (this.aiming) this.play(AIM_ANIM);
     else if (this.dodgeTime > 0) this.play('hero-run');
     else if (!this.grounded) this.play('hero-jump');

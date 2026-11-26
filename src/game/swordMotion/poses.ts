@@ -1,155 +1,162 @@
-// 검사 평타 포즈. 좌표는 96×64 칸 안의 픽셀이고 발바닥은 y=62, 몸통 기준은 x=40이다. 오른쪽을 본다.
+// 검사 평타 동작. 좌표는 96×64 칸 안의 픽셀(발바닥 y=62, 몸통 기준 x≈40)이고 처음엔 오른쪽을 본다.
 //
-// 포즈를 칸마다 따로 찍으면 발과 칼이 한 칸에 몇 픽셀씩 튄다. 그래서 핵심 포즈(키)만 정하고,
-// 그 사이를 1/60초마다 자동으로 이어 붙인다 (`buildFrames`). 뒷발은 땅에 박아 두고, 앞발은 들었다 내디디며,
-// 칼은 천천히 젖힌 뒤 점점 빨라지며 휘두르고, 망토는 몸을 한 박자 늦게 따라온다.
+// 포즈를 칸마다 따로 찍으면 발과 칼이 튄다. 그래서 핵심 포즈(키)만 정하고, 그 사이를 1/60초마다 자동으로 이어 붙인다
+// (`buildFrames`). 몸의 방향(yaw)·발·손·칼 방향만 정하면 어깨·골반·팔꿈치·무릎·망토·칼 잔상은 여기서 계산한다.
+//
+//   yaw   0 = 오른쪽을 봄(옆모습), 90 = 정면(화면 쪽), 180 = 왼쪽을 봄, 270(= -90) = 등. 늘어나는 쪽이 오른쪽으로 도는 것.
+//   칼   az 0 = 오른쪽, 90 = 화면 쪽, 180 = 왼쪽, 270 = 화면 안쪽 (위에서 내려다본 방향). el = 올려다본 각도.
+//        az 0에서 el만 바꾸면 화면 안에서 도는 칼이다 (el 90 = 위, 180 = 왼쪽, 270 = 아래).
+
+import type { View } from './stamps';
 
 export type Pt = [number, number];
 
-export interface Limb {
-  shoulder: Pt;
-  elbow: Pt;
-  hand: Pt;
+/** 칼 잔상의 한 조각: 칼날 안쪽 점(a), 칼끝(b), 얼마나 새것인가(k: 0 오래됨 → 1 방금) */
+export interface Seg {
+  a: Pt;
+  b: Pt;
+  k: number;
 }
 
-/** 칼이 지나간 자리 잔상: 앞 어깨를 중심으로 [시작 각도, 끝 각도, 안쪽 반지름, 바깥 반지름] (도, 0=앞, 90=아래) */
-export type Smear = [number, number, number, number];
-
+/** 그릴 준비가 끝난 포즈 */
 export interface SwordPose {
-  /** 가슴 조각의 왼쪽 위 */
-  chest: Pt;
-  /** 머리 조각의 왼쪽 위 */
-  head: Pt;
-  /** 어깨갑옷 조각의 왼쪽 위 */
-  pauldron: Pt;
-  /** 가슴을 앞으로 기울이는 정도 (픽셀) */
-  lean: number;
-  front: Limb;
-  back: Limb;
-  /** 엉덩이 위치와 두 다리 [무릎, 발] */
-  hip: Pt;
-  frontLeg: [Pt, Pt];
-  backLeg: [Pt, Pt];
-  /** 칼날 [손잡이 끝(뒤), 칼끝] */
-  blade: [Pt, Pt];
-  /** 망토 바깥 둘레 */
-  cape: Pt[];
-  smear?: Smear;
-}
-
-/** 포즈를 짧게 적는 입력. 머리·어깨갑옷·어깨·엉덩이는 가슴 위치(t)에서 정해진 만큼 떨어진 곳이다. */
-interface Spec {
-  /** 가슴 조각의 왼쪽 위 */
-  t: Pt;
-  lean: number;
-  /** [무릎, 발] — 앞다리, 뒷다리 */
-  fl: [Pt, Pt];
-  bl: [Pt, Pt];
-  /** [팔꿈치, 손] — 앞팔(칼 든 팔), 뒷팔 */
-  fa: [Pt, Pt];
-  ba: [Pt, Pt];
-  /**
-   * 칼 방향 (도, 0=앞, 90=아래, 270=위). 이어지는 키끼리 돌아가는 방향대로 이어 쓴 값이다
-   * (예: 위에서 아래로 내려치면 240 → 388). 키 사이에서 이 값을 그대로 이어 붙여 칼이 돈다.
-   */
-  ang: number;
-  len: number;
-  /** 망토 끝 위치와 처짐 */
-  cape: [number, number, number];
-  hipDy: number;
+  view: View;
+  headView: View;
+  /** 가슴 윗면 가운데 */
+  cx: number;
+  cy: number;
+  /** 가슴을 앞으로 기울이는 정도 (픽셀, 보는 쪽이 +) */
+  shear: number;
   headD: Pt;
+  sin: number;
+  cos: number;
+  rs: Pt;
+  ls: Pt;
+  rEl: Pt;
+  lEl: Pt;
+  rh: Pt;
+  lh: Pt;
+  rHip: Pt;
+  lHip: Pt;
+  rKnee: Pt;
+  lKnee: Pt;
+  rFoot: Pt;
+  lFoot: Pt;
+  /** 칼날 [손잡이 끝, 칼끝]과 깊이 (+면 화면 쪽, 몸 앞) */
+  blade: [Pt, Pt];
+  bladeZ: number;
+  capeTip: Pt;
+  smear?: Seg[];
 }
 
-type SpecIn = Partial<Pick<Spec, 'lean' | 'ba' | 'len' | 'hipDy' | 'headD'>> & Pick<Spec, 't' | 'fl' | 'bl' | 'fa' | 'ang'> & { cape: [number, number, number?] };
+/** 키 하나에 적는 포즈 */
+interface P {
+  /** 가슴 윗면 가운데 */
+  c: Pt;
+  yaw: number;
+  /** 머리가 보는 방향 (없으면 몸과 같다). 몸이 돌아도 시선은 앞에 둘 때 쓴다. */
+  hy?: number;
+  lean?: number;
+  rf: Pt;
+  lf: Pt;
+  /** 칼 든 손(오른손) */
+  rh: Pt;
+  /** 왼손 (없으면 몸 옆에 늘어뜨린다) */
+  lh?: Pt;
+  az: number;
+  el: number;
+  len?: number;
+  hipDy?: number;
+}
 
-function full(s: SpecIn): Spec {
-  const [tx, ty] = s.t;
+type Full = Required<Omit<P, 'lh'>> & { lh?: Pt };
+
+function full(p: P): Full {
+  return { ...p, hy: p.hy ?? p.yaw, lean: p.lean ?? 0, len: p.len ?? 30, hipDy: p.hipDy ?? 0 };
+}
+
+const RAD = Math.PI / 180;
+
+function norm360(a: number): number {
+  return ((a % 360) + 360) % 360;
+}
+
+export function viewOf(yaw: number): View {
+  const a = norm360(yaw);
+  if (a < 50 || a >= 310) return 'R';
+  if (a < 130) return 'F';
+  if (a < 230) return 'L';
+  return 'B';
+}
+
+/** 뼈 두 마디(길이 l씩)로 이은 관절 위치. side가 1이면 pref 방향 쪽으로 꺾는다. */
+function bend(a: Pt, b: Pt, l: number, prefer: (nx: number, ny: number) => number, scale = 1): Pt {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const d = Math.hypot(dx, dy);
+  const mid: Pt = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+  if (d < 0.01 || d >= 2 * l - 0.01) return mid;
+  const h = Math.sqrt(l * l - (d / 2) * (d / 2)) * scale;
+  const nx = -dy / d;
+  const ny = dx / d;
+  const s = prefer(nx, ny) >= 0 ? 1 : -1;
+  return [mid[0] + nx * h * s, mid[1] + ny * h * s];
+}
+
+function pose(p: Full, capeTip: Pt, smear?: Seg[]): SwordPose {
+  const r = p.yaw * RAD;
+  const cos = Math.cos(r);
+  const sin = Math.sin(r);
+  const [cx, cy] = p.c;
+  const rs: Pt = [cx + 3.5 * cos - 5 * sin, cy + 5];
+  const ls: Pt = [cx - 2.5 * cos + 5 * sin, cy + 6];
+  const lh: Pt = p.lh ?? [ls[0] - 3 * cos, ls[1] + 11];
+  const face = cos >= 0 ? 1 : -1;
+  // 팔꿈치: 아래쪽(몸 뒤쪽)으로 꺾는다
+  const armPref = (_nx: number, ny: number): number => ny + 0.001;
+  const hipX = cx + 1;
+  const hipY = cy + 16 + p.hipDy;
+  const rHip: Pt = [hipX + 1.5 * cos - 3.5 * sin, hipY];
+  const lHip: Pt = [hipX - 1.5 * cos + 3.5 * sin, hipY];
+  // 무릎: 보는 쪽으로 꺾는다. 정면·등에서는 덜 꺾인다.
+  const kneeScale = 0.4 + 0.6 * Math.abs(cos);
+  const legPref = (nx: number, _ny: number): number => nx * face;
+  const el = p.el * RAD;
+  const az = p.az * RAD;
+  const vx = p.len * Math.cos(el) * Math.cos(az);
+  // 화면 쪽으로 나온 칼끝은 살짝 아래로 보인다 (원근). 가로로 돌리는 칼이 납작한 타원 호를 그린다.
+  const vy = -p.len * Math.sin(el) + p.len * Math.cos(el) * Math.sin(az) * 0.28;
+  const screen = Math.hypot(vx, vy) || 1;
+  const bx = p.rh[0] - (vx / screen) * 3;
+  const by = p.rh[1] - (vy / screen) * 3;
   return {
-    t: s.t,
-    lean: s.lean ?? 0,
-    fl: s.fl,
-    bl: s.bl,
-    fa: s.fa,
-    ba: s.ba ?? [[tx - 2, ty + 10], [tx - 6, ty + 13]],
-    ang: s.ang,
-    len: s.len ?? 30,
-    cape: [s.cape[0], s.cape[1], s.cape[2] ?? 5],
-    hipDy: s.hipDy ?? 0,
-    headD: s.headD ?? [0, 0],
-  };
-}
-
-function curve(a: Pt, c: Pt, b: Pt, n: number): Pt[] {
-  const out: Pt[] = [];
-  for (let i = 1; i < n; i++) {
-    const u = i / n;
-    out.push([
-      Math.round((1 - u) * (1 - u) * a[0] + 2 * u * (1 - u) * c[0] + u * u * b[0]),
-      Math.round((1 - u) * (1 - u) * a[1] + 2 * u * (1 - u) * c[1] + u * u * b[1]),
-    ]);
-  }
-  return out;
-}
-
-/** 어깨에서 끝까지 위·아래 두 가장자리를 둥글게 이어 망토 둘레를 만든다. 아래 가장자리는 들쭉날쭉하다. */
-function capeOutline(t: Pt, tip: Pt, sag: number): Pt[] {
-  const A: Pt = [Math.round(t[0]) + 3, Math.round(t[1]) - 2];
-  const B: Pt = [Math.round(t[0]) + 10, Math.round(t[1]) - 1];
-  const H: Pt = [Math.round(t[0]) + 9, Math.round(t[1]) + 17];
-  const up = curve(A, [(A[0] + tip[0]) / 2, (A[1] + tip[1]) / 2 - sag], tip, 5);
-  const low = curve(tip, [(tip[0] + H[0]) / 2, (tip[1] + H[1]) / 2 + sag + 4], H, 6).map((p, i): Pt => [p[0], p[1] + (i % 2 === 0 ? 1 : -1)]);
-  return [B, A, ...up, tip, ...low, H];
-}
-
-function bladeOf(s: Spec): [Pt, Pt] {
-  const hand = s.fa[1];
-  const r = (s.ang * Math.PI) / 180;
-  const dx = Math.cos(r);
-  const dy = Math.sin(r);
-  return [
-    [Math.round(hand[0] - dx * 3), Math.round(hand[1] - dy * 3)],
-    [Math.round(hand[0] + dx * s.len), Math.round(hand[1] + dy * s.len)],
-  ];
-}
-
-/** 잔상: a0에서 시작해 칼끝이 있는 방향에서 끝나는 부채꼴 (어깨에서 칼끝까지가 바깥 반지름) */
-function sweepTo(a0: number, shoulder: Pt, tip: Pt): Smear {
-  const dx = tip[0] - shoulder[0];
-  const dy = tip[1] - shoulder[1];
-  let a1 = (Math.atan2(dy, dx) * 180) / Math.PI;
-  while (a1 - a0 > 180) a1 -= 360;
-  while (a1 - a0 < -180) a1 += 360;
-  const r1 = Math.hypot(dx, dy);
-  return [a0, a1, Math.max(10, r1 - 17), r1];
-}
-
-function shoulderOf(s: Spec): Pt {
-  return [s.t[0] + 12, s.t[1] + 5];
-}
-
-/** 칼끝이 앞 어깨에서 어느 각도에 있는가 (도) */
-function tipAngle(s: Spec): number {
-  const [sx, sy] = shoulderOf(s);
-  const tip = bladeOf(s)[1];
-  return (Math.atan2(tip[1] - sy, tip[0] - sx) * 180) / Math.PI;
-}
-
-function pose(s: Spec, smearFrom?: number): SwordPose {
-  const [tx, ty] = s.t;
-  const blade = bladeOf(s);
-  return {
-    chest: [tx, ty],
-    head: [tx + 7 + s.headD[0], ty - 11 + s.headD[1]],
-    pauldron: [tx, ty - 6],
-    lean: s.lean,
-    front: { shoulder: shoulderOf(s), elbow: s.fa[0], hand: s.fa[1] },
-    back: { shoulder: [tx + 6, ty + 6], elbow: s.ba[0], hand: s.ba[1] },
-    hip: [tx + 6, ty + 16 + s.hipDy],
-    frontLeg: s.fl,
-    backLeg: s.bl,
-    blade,
-    cape: capeOutline(s.t, [Math.round(s.cape[0]), Math.round(s.cape[1])], s.cape[2]),
-    smear: smearFrom === undefined ? undefined : sweepTo(smearFrom, shoulderOf(s), blade[1]),
+    view: viewOf(p.yaw),
+    headView: viewOf(p.hy),
+    cx,
+    cy,
+    shear: p.lean * cos,
+    headD: [0, 0],
+    sin,
+    cos,
+    rs,
+    ls,
+    rEl: bend(rs, p.rh, 11, armPref),
+    lEl: bend(ls, lh, 11, armPref),
+    rh: p.rh,
+    lh,
+    rHip,
+    lHip,
+    rKnee: bend(rHip, p.rf, 9, legPref, kneeScale),
+    lKnee: bend(lHip, p.lf, 9, legPref, kneeScale),
+    rFoot: p.rf,
+    lFoot: p.lf,
+    blade: [
+      [bx, by],
+      [p.rh[0] + vx, p.rh[1] + vy],
+    ],
+    bladeZ: Math.cos(el) * Math.sin(az),
+    capeTip,
+    smear,
   };
 }
 
@@ -169,7 +176,7 @@ const EASE: Record<Ease, (u: number) => number> = {
 /** 핵심 포즈. at초에 이 포즈가 되고, 앞 키에서 여기까지 ease로 이어진다. swing이면 그 사이에 칼 잔상이 따라붙는다. */
 interface KeySpec {
   at: number;
-  spec: Spec;
+  p: Full;
   ease?: Ease;
   swing?: boolean;
 }
@@ -177,155 +184,189 @@ interface KeySpec {
 const lerp = (a: number, b: number, u: number): number => a + (b - a) * u;
 const lerpPt = (p: Pt, q: Pt, u: number): Pt => [lerp(p[0], q[0], u), lerp(p[1], q[1], u)];
 
-/** 다리: 발이 멀리 옮겨 가면 들어 올렸다 내딛는다. 가만히 있는 발은 그대로 박혀 있다. */
-function lerpLeg(p: [Pt, Pt], q: [Pt, Pt], u: number): [Pt, Pt] {
-  const knee = lerpPt(p[0], q[0], u);
-  const foot = lerpPt(p[1], q[1], u);
-  const travel = Math.abs(q[1][0] - p[1][0]);
-  if (travel > 5) {
-    const h = Math.sin(Math.PI * u) * Math.min(1, travel / 14);
-    foot[1] -= 5 * h;
-    knee[1] -= 3 * h;
-  }
-  return [knee, foot];
+/** 발: 멀리 옮겨 가면 들어 올렸다 내딛는다. 가만히 있는 발은 그대로 박혀 있다. */
+function lerpFoot(p: Pt, q: Pt, u: number): Pt {
+  const f = lerpPt(p, q, u);
+  const travel = Math.abs(q[0] - p[0]);
+  if (travel > 5) f[1] -= 5 * Math.sin(Math.PI * u) * Math.min(1, travel / 14);
+  return f;
 }
 
-function lerpSpec(a: Spec, b: Spec, u: number): Spec {
+function lerpP(a: Full, b: Full, u: number): Full {
+  const lh = a.lh && b.lh ? lerpPt(a.lh, b.lh, u) : undefined;
   return {
-    t: lerpPt(a.t, b.t, u),
+    c: lerpPt(a.c, b.c, u),
+    yaw: lerp(a.yaw, b.yaw, u),
+    hy: lerp(a.hy, b.hy, u),
     lean: lerp(a.lean, b.lean, u),
-    fl: lerpLeg(a.fl, b.fl, u),
-    bl: lerpLeg(a.bl, b.bl, u),
-    fa: [lerpPt(a.fa[0], b.fa[0], u), lerpPt(a.fa[1], b.fa[1], u)],
-    ba: [lerpPt(a.ba[0], b.ba[0], u), lerpPt(a.ba[1], b.ba[1], u)],
-    ang: lerp(a.ang, b.ang, u),
+    rf: lerpFoot(a.rf, b.rf, u),
+    lf: lerpFoot(a.lf, b.lf, u),
+    rh: lerpPt(a.rh, b.rh, u),
+    lh,
+    az: lerp(a.az, b.az, u),
+    el: lerp(a.el, b.el, u),
     len: lerp(a.len, b.len, u),
-    cape: [lerp(a.cape[0], b.cape[0], u), lerp(a.cape[1], b.cape[1], u), lerp(a.cape[2], b.cape[2], u)],
     hipDy: lerp(a.hipDy, b.hipDy, u),
-    headD: lerpPt(a.headD, b.headD, u),
   };
+}
+
+/** 이 포즈에서 칼날 안쪽 점과 칼끝 (잔상용) */
+function bladeSeg(p: Full): [Pt, Pt] {
+  const el = p.el * RAD;
+  const az = p.az * RAD;
+  const vx = p.len * Math.cos(el) * Math.cos(az);
+  const vy = -p.len * Math.sin(el) + p.len * Math.cos(el) * Math.sin(az) * 0.28;
+  return [
+    [p.rh[0] + vx * 0.4, p.rh[1] + vy * 0.4],
+    [p.rh[0] + vx, p.rh[1] + vy],
+  ];
 }
 
 /** 키들을 1/60초마다 한 칸씩 이어 붙인다. 칸 i는 동작이 시작하고 i/60초 뒤의 모습이다. */
 function buildFrames(keys: KeySpec[], dur: number): SwordPose[] {
   const n = Math.ceil(dur * FPS) + 1;
   const out: SwordPose[] = [];
+  const capeTarget = (p: Full): Pt => [p.c[0] - 25 * Math.cos(p.yaw * RAD), p.c[1] + 21 + 3 * Math.abs(Math.sin(p.yaw * RAD))];
   // 망토 끝은 몸이 가리키는 곳으로 한 박자 늦게 따라온다
-  let cape: [number, number, number] = [...keys[0].spec.cape];
+  let cape = capeTarget(keys[0].p);
   for (let i = 0; i < n; i++) {
     const t = i / FPS;
     let k = 0;
     while (k + 1 < keys.length && keys[k + 1].at <= t) k++;
     const a = keys[k];
     const b = keys[k + 1];
-    let spec: Spec;
-    let smearFrom: number | undefined;
+    let cur: Full;
+    let smear: Seg[] | undefined;
     if (!b) {
-      spec = a.spec;
+      cur = a.p;
     } else {
       const u = Math.min(1, (t - a.at) / (b.at - a.at));
       const ease = EASE[b.ease ?? 'io'];
-      spec = lerpSpec(a.spec, b.spec, ease(u));
-      if (b.swing && u >= 0.15) smearFrom = tipAngle(lerpSpec(a.spec, b.spec, ease(Math.max(0, u - 0.4))));
+      cur = lerpP(a.p, b.p, ease(u));
+      if (b.swing && u >= 0.12) {
+        const u0 = Math.max(0, u - 0.5);
+        smear = [];
+        for (let j = 0; j <= 15; j++) {
+          const uj = u0 + ((u - u0) * j) / 15;
+          const [s0, s1] = bladeSeg(lerpP(a.p, b.p, ease(uj)));
+          smear.push({ a: s0, b: s1, k: j / 15 });
+        }
+      }
     }
-    cape = [lerp(cape[0], spec.cape[0], 0.25), lerp(cape[1], spec.cape[1], 0.25), spec.cape[2]];
-    out.push(pose({ ...spec, cape }, smearFrom));
+    const tg = capeTarget(cur);
+    cape = [lerp(cape[0], tg[0], 0.22), lerp(cape[1], tg[1], 0.22)];
+    out.push(pose(cur, cape, smear));
   }
   return out;
 }
 
-// 다리 자세 묶음 (앞다리 [무릎, 발], 뒷다리). 뒷발은 휘두르는 동안 같은 자리에 박혀 있다.
-type Legs = { fl: [Pt, Pt]; bl: [Pt, Pt] };
-const BACK: Legs = { fl: [[42, 56], [45, 62]], bl: [[32, 57], [27, 62]] };
-const MID: Legs = { fl: [[48, 55], [52, 62]], bl: [[36, 56], [29, 62]] };
-const LUNGE: Legs = { fl: [[56, 55], [62, 62]], bl: [[39, 57], [27, 62]] };
-/** 가장 크게 내디딘 자세 */
-const LUNGE2: Legs = { fl: [[58, 56], [65, 62]], bl: [[41, 57], [27, 62]] };
+const K = (at: number, p: P, ease?: Ease, swing?: boolean): KeySpec => ({ at, p: full(p), ease, swing });
 
-const K = (at: number, s: SpecIn, ease?: Ease, swing?: boolean): KeySpec => ({ at, spec: full(s), ease, swing });
+// 흐름: 젖힌다(천천히) → 휘두른다(점점 빨라져 타격에서 멈춘다) → 여운 → 다음 동작의 시작 자세로 이어진다.
+// 뒤 동작의 첫 키는 앞 동작의 마지막 키와 같은 자세라서, 이어 치면 끊김 없이 이어진다.
 
-// 흐름: 젖힌다(천천히, 오래) → 휘두른다(점점 빨라져 타격에서 멈춘다) → 여운 → 자세를 되찾는다.
+/** 한 단의 [동작 시간, 타격 시점들] — 포즈의 타격 칸과 맞춰 있다. 도의 평타는 이 표를 쓰지 않는다. */
+export const SWORD_TIMING: [number, number[]][] = [
+  [0.46, [0.21]],
+  [0.6, [0.3]],
+  [0.62, [0.27, 0.4]],
+  [0.86, [0.32, 0.66]],
+  [1.0, [0.26, 0.4, 0.62, 0.8]],
+];
 
-// ───────── 1단: 내려 베기 (동작 0.32초, 타격 0.11초) ─────────
+// 각 단이 끝나는 자세 (다음 단의 시작과 같다)
+const C1: P = { c: [44, 36], yaw: -20, lean: 2, rf: [41, 62], lf: [56, 62], rh: [57, 43], az: -35, el: -25 };
+const C2: P = { c: [47, 40], yaw: -85, rf: [52, 62], lf: [43, 62], rh: [41, 43], az: 0, el: 232 };
+const C3: P = { c: [52, 37], yaw: 0, rf: [46, 62], lf: [60, 62], rh: [62, 41], az: 0, el: -8, len: 32 };
+const C4: P = { c: [53, 39], yaw: 0, lean: 5, rf: [63, 62], lf: [48, 62], rh: [62, 43], az: 0, el: -40, len: 32 };
+
+// ───────── 1타: 왼발을 내디디며 왼쪽에서 오른쪽으로 수평 가로베기 ─────────
 const COMBO1 = buildFrames(
   [
-    K(0, { t: [33, 34], lean: -3, fl: [[44, 56], [47, 62]], bl: [[33, 57], [27, 62]], fa: [[40, 38], [37, 29]], ba: [[36, 42], [41, 43]], ang: 240, len: 32, cape: [8, 48] }),
-    // 칼을 어깨 뒤로 크게 젖히고 체중을 뒤에 싣는다
-    K(0.045, { t: [31, 34], lean: -4, headD: [-2, 1], ...BACK, fa: [[38, 37], [34, 28]], ba: [[36, 42], [42, 43]], ang: 226, len: 32, cape: [5, 46] }, 'io'),
-    // 타격: 크게 내디디며 사선으로 내려친다
-    K(0.1, { t: [40, 34], lean: 6, ...LUNGE, fa: [[60, 41], [69, 47]], ba: [[35, 44], [29, 46]], ang: 388, len: 32, cape: [4, 57] }, 'in', true),
-    // 여운
-    K(0.2, { t: [39, 35], lean: 5, ...LUNGE, fa: [[60, 43], [68, 51]], ba: [[35, 45], [29, 47]], ang: 378, cape: [7, 58] }, 'out'),
-    K(0.3, { t: [36, 33], lean: 2, ...MID, fa: [[55, 41], [62, 46]], ba: [[32, 41], [29, 45]], ang: 382, cape: [11, 56] }, 'io'),
+    K(0, { c: [38, 35], yaw: 12, rf: [43, 62], lf: [33, 62], rh: [46, 41], az: 0, el: -25 }),
+    // 오른팔을 뒤로 감는다: 가슴이 살짝 정면으로 돌지만 시선은 앞에 둔다
+    K(0.12, { c: [36, 36], yaw: 60, hy: 10, lean: -2, rf: [42, 62], lf: [32, 62], rh: [30, 39], az: 165, el: 5 }, 'io'),
+    // 타격: 왼발이 앞으로 나가며 칼이 몸 앞을 가로질러 오른쪽으로
+    K(0.21, { c: [44, 37], yaw: -25, lean: 4, rf: [41, 62], lf: [56, 62], rh: [58, 41], az: -20, el: -8, len: 32 }, 'in', true),
+    K(0.32, { c: [45, 37], yaw: -28, lean: 4, rf: [41, 62], lf: [56, 62], rh: [60, 43], az: -32, el: -14, len: 32 }, 'out'),
+    K(0.46, C1, 'io'),
   ],
-  0.32,
+  0.46,
 );
 
-// ───────── 2단: 역베기, 아래에서 위로 (0.32초, 타격 0.11초) ─────────
+// ───────── 2타: 오른발을 교차해 내디디며 돌아서 (등이 보인다), 검을 수평으로 올렸다가 왼쪽 아래로 내려베기 ─────────
 const COMBO2 = buildFrames(
   [
-    // 몸을 깊이 낮추고 칼을 아래로 끌어 둔다
-    K(0, { t: [33, 39], lean: 4, hipDy: 1, fl: [[48, 58], [52, 62]], bl: [[34, 59], [27, 62]], fa: [[46, 44], [48, 52]], ba: [[29, 46], [26, 50]], ang: 15, cape: [6, 58] }),
-    K(0.05, { t: [32, 40], lean: 5, hipDy: 1, fl: [[47, 58], [50, 62]], bl: [[33, 59], [27, 62]], fa: [[44, 45], [45, 54]], ba: [[28, 47], [25, 51]], ang: 28, cape: [5, 59] }, 'io'),
-    // 몸을 일으키며 위로 베어 올린다
-    K(0.1, { t: [38, 32], lean: 6, fl: [[53, 53], [58, 62]], bl: [[38, 55], [27, 62]], fa: [[56, 37], [62, 29]], ba: [[33, 36], [28, 32]], ang: -48, len: 28, cape: [5, 50] }, 'in', true),
-    K(0.19, { t: [36, 31], lean: 1, fl: [[50, 53], [55, 62]], bl: [[37, 55], [28, 62]], fa: [[54, 32], [57, 23]], ba: [[31, 36], [28, 33]], ang: -65, len: 26, cape: [8, 48] }, 'out'),
-    K(0.29, { t: [35, 33], lean: 1, ...MID, fa: [[52, 37], [56, 33]], ba: [[31, 40], [28, 43]], ang: -25, cape: [11, 52] }, 'io'),
-  ],
-  0.32,
-);
-
-// ───────── 3단: X자로 두 번 (0.38초, 타격 0.09 · 0.21초) ─────────
-const COMBO3 = buildFrames(
-  [
-    K(0, { t: [34, 34], lean: -2, ...MID, fa: [[46, 35], [49, 26]], ba: [[30, 40], [27, 43]], ang: 300, cape: [8, 50] }),
-    K(0.04, { t: [33, 34], lean: -3, fl: [[46, 55], [50, 62]], bl: [[35, 56], [28, 62]], fa: [[44, 34], [46, 25]], ba: [[29, 40], [26, 43]], ang: 282, cape: [6, 49] }, 'io'),
-    // 첫 타: 오른쪽 아래 사선
-    K(0.085, { t: [39, 34], lean: 5, fl: [[55, 55], [60, 62]], bl: [[38, 57], [28, 62]], fa: [[60, 41], [67, 46]], ba: [[35, 45], [30, 48]], ang: 394, cape: [5, 57] }, 'in', true),
-    // 손목을 돌려 칼을 아래로 되돌린다
-    K(0.15, { t: [38, 35], lean: 3, fl: [[53, 56], [58, 62]], bl: [[38, 58], [28, 62]], fa: [[57, 45], [61, 49]], ba: [[35, 46], [31, 50]], ang: 402, cape: [8, 58] }, 'io'),
-    // 둘째 타: 반대 사선으로 올려 벤다
-    K(0.2, { t: [38, 32], lean: 6, fl: [[54, 54], [59, 62]], bl: [[38, 55], [28, 62]], fa: [[59, 37], [64, 30]], ba: [[33, 38], [29, 35]], ang: 318, len: 28, cape: [5, 52] }, 'in', true),
-    K(0.3, { t: [36, 33], lean: 2, fl: [[50, 54], [54, 62]], bl: [[36, 56], [29, 62]], fa: [[54, 37], [58, 31]], ba: [[32, 40], [29, 43]], ang: 335, cape: [10, 53] }, 'out'),
-  ],
-  0.38,
-);
-
-// ───────── 4단: 한 걸음 크게 (0.42초, 타격 0.15초) ─────────
-const COMBO4 = buildFrames(
-  [
-    // 크게 뒤로 감는다
-    K(0, { t: [31, 35], lean: -4, headD: [-2, 1], hipDy: 1, fl: [[41, 56], [44, 62]], bl: [[31, 58], [26, 62]], fa: [[33, 41], [30, 45]], ba: [[26, 40], [23, 43]], ang: 195, len: 32, cape: [14, 52] }),
-    // 더 깊이 감는다 (타격 전의 힘 모으기)
-    K(0.07, { t: [29, 36], lean: -6, headD: [-3, 1], hipDy: 1, fl: [[40, 57], [44, 62]], bl: [[30, 59], [26, 62]], fa: [[30, 39], [26, 37]], ba: [[25, 41], [22, 44]], ang: 184, len: 32, cape: [24, 50] }, 'io'),
-    // 타격: 도약하듯 크게 내디디며 머리 위를 지나 앞으로 크게 가른다
-    K(0.14, { t: [42, 33], lean: 7, ...LUNGE2, fa: [[58, 36], [67, 35]], ba: [[38, 41], [31, 43]], ang: 360, len: 32, cape: [4, 55] }, 'in', true),
-    K(0.23, { t: [43, 34], lean: 6, fl: [[59, 56], [66, 62]], bl: [[43, 57], [27, 62]], fa: [[60, 38], [68, 41]], ba: [[39, 42], [32, 45]], ang: 370, len: 32, cape: [7, 57] }, 'out'),
-    K(0.33, { t: [38, 34], lean: 3, ...MID, fa: [[56, 41], [62, 46]], ba: [[34, 44], [30, 47]], ang: 386, cape: [10, 58] }, 'io'),
-  ],
-  0.42,
-);
-
-// ───────── 5단: 돌며 세 번, 마지막은 관통 (0.6초, 타격 0.10 · 0.23 · 0.38초) ─────────
-const COMBO5 = buildFrames(
-  [
-    K(0, { t: [32, 35], lean: -4, ...BACK, fa: [[36, 40], [33, 36]], ba: [[27, 41], [24, 44]], ang: 198, len: 32, cape: [14, 52] }),
-    K(0.05, { t: [31, 35], lean: -5, ...BACK, fa: [[35, 39], [31, 35]], ba: [[26, 42], [23, 45]], ang: 190, len: 32, cape: [16, 51] }, 'io'),
-    // 첫 타: 앞으로 가로
-    K(0.095, { t: [39, 33], lean: 5, ...LUNGE, fa: [[58, 37], [65, 36]], ba: [[34, 42], [29, 44]], ang: 364, len: 32, cape: [5, 54] }, 'in', true),
-    // 몸을 돌려 머리 위로 크게 칼을 돌린다 (망토가 앞으로 쏠린다)
-    K(0.17, { t: [37, 34], lean: -1, fl: [[50, 55], [54, 62]], bl: [[38, 57], [27, 62]], fa: [[34, 31], [30, 26]], ba: [[45, 39], [50, 36]], ang: 610, cape: [66, 52, 6] }, 'io', true),
-    // 둘째 타
-    K(0.205, { t: [39, 33], lean: 5, ...LUNGE, fa: [[59, 36], [66, 33]], ba: [[34, 42], [29, 45]], ang: 712, len: 32, cape: [5, 52] }, 'in', true),
-    // 한 번 더 뒤로 돌려 아래에서 쓸어 올린다
-    K(0.3, { t: [37, 34], lean: -1, fl: [[50, 55], [54, 62]], bl: [[38, 57], [27, 62]], fa: [[32, 36], [27, 36]], ba: [[45, 40], [50, 38]], ang: 903, cape: [64, 54, 6] }, 'io', true),
-    // 셋째 타: 가장 크게 내디디며
-    K(0.365, { t: [41, 33], lean: 7, ...LUNGE2, fa: [[60, 37], [68, 38]], ba: [[38, 43], [32, 46]], ang: 1088, len: 34, cape: [4, 56] }, 'in', true),
-    // 관통: 칼을 곧게 뻗은 채 버틴다
-    K(0.45, { t: [42, 34], lean: 7, ...LUNGE2, fa: [[62, 38], [70, 38]], ba: [[39, 44], [32, 47]], ang: 1080, len: 24, cape: [5, 56] }, 'out'),
-    K(0.55, { t: [38, 34], lean: 3, ...MID, fa: [[56, 41], [62, 45]], ba: [[34, 44], [30, 47]], ang: 1102, cape: [10, 57] }, 'io'),
+    K(0, C1),
+    // 몸이 왼쪽으로 돌며 오른발이 앞으로 나간다. 검은 지면과 수평인 채 오른쪽 위로 올라간다.
+    K(0.17, { c: [47, 38], yaw: -85, rf: [52, 62], lf: [43, 62], rh: [58, 28], az: 0, el: 0 }, 'io'),
+    // 검이 위로 선다
+    K(0.23, { c: [47, 39], yaw: -88, rf: [52, 62], lf: [43, 62], rh: [55, 24], az: 0, el: 90 }, 'io'),
+    // 타격: 왼쪽 아래로 내려벤다
+    K(0.3, { c: [47, 40], yaw: -85, rf: [52, 62], lf: [43, 62], rh: [42, 41], az: 0, el: 232 }, 'in', true),
+    K(0.44, { c: [47, 40], yaw: -85, rf: [52, 62], lf: [43, 62], rh: [41, 43], az: 0, el: 232 }, 'out'),
+    K(0.6, C2, 'io'),
   ],
   0.6,
+);
+
+// ───────── 3타: 왼쪽 아래의 검을 오른쪽으로 돌리며, 왼발을 앞으로 내딛고 한 바퀴 돌며 수평으로 베기 ─────────
+const COMBO3 = buildFrames(
+  [
+    // 2타가 끝난 자세 (같은 칼 방향을 가로 표현으로 바꿔 쓴다)
+    K(0, { ...C2, az: 180, el: -52 }),
+    // 검을 왼쪽으로 수평하게 펴며 몸을 더 감는다
+    K(0.1, { c: [46, 40], yaw: -105, rf: [52, 62], lf: [43, 62], rh: [38, 40], az: 180, el: -5 }, 'io'),
+    // 오른쪽으로 한 바퀴 이상 돌며 휘두른다. 칼은 몸보다 늦게 따라 돈다. 왼발이 앞으로 나간다.
+    K(0.46, { c: [52, 37], yaw: 360, rf: [46, 62], lf: [60, 62], rh: [62, 40], az: 720, el: -3, len: 32 }, 'io', true),
+    K(0.62, { c: [53, 37], yaw: 360, rf: [46, 62], lf: [60, 62], rh: [63, 41], az: 720, el: -8, len: 32 }, 'out'),
+  ],
+  0.62,
+);
+
+// ───────── 4타: 오른발을 내딛고 돌아서 왼쪽 아래로 내려베고, 검을 수직으로 올려 등 뒤에서 넘겨 오른쪽으로 내려베기 ─────────
+const COMBO4 = buildFrames(
+  [
+    K(0, { ...C3, az: 0 }),
+    K(0.2, { c: [50, 38], yaw: -85, rf: [56, 62], lf: [46, 62], rh: [61, 28], az: 0, el: 0 }, 'io'),
+    K(0.26, { c: [50, 39], yaw: -88, rf: [56, 62], lf: [46, 62], rh: [58, 24], az: 0, el: 90 }, 'io'),
+    // 첫 타: 왼쪽 아래로
+    K(0.32, { c: [50, 40], yaw: -85, rf: [56, 62], lf: [46, 62], rh: [45, 41], az: 0, el: 232 }, 'in', true),
+    K(0.44, { c: [50, 40], yaw: -85, rf: [56, 62], lf: [46, 62], rh: [44, 43], az: 0, el: 232 }, 'io'),
+    // 검을 수직으로 들어 올린다
+    K(0.52, { c: [50, 38], yaw: -85, rf: [56, 62], lf: [46, 62], rh: [48, 26], az: 0, el: 90 }, 'io'),
+    // 등 뒤로 넘긴다
+    K(0.58, { c: [49, 38], yaw: -60, rf: [56, 62], lf: [46, 62], rh: [44, 24], az: 0, el: 150 }, 'io'),
+    // 둘째 타: 몸이 앞을 향하며 오른발을 크게 내딛고 오른쪽으로 내려벤다
+    K(0.66, { c: [52, 38], yaw: 0, lean: 5, rf: [62, 62], lf: [48, 62], rh: [60, 40], az: 0, el: -35, len: 32 }, 'in', true),
+    K(0.86, C4, 'out'),
+  ],
+  0.86,
+);
+
+// ───────── 5타: 바로 서서 오른쪽·왼쪽으로 검을 돌리고, 왼발을 빼며 수평으로 베고, 오른발을 내딛으며 찌르기 ─────────
+const COMBO5 = buildFrames(
+  [
+    K(0, C4),
+    // 바로 선다
+    K(0.16, { c: [44, 35], yaw: 0, rf: [49, 62], lf: [40, 62], rh: [48, 36], az: 0, el: 85 }, 'io'),
+    // 오른쪽에서 한 바퀴
+    K(0.3, { c: [44, 35], yaw: 0, rf: [49, 62], lf: [40, 62], rh: [53, 35], az: 0, el: -275 }, 'io', true),
+    // 왼쪽에서 한 바퀴
+    K(0.44, { c: [44, 35], yaw: 0, rf: [49, 62], lf: [40, 62], rh: [36, 36], az: 0, el: -635 }, 'io', true),
+    // 왼발을 빼며 칼을 왼쪽으로 수평하게 펴고, 가슴은 정면으로 돌되 시선은 앞에 둔다
+    K(0.5, { c: [43, 36], yaw: 70, hy: 0, lean: -2, rf: [41, 62], lf: [48, 62], rh: [30, 40], az: 0, el: -540 }, 'io'),
+    K(0.51, { c: [43, 36], yaw: 70, hy: 0, lean: -2, rf: [41, 62], lf: [48, 62], rh: [30, 40], az: 180, el: 0 }),
+    // 타격: 왼쪽에서 오른쪽으로 수평하게
+    K(0.62, { c: [46, 37], yaw: -10, hy: 0, lean: 3, rf: [40, 62], lf: [56, 62], rh: [56, 40], az: -15, el: -3, len: 32 }, 'in', true),
+    // 칼을 허리로 당겼다가
+    K(0.72, { c: [44, 37], yaw: 20, hy: 0, rf: [41, 62], lf: [55, 62], rh: [42, 42], az: 0, el: 3 }, 'io'),
+    // 오른발을 내딛으며 찌른다
+    K(0.8, { c: [52, 38], yaw: -8, lean: 5, rf: [66, 62], lf: [48, 62], rh: [62, 40], az: 0, el: 0, len: 34 }, 'in'),
+    K(0.92, { c: [53, 38], yaw: -8, lean: 5, rf: [66, 62], lf: [48, 62], rh: [63, 40], az: 0, el: 0, len: 34 }, 'out'),
+    K(1.0, { c: [40, 35], yaw: 10, rf: [44, 62], lf: [34, 62], rh: [47, 41], az: 0, el: -25 }, 'io'),
+  ],
+  1.0,
 );
 
 /** 단마다 1/60초 간격의 칸 */

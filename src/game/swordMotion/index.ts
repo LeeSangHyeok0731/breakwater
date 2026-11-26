@@ -19,6 +19,11 @@ export function swordFrameAt(step: number, t: number): number {
   return Math.max(0, Math.min(COMBOS[step - 1].length - 1, Math.floor(t * FPS)));
 }
 
+/** 그 단의 마지막 칸 (다음 단의 시작 자세와 같다) */
+export function swordLastFrame(step: number): number {
+  return COMBOS[step - 1].length - 1;
+}
+
 export function hasSwordMotion(step: number): boolean {
   return step >= 1 && step <= COMBOS.length;
 }

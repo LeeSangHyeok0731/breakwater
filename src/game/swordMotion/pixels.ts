@@ -110,3 +110,33 @@ export function polySpans(points: [number, number][], h: number): Map<number, [n
   }
   return spans;
 }
+
+/** 좌우로 뒤집은 조각 */
+export function flipH(src: Buf): Buf {
+  const out = newBuf(src.w, src.h);
+  for (let y = 0; y < src.h; y++) {
+    for (let x = 0; x < src.w; x++) {
+      const s = (y * src.w + x) * 4;
+      const d = (y * src.w + (src.w - 1 - x)) * 4;
+      out.data[d] = src.data[s];
+      out.data[d + 1] = src.data[s + 1];
+      out.data[d + 2] = src.data[s + 2];
+      out.data[d + 3] = src.data[s + 3];
+    }
+  }
+  return out;
+}
+
+/** 글자 그림을 조각으로 만든다. 점('.')은 비어 있고, 나머지는 pal의 색이다. */
+export function fromRows(rows: string[], pal: Record<string, Rgb>): Buf {
+  const w = rows[0].length;
+  const out = newBuf(w, rows.length);
+  rows.forEach((row, y) => {
+    for (let x = 0; x < w; x++) {
+      const c = row[x];
+      if (c === '.' || c === undefined) continue;
+      px(out, x, y, pal[c] ?? 0xff00ff);
+    }
+  });
+  return out;
+}
